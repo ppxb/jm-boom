@@ -1,6 +1,7 @@
 use aes::Aes256;
 use base64::prelude::{Engine as _, BASE64_STANDARD};
 use ecb::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyInit};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -51,6 +52,18 @@ struct SearchCategory {
     title: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RemoteSettingPayload {
+    img_host: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RemoteSettingResult {
+    pub endpoint: String,
+    #[serde(rename = "imgHost")]
+    pub img_host: String,
+}
+
 #[derive(Debug, Serialize)]
 struct SearchAlbumsResult {
     pub query: String,
@@ -74,6 +87,25 @@ struct SearchAlbum {
     pub updated_at: Option<i64>,
     #[serde(rename = "isRedirect")]
     pub is_redirect: bool,
+}
+
+#[tauri::command]
+async fn get_remote_setting(endpoint: Option<String>) -> Result<RemoteSettingResult, String> {
+    let endpoint = resolve_api_endpoint(endpoint)?;
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let ts = current_timestamp();
+    let token = md5_hex(&format!("{ts}{API_SECRET}"));
+    let tokenparam = format!("{ts},{API_VERSION}");
+    let setting = request_remote_setting(&client, endpoint, ts, &token, &tokenparam).await?;
+
+    Ok(RemoteSettingResult {
+        endpoint: endpoint.to_string(),
+        img_host: setting.img_host,
+    })
 }
 
 #[tauri::command]
@@ -106,8 +138,44 @@ async fn search_comics(
     let ts = current_timestamp();
     let token = md5_hex(&format!("{ts}{API_SECRET}"));
     let tokenparam = format!("{ts},{API_VERSION}");
+    let img_host = match request_remote_setting(&client, endpoint, ts, &token, &tokenparam).await {
+        Ok(setting) => Some(setting.img_host),
+        Err(error) => {
+            eprintln!("Failed to load remote setting for search covers: {error}");
+            None
+        }
+    };
 
-    request_search(&client, endpoint, &query, page, ts, &token, &tokenparam).await
+    request_search(
+        &client,
+        endpoint,
+        &query,
+        page,
+        ts,
+        &token,
+        &tokenparam,
+        img_host.as_deref(),
+    )
+    .await
+}
+
+async fn request_remote_setting(
+    client: &reqwest::Client,
+    endpoint: &str,
+    ts: u64,
+    token: &str,
+    tokenparam: &str,
+) -> Result<RemoteSettingPayload, String> {
+    request_api_data::<RemoteSettingPayload>(
+        client,
+        endpoint,
+        "setting",
+        &[],
+        ts,
+        token,
+        tokenparam,
+    )
+    .await
 }
 
 async fn request_search(
@@ -118,83 +186,29 @@ async fn request_search(
     ts: u64,
     token: &str,
     tokenparam: &str,
+    img_host: Option<&str>,
 ) -> Result<SearchAlbumsResult, String> {
-    let url = format!("{endpoint}/search");
-
-    let response = client
-        .get(url)
-        .header("accept", "application/json")
-        .header("token", token)
-        .header("tokenparam", tokenparam)
-        .query(&[
+    let mut payload: SearchPayload = request_api_data(
+        client,
+        endpoint,
+        "search",
+        &[
             ("page", page.to_string()),
             ("o", "mr".to_string()),
             ("search_query", query.to_string()),
-        ])
-        .send()
-        .await
-        .map_err(|error| format!("{endpoint}: {error}"))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "{endpoint}: API returned HTTP {}",
-            response.status()
-        ));
-    }
-
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| format!("{endpoint}: {error}"))?;
-    let body = body.trim();
-
-    if body.is_empty() {
-        return Err(format!("{endpoint}: API returned an empty response"));
-    }
-
-    let envelope: ApiResponse<serde_json::Value> = serde_json::from_str(body).map_err(|error| {
-        format!(
-            "{endpoint}: Invalid API response ({content_type}): {error}. Body starts with: {}",
-            response_preview(body)
-        )
-    })?;
-
-    if envelope.code != 200 {
-        return Err(envelope
-            .error_msg
-            .map(|message| format!("{endpoint}: {message}"))
-            .unwrap_or_else(|| format!("{endpoint}: API returned code {}", envelope.code)));
-    }
-
-    let data = envelope
-        .data
-        .ok_or_else(|| format!("{endpoint}: API response did not include data"))?;
-    let mut payload: SearchPayload = match data {
-        serde_json::Value::String(encrypted) => {
-            let decrypted =
-                decrypt_data(&encrypted, ts).map_err(|error| format!("{endpoint}: {error}"))?;
-            serde_json::from_str(&decrypted).map_err(|error| {
-                format!(
-                    "{endpoint}: Invalid search payload: {error}. Payload starts with: {}",
-                    response_preview(&decrypted)
-                )
-            })?
-        }
-        value => serde_json::from_value(value)
-            .map_err(|error| format!("{endpoint}: Invalid search payload: {error}"))?,
-    };
+        ],
+        ts,
+        token,
+        tokenparam,
+    )
+    .await?;
 
     let items = payload
         .content
         .into_iter()
         .map(|item| {
             let mut tags = Vec::new();
+            let image = cover_image_url(img_host, &item.id).unwrap_or(item.image);
 
             if let Some(title) = item.category.and_then(|category| category.title) {
                 if !title.is_empty() {
@@ -214,7 +228,7 @@ async fn request_search(
                 title: item.name,
                 author: item.author,
                 description: item.description.unwrap_or_default(),
-                image: item.image,
+                image,
                 tags,
                 updated_at: item.update_at,
                 is_redirect: false,
@@ -252,6 +266,91 @@ async fn request_search(
         redirect_aid,
         items,
     })
+}
+
+async fn request_api_data<T>(
+    client: &reqwest::Client,
+    endpoint: &str,
+    path: &str,
+    query: &[(&str, String)],
+    ts: u64,
+    token: &str,
+    tokenparam: &str,
+) -> Result<T, String>
+where
+    T: DeserializeOwned,
+{
+    let url = format!("{endpoint}/{path}");
+    let query = query
+        .iter()
+        .map(|(key, value)| (*key, value.as_str()))
+        .collect::<Vec<_>>();
+
+    let response = client
+        .get(url)
+        .header("accept", "application/json")
+        .header("token", token)
+        .header("tokenparam", tokenparam)
+        .query(&query)
+        .send()
+        .await
+        .map_err(|error| format!("{endpoint}/{path}: {error}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "{endpoint}/{path}: API returned HTTP {}",
+            response.status()
+        ));
+    }
+
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("{endpoint}/{path}: {error}"))?;
+    let body = body.trim();
+
+    if body.is_empty() {
+        return Err(format!("{endpoint}/{path}: API returned an empty response"));
+    }
+
+    let envelope: ApiResponse<serde_json::Value> = serde_json::from_str(body).map_err(|error| {
+        format!(
+            "{endpoint}/{path}: Invalid API response ({content_type}): {error}. Body starts with: {}",
+            response_preview(body)
+        )
+    })?;
+
+    if envelope.code != 200 {
+        return Err(envelope
+            .error_msg
+            .map(|message| format!("{endpoint}/{path}: {message}"))
+            .unwrap_or_else(|| format!("{endpoint}/{path}: API returned code {}", envelope.code)));
+    }
+
+    let data = envelope
+        .data
+        .ok_or_else(|| format!("{endpoint}/{path}: API response did not include data"))?;
+
+    match data {
+        serde_json::Value::String(encrypted) => {
+            let decrypted = decrypt_data(&encrypted, ts)
+                .map_err(|error| format!("{endpoint}/{path}: {error}"))?;
+            serde_json::from_str(&decrypted).map_err(|error| {
+                format!(
+                    "{endpoint}/{path}: Invalid payload: {error}. Payload starts with: {}",
+                    response_preview(&decrypted)
+                )
+            })
+        }
+        value => serde_json::from_value(value)
+            .map_err(|error| format!("{endpoint}/{path}: Invalid payload: {error}")),
+    }
 }
 
 fn decrypt_data(data: &str, ts: u64) -> Result<String, String> {
@@ -313,6 +412,16 @@ fn resolve_api_endpoint(endpoint: Option<String>) -> Result<&'static str, String
         .ok_or_else(|| format!("Unsupported API endpoint: {endpoint}"))
 }
 
+fn cover_image_url(img_host: Option<&str>, comic_id: &str) -> Option<String> {
+    let img_host = img_host?.trim().trim_end_matches('/');
+
+    if img_host.is_empty() {
+        return None;
+    }
+
+    Some(format!("{img_host}/media/albums/{comic_id}_3x4.jpg"))
+}
+
 fn response_preview(value: &str) -> String {
     value
         .chars()
@@ -325,7 +434,7 @@ fn response_preview(value: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![search_comics])
+        .invoke_handler(tauri::generate_handler![get_remote_setting, search_comics])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

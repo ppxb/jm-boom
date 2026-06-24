@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { SearchIcon } from 'lucide-react'
+import { ImageIcon, SearchIcon } from 'lucide-react'
 import type { FormEvent, ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -79,33 +79,39 @@ function HomePage() {
               {search.data.items.map(item => (
                 <article
                   key={item.id}
-                  className="rounded-lg border bg-card p-4 text-card-foreground shadow-sm"
+                  className="overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm"
                 >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 space-y-2">
-                      <div className="text-xs font-medium text-muted-foreground">JM{item.id}</div>
-                      <h2 className="text-base font-medium">{item.title}</h2>
-                      {item.isRedirect ? (
-                        <p className="text-sm text-muted-foreground">Direct album match</p>
-                      ) : null}
-                      {item.author ? (
-                        <p className="text-sm text-muted-foreground">{item.author}</p>
+                  <div className="flex gap-4 p-4">
+                    <ComicCover title={item.title} image={item.image} />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground">JM{item.id}</div>
+                          <h2 className="line-clamp-2 text-base font-medium">{item.title}</h2>
+                          {item.isRedirect ? (
+                            <p className="text-sm text-muted-foreground">Direct album match</p>
+                          ) : null}
+                          {item.author ? (
+                            <p className="line-clamp-1 text-sm text-muted-foreground">{item.author}</p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {item.tags.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {item.tags.slice(0, 8).map(tag => (
+                            <span
+                              key={tag}
+                              className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                   </div>
-
-                  {item.tags.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {item.tags.slice(0, 8).map(tag => (
-                        <span
-                          key={tag}
-                          className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
                 </article>
               ))}
             </div>
@@ -113,6 +119,30 @@ function HomePage() {
         ) : null}
       </section>
     </main>
+  )
+}
+
+function ComicCover({ title, image }: { title: string; image: string }) {
+  const [hasError, setHasError] = useState(false)
+
+  return (
+    <div className="flex aspect-[3/4] w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted sm:w-28">
+      {image && !hasError ? (
+        <img
+          src={image}
+          alt={title}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-cover"
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-2 px-3 text-center text-xs text-muted-foreground">
+          <ImageIcon className="size-5" />
+          <span>No cover</span>
+        </div>
+      )}
+    </div>
   )
 }
 
