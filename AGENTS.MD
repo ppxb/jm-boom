@@ -37,17 +37,28 @@
   - 评论时间使用原生 `Intl.DateTimeFormat('zh-CN')` 格式化为中文日期/时间，不再使用 `date-fns`，也不显示相对时间。
   - 章节使用 shadcn `Pagination`，每页 10 个。
   - 章节标题兜底规则：有 `chapter.title` 用标题；否则有 `sort` 显示 `第 N 章`；再否则显示 `章节 N`。
-  - 章节进入阅读页时会传 `title`、`chapter`、`albumId`、`nextId`、`nextChapter`。
+  - 章节进入阅读页时会传 `title`、`chapter`、`albumId`、`pageIndex: '0'`、`nextId`、`nextChapter`。
+
+- 历史观看：`src/routes/_app/history.tsx`
+  - 使用 `useReadingHistoryStore` 读取本地阅读历史，并按 `updatedAt` 倒序展示 4 列卡片。
+  - 历史记录以漫画/作品 `comicId` 为唯一键覆盖，同一作品只保留最近一次阅读进度；当前章节单独保存为 `chapterId`。
+  - 历史卡片点击时使用 `chapterId` 进入 `/reader/$comicId`，同时传入 `title`、`chapterTitle`、`albumId` 和保存的 `pageIndex`，阅读器会直接 seek 到保存页。
+  - 卡片展示封面、JM id、进度条、当前章节、作者和更新时间；封面隐私模式复用 `settings-store.hideCovers`。
+  - 清除记录使用 shadcn `AlertDialog` 二次确认，样式参考启动时的 NSFW 警告弹窗；确认后清空本地历史并 toast 提示。
+  - 不需要兼容旧历史数据结构；结构变更后用户可以通过“清除记录”重建最新数据。
 
 - 阅读页：`src/routes/reader/$comicId.tsx`
   - 独立于 `_app`，所以没有 floating-nav。
+  - 路由参数 `$comicId` 在阅读页语义上是 read/chapter id；作品 id 通过 search 中的 `albumId` 传入。
   - 顶部 toolbar 显示返回、作品标题、章节名、刷新按钮；不显示页码。
   - toolbar 在鼠标移动时出现，短暂后隐藏；键盘操作时隐藏。
   - 左右方向键翻页，`Esc` 返回；页面左右透明点击区也可翻页。
   - 图片使用 `h-screen w-screen object-contain`，尽量占满视口但保留原比例，不裁切。
-  - 底部 footer 是悬浮预览组件：`absolute bottom-20 left-1/2 w-80`，圆角背景，内部上方进度条、下方页码。
+  - 底部 footer 是悬浮进度组件：`absolute bottom-10 left-1/2 w-80`，圆角背景，内部上方进度条、下方页码。
   - 到当前章节最后一页且存在下一章时，右下角单独显示“下一章”按钮。
   - 阅读页会优先使用 search 中的章节名；如果为空，会根据 `albumId` 获取详情并按同一兜底规则生成章节名。
+  - `pageIndex` search 会作为初始页，`useReaderPages` 会规范化并在 manifest 返回页数后 clamp 到合法范围；历史记录恢复依赖这个 seek 行为。
+  - 阅读进度只在已有章节标题且 `pageCount > 0` 时写入历史，避免保存无效页数。
 
 - 个人中心：`src/routes/_app/me.tsx`
   - 使用 Zustand 的 `useUserStore` 读取登录用户、endpoint 和 logout。
@@ -90,15 +101,19 @@
   - `api` 是运行时字符串，不是固定 union；写入时只做 URL 规范化，允许选择动态发现出的 API endpoint。
   - 代理配置包含 `proxyMode`、`proxyHost`、`proxyPort`；二值设置优先使用项目 `Switch` 组件。
 
+- `src/stores/reading-history-store.ts`
+  - 使用 Zustand persist 保存本地阅读历史，存储名为 `jm-boom-reading-history`。
+  - `ReadingHistoryItem` 当前字段为：`comicId`、`albumId`、`title`、`author`、`coverUrl`、`chapterId`、`chapterTitle`、`pageIndex`、`pageCount`、`updatedAt`。
+  - `comicId` 是作品/漫画 id，也是历史记录唯一键；`chapterId` 是阅读接口使用的章节/read id。
+  - `upsert` 会把新记录放到最前面，并删除同 `comicId` 的旧记录；不做旧数据结构迁移。
+
 - `src/components/comic-feed.tsx`
   - `ComicGrid` 为 4 列网格。
   - Comic card 使用 shadcn `Card`。
   - 封面是 `aspect-square`，只展示标题和作者。
   - 标题单行省略，hover 使用项目 Tooltip。
   - 封面左上角半透明圆角容器显示 `JM id`。
-  - 当前 `SHOW_COVER_MASK = true`，真实图上覆盖蒙版；需要展示真实图片时删除或关闭该蒙版即可。
-
-- 用户不关心移动端的适配问题。在样式实现的时候，不考虑移动端的响应式。
+  - 封面隐私模式读取 `settings-store.hideCovers`，开启时用统一蒙版遮住真实封面。
 
 ## Rust / Tauri API
 
