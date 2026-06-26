@@ -27,7 +27,10 @@ function HistoryPage() {
   const items = useReadingHistoryStore(state => state.items)
   const clear = useReadingHistoryStore(state => state.clear)
   const hideCovers = useSettingsStore(state => state.hideCovers)
-  const sortedItems = useMemo(() => [...items].sort((left, right) => right.updatedAt - left.updatedAt), [items])
+  const sortedItems = useMemo(
+    () => [...items].sort((left, right) => right.updatedAt - left.updatedAt),
+    [items]
+  )
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -60,13 +63,7 @@ function HistoryPage() {
   )
 }
 
-function ClearHistoryDialog({
-  disabled,
-  onConfirm
-}: {
-  disabled: boolean
-  onConfirm: () => void
-}) {
+function ClearHistoryDialog({ disabled, onConfirm }: { disabled: boolean; onConfirm: () => void }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -160,9 +157,7 @@ function HistoryCard({ item, hideCover }: { item: ReadingHistoryItem; hideCover:
             </TooltipTrigger>
             <TooltipContent side="top">{title}</TooltipContent>
           </Tooltip>
-          <p className="line-clamp-1 text-xs text-muted-foreground">
-            当前章节：{item.chapterTitle}
-          </p>
+          <p className="line-clamp-1 text-xs text-muted-foreground">{item.chapterTitle}</p>
           {item.author ? (
             <p className="line-clamp-1 text-xs text-muted-foreground">{item.author}</p>
           ) : null}
