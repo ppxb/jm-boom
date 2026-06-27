@@ -1,6 +1,6 @@
 import { ImageIcon, RefreshCwIcon } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -67,16 +67,60 @@ function ComicCard({ item, hideCover }: { item: FeedComic; hideCover: boolean })
       >
         <ComicCover id={item.id} title={item.title} image={item.image} hideCover={hideCover} />
         <CardContent className="space-y-1.5 p-3">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="truncate text-sm font-semibold">{item.title}</div>
-            </TooltipTrigger>
-            <TooltipContent side="top">{item.title}</TooltipContent>
-          </Tooltip>
+          <OverflowTooltipTitle title={item.title} />
           <p className="line-clamp-1 text-xs text-muted-foreground">{item.author || 'N/A'}</p>
         </CardContent>
       </Card>
     </Link>
+  )
+}
+
+function OverflowTooltipTitle({ title }: { title: string }) {
+  const titleRef = useRef<HTMLDivElement>(null)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+  const titleElement = (
+    <div ref={titleRef} className="truncate text-sm font-semibold">
+      {title}
+    </div>
+  )
+
+  useEffect(() => {
+    const element = titleRef.current
+
+    if (!element) {
+      return
+    }
+
+    const target = element
+    let frame = 0
+
+    function updateOverflow() {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        setIsOverflowing(target.scrollWidth > target.clientWidth + 1)
+      })
+    }
+
+    updateOverflow()
+
+    const resizeObserver = new ResizeObserver(updateOverflow)
+    resizeObserver.observe(target)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+    }
+  }, [isOverflowing, title])
+
+  if (!isOverflowing) {
+    return titleElement
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{titleElement}</TooltipTrigger>
+      <TooltipContent side="top">{title}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -105,6 +149,7 @@ function ComicCover({
           src={image}
           alt={title}
           loading="lazy"
+          decoding="async"
           referrerPolicy="no-referrer"
           className="h-full w-full object-cover"
           onError={() => setHasImageError(true)}
