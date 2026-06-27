@@ -76,14 +76,14 @@ export async function getComicReadPage({
 export async function prefetchComicReadPages({
   readId,
   centerIndex,
-  radius = 3,
+  radius,
   shunt = null,
   endpoint = null,
   cacheLimitBytes = null
 }: {
   readId: string
   centerIndex: number
-  radius?: number
+  radius: number
   shunt?: string | null
   endpoint?: string | null
   cacheLimitBytes?: number | null

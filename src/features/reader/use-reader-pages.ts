@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   type ComicReadPageResult,
@@ -17,6 +17,11 @@ import { useSettingsStore } from '@/stores/settings-store'
 
 const WARMED_READER_IMAGES = new Set<string>()
 
+type PrefetchWindow = {
+  key: string
+  centerIndex: number
+}
+
 export function useReaderPages(comicId: string, initialIndex = 0) {
   const endpoint = useSettingsStore(state => state.api)
   const shunt = useSettingsStore(state => state.shunt)
@@ -25,6 +30,7 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
   const cacheLimitBytes = readerCacheLimitMb * 1024 * 1024
   const initialPageIndex = normalizePageIndex(initialIndex)
   const [currentIndex, setCurrentIndex] = useState(initialPageIndex)
+  const lastPrefetchWindowRef = useRef<PrefetchWindow | null>(null)
 
   const manifest = useQuery({
     queryKey: ['jm-reader-manifest', endpoint, shunt, comicId],
@@ -75,7 +81,7 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
   })
   const isPageReady = page.data?.index === effectiveCurrentIndex
   const warmPageIndexes = useMemo(() => {
-    if (pageCount === 0 || prefetchCount === 0) {
+    if (pageCount === 0) {
       return []
     }
 
@@ -146,14 +152,37 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
   }, [warmPages])
 
   useEffect(() => {
-    if (!manifest.data || pageCount === 0 || !isPageReady || prefetchCount === 0) {
+    if (!manifest.data || pageCount === 0 || !isPageReady) {
+      return
+    }
+
+    const prefetchStep = Math.max(1, Math.ceil(prefetchCount / 2))
+    const prefetchKey = [
+      endpoint,
+      manifest.data.shunt,
+      cacheLimitBytes,
+      comicId,
+      pageCount,
+      prefetchCount
+    ].join('|')
+    const lastPrefetchWindow = lastPrefetchWindowRef.current
+
+    if (
+      lastPrefetchWindow?.key === prefetchKey &&
+      Math.abs(effectiveCurrentIndex - lastPrefetchWindow.centerIndex) < prefetchStep
+    ) {
       return
     }
 
     const timer = window.setTimeout(() => {
+      lastPrefetchWindowRef.current = {
+        key: prefetchKey,
+        centerIndex: effectiveCurrentIndex
+      }
+
       void prefetchComicReadPages({
         readId: comicId,
-        centerIndex: currentIndex,
+        centerIndex: effectiveCurrentIndex,
         radius: prefetchCount,
         shunt: manifest.data.shunt,
         endpoint,
@@ -167,7 +196,7 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
   }, [
     cacheLimitBytes,
     comicId,
-    currentIndex,
+    effectiveCurrentIndex,
     endpoint,
     isPageReady,
     manifest.data,

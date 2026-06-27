@@ -297,7 +297,7 @@ function SettingsPage() {
 
             <section className="space-y-5">
               <SectionTitle icon={<TvMinimalPlayIcon className="size-4" />} title="阅读" />
-              <SettingRow title="图片预载数量" description="当前页前后提前准备的图片数量">
+              <SettingRow title="图片预载数量" description="当前页前后预载的窗口半径">
                 <Select
                   value={String(prefetchCount)}
                   onValueChange={value => setPrefetchCount(Number(value))}
@@ -309,7 +309,7 @@ function SettingsPage() {
                     <SelectGroup>
                       {PREFETCH_COUNTS.map(option => (
                         <SelectItem key={option} value={String(option)}>
-                          {option === 0 ? '关闭' : `预载 ${option} 张`}
+                          前后各 {option} 张
                         </SelectItem>
                       ))}
                     </SelectGroup>

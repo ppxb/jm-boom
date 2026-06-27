@@ -31,3 +31,4 @@ md5 = "0.7"
 regex = "1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies", "multipart", "socks"], default-features = false }
 tokio = { version = "1", features = ["rt", "time", "macros", "sync"] }
+webp = "0.3.1"

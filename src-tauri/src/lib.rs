@@ -179,7 +179,7 @@ async fn prefetch_comic_read_pages(
     app: tauri::AppHandle,
     read_id: String,
     center_index: u32,
-    radius: Option<u32>,
+    radius: u32,
     shunt: Option<String>,
     endpoint: Option<String>,
     cache_limit_bytes: Option<u64>,

@@ -7,7 +7,7 @@ export const FALLBACK_API_ENDPOINTS = [
 ] as const
 
 export const IMAGE_SHUNTS = ['1', '2', '3', '4'] as const
-export const PREFETCH_COUNTS = [0, 1, 2, 3, 4, 5, 6] as const
+export const PREFETCH_COUNTS = [6, 7, 8, 9] as const
 export const READER_CACHE_LIMITS_MB = [128, 256, 512, 1024, 2048] as const
 export const PROXY_MODES = ['off', 'http', 'socks5'] as const
 
@@ -40,7 +40,7 @@ type SettingsState = {
 const DEFAULT_SETTINGS = {
   api: FALLBACK_API_ENDPOINTS[0],
   shunt: IMAGE_SHUNTS[0],
-  prefetchCount: 3,
+  prefetchCount: 6,
   readerCacheLimitMb: 512,
   proxyMode: PROXY_MODES[0],
   proxyHost: '127.0.0.1',
