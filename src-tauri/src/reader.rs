@@ -6,25 +6,22 @@ use image::imageops::{crop_imm, replace};
 use image::{DynamicImage, GenericImageView, ImageFormat, RgbaImage};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 use tauri::{AppHandle, Manager};
-use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 const DEFAULT_SHUNT: &str = "1";
 const DEFAULT_PREFETCH_RADIUS: u32 = 3;
-const MAX_PREFETCH_RADIUS: u32 = 6;
 const DEFAULT_READER_CACHE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MIN_READER_CACHE_LIMIT_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_READER_CACHE_LIMIT_BYTES: u64 = 2048 * 1024 * 1024;
-const PAGE_MATERIALIZE_CONCURRENCY: usize = 2;
 const SEED_MAP: [u32; 10] = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 
 static MANIFEST_CACHE: OnceLock<Mutex<HashMap<String, ReaderManifest>>> = OnceLock::new();
-static PAGE_MATERIALIZE_SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
 static RESULT_RE: OnceLock<Regex> = OnceLock::new();
 static CONFIG_RE: OnceLock<Regex> = OnceLock::new();
 static AID_RE: OnceLock<Regex> = OnceLock::new();
@@ -141,9 +138,7 @@ pub async fn prefetch_comic_read_pages(
 ) -> ApiResult<ComicReadPrefetchResult> {
     let manifest = get_or_load_manifest(read_id, shunt, endpoint).await?;
     let cache_limit_bytes = normalize_cache_limit(cache_limit_bytes);
-    let radius = radius
-        .unwrap_or(DEFAULT_PREFETCH_RADIUS)
-        .clamp(1, MAX_PREFETCH_RADIUS);
+    let radius = radius.unwrap_or(DEFAULT_PREFETCH_RADIUS).max(1);
     let page_count = manifest.pages.len() as u32;
 
     if page_count == 0 {
@@ -153,24 +148,23 @@ pub async fn prefetch_comic_read_pages(
         });
     }
 
-    let start = center_index.saturating_sub(radius);
-    let end = center_index.saturating_add(radius).min(page_count - 1);
-    let mut requested = 0;
+    let indexes = prefetch_indexes(center_index, radius, page_count);
+    let requested = indexes.len() as u32;
     let mut completed = 0;
+    let concurrency = radius as usize;
+    let mut pending = VecDeque::from(indexes);
+    let mut tasks = JoinSet::new();
 
-    for index in start..=end {
-        if index == center_index {
-            continue;
-        }
+    for _ in 0..concurrency {
+        spawn_prefetch_task(&mut tasks, app, &manifest, &mut pending, cache_limit_bytes);
+    }
 
-        requested += 1;
-
-        if materialize_reader_page(app, &manifest, index, cache_limit_bytes)
-            .await
-            .is_ok()
-        {
+    while let Some(result) = tasks.join_next().await {
+        if matches!(result, Ok(true)) {
             completed += 1;
         }
+
+        spawn_prefetch_task(&mut tasks, app, &manifest, &mut pending, cache_limit_bytes);
     }
 
     Ok(ComicReadPrefetchResult {
@@ -402,10 +396,6 @@ async fn materialize_reader_page(
         }
     }
 
-    let _permit = page_materialize_semaphore()
-        .acquire()
-        .await
-        .map_err(|error| ApiError::new(ApiErrorKind::Cache, error.to_string()))?;
     let client = build_http_client()?;
     let bytes = download_image_bytes(&client, &page.source_url, &manifest.endpoint).await?;
     let page_for_decode = page.clone();
@@ -432,6 +422,48 @@ async fn materialize_reader_page(
     })??;
 
     Ok(page_result(manifest, index, cache_path, width, height, false))
+}
+
+fn spawn_prefetch_task(
+    tasks: &mut JoinSet<bool>,
+    app: &AppHandle,
+    manifest: &ReaderManifest,
+    pending: &mut VecDeque<u32>,
+    cache_limit_bytes: u64,
+) {
+    let Some(index) = pending.pop_front() else {
+        return;
+    };
+    let app = app.clone();
+    let manifest = manifest.clone();
+
+    tasks.spawn(async move {
+        materialize_reader_page(&app, &manifest, index, cache_limit_bytes)
+            .await
+            .is_ok()
+    });
+}
+
+fn prefetch_indexes(center_index: u32, radius: u32, page_count: u32) -> Vec<u32> {
+    if page_count == 0 {
+        return Vec::new();
+    }
+
+    let mut indexes = Vec::new();
+
+    for offset in 1..=radius {
+        if let Some(next_index) = center_index.checked_add(offset) {
+            if next_index < page_count {
+                indexes.push(next_index);
+            }
+        }
+
+        if let Some(previous_index) = center_index.checked_sub(offset) {
+            indexes.push(previous_index);
+        }
+    }
+
+    indexes
 }
 
 async fn download_image_bytes(
@@ -576,10 +608,6 @@ fn page_result(
 
 fn image_dimensions_from_path(path: &Path) -> ApiResult<(u32, u32)> {
     image::image_dimensions(path).map_err(map_image_error)
-}
-
-fn page_materialize_semaphore() -> &'static Semaphore {
-    PAGE_MATERIALIZE_SEMAPHORE.get_or_init(|| Semaphore::new(PAGE_MATERIALIZE_CONCURRENCY))
 }
 
 fn reader_cache_root(app: &AppHandle) -> ApiResult<PathBuf> {
