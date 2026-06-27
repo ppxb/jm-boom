@@ -69,7 +69,7 @@ function FavoritesPage() {
 
         <div className="flex items-center justify-between gap-3">
           <Select value={folderId} onValueChange={changeFolder}>
-            <SelectTrigger className="w-[240px]">
+            <SelectTrigger>
               <BookmarkIcon className="size-4 text-muted-foreground" />
               <SelectValue placeholder="选择收藏夹" />
             </SelectTrigger>
