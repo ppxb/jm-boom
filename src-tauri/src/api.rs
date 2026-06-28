@@ -6,7 +6,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -14,7 +13,6 @@ type Aes256EcbDec = ecb::Decryptor<Aes256>;
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
 const API_VERSION: &str = "2.0.20";
-const LOGIN_API_VERSION: &str = "1.8.2";
 const API_SECRET: &str = "185Hcomic3PAPP7R";
 const DEFAULT_API_ENDPOINT: &str = FALLBACK_API_ENDPOINTS[0];
 const FALLBACK_API_ENDPOINTS: [&str; 2] = ["https://www.cdnhth.club", "https://www.cdnhjk.net"];
@@ -28,6 +26,7 @@ const HOME_SECTION_LIST_PAGE_SIZE: usize = 20;
 static IMG_HOST_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 static SHARED_HTTP_CLIENT: OnceLock<Mutex<Option<reqwest::Client>>> = OnceLock::new();
 static NETWORK_PROXY_CONFIG: OnceLock<Mutex<NetworkProxyConfig>> = OnceLock::new();
+static JWT_TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 #[derive(Debug)]
 pub enum ApiErrorKind {
@@ -384,6 +383,8 @@ struct HostConfigPayload {
 
 #[derive(Debug, Deserialize)]
 struct LoginPayload {
+    #[serde(default, deserialize_with = "deserialize_optional_string_from_any")]
+    jwttoken: Option<String>,
     #[serde(default, deserialize_with = "deserialize_u32_from_any")]
     uid: u32,
     username: String,
@@ -754,23 +755,37 @@ pub struct FeedComic {
 }
 
 pub(crate) struct ApiAuth {
-    pub(crate) ts: u64,
+    pub(crate) ts: String,
     pub(crate) token: String,
     pub(crate) tokenparam: String,
 }
 
 impl ApiAuth {
     pub(crate) fn current() -> Self {
-        Self::current_with_version(API_VERSION)
-    }
-
-    fn current_with_version(version: &str) -> Self {
-        let ts = current_timestamp();
+        let ts = current_millis_timestamp();
 
         Self {
+            token: md5_hex(&format!("{ts}{API_VERSION}")),
+            tokenparam: format!("{ts},{API_VERSION}"),
             ts,
+        }
+    }
+}
+
+pub(crate) struct SettingAuth {
+    ts: String,
+    token: String,
+    tokenparam: String,
+}
+
+impl SettingAuth {
+    fn current() -> Self {
+        let ts = current_seconds_timestamp();
+
+        Self {
             token: md5_hex(&format!("{ts}{API_SECRET}")),
-            tokenparam: format!("{ts},{version}"),
+            tokenparam: format!("{ts},{API_VERSION}"),
+            ts,
         }
     }
 }
@@ -778,7 +793,7 @@ impl ApiAuth {
 pub async fn get_remote_setting(endpoint: Option<String>) -> ApiResult<RemoteSettingResult> {
     let endpoint = resolve_api_endpoint(endpoint)?;
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
+    let auth = SettingAuth::current();
     let img_host = request_remote_img_host(&client, &endpoint, &auth).await?;
 
     Ok(RemoteSettingResult { endpoint, img_host })
@@ -792,7 +807,7 @@ pub async fn discover_api_endpoints() -> ApiResult<Vec<ApiEndpointProbe>> {
         candidates.push(DEFAULT_API_ENDPOINT.to_string());
     }
 
-    let auth = ApiAuth::current();
+    let auth = SettingAuth::current();
     let mut probes = Vec::with_capacity(candidates.len());
 
     for endpoint in candidates {
@@ -852,8 +867,9 @@ pub async fn search_comics(
     }
 
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let img_host = match request_remote_img_host(&client, &endpoint, &auth).await {
+    let setting_auth = SettingAuth::current();
+    let api_auth = ApiAuth::current();
+    let img_host = match request_remote_img_host(&client, &endpoint, &setting_auth).await {
         Ok(img_host) => Some(img_host),
         Err(error) => {
             eprintln!("Failed to load remote setting for search covers: {error}");
@@ -861,21 +877,30 @@ pub async fn search_comics(
         }
     };
 
-    request_search(&client, &endpoint, &query, page, &auth, img_host.as_deref()).await
+    request_search(
+        &client,
+        &endpoint,
+        &query,
+        page,
+        &api_auth,
+        img_host.as_deref(),
+    )
+    .await
 }
 
 pub async fn get_home_feed(endpoint: Option<String>) -> ApiResult<HomeFeedResult> {
     let endpoint = resolve_api_endpoint(endpoint)?;
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let img_host = match request_remote_img_host(&client, &endpoint, &auth).await {
+    let setting_auth = SettingAuth::current();
+    let api_auth = ApiAuth::current();
+    let img_host = match request_remote_img_host(&client, &endpoint, &setting_auth).await {
         Ok(img_host) => Some(img_host),
         Err(error) => {
             eprintln!("Failed to load remote setting for home covers: {error}");
             None
         }
     };
-    let sections = request_home_feed(&client, &endpoint, &auth, img_host.as_deref()).await?;
+    let sections = request_home_feed(&client, &endpoint, &api_auth, img_host.as_deref()).await?;
 
     Ok(HomeFeedResult { endpoint, sections })
 }
@@ -908,8 +933,9 @@ pub async fn get_home_section_list(
     };
 
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let img_host_future = request_remote_img_host(&client, &endpoint, &auth);
+    let setting_auth = SettingAuth::current();
+    let api_auth = ApiAuth::current();
+    let img_host_future = request_remote_img_host(&client, &endpoint, &setting_auth);
     let payload_future = request_home_section_list(
         &client,
         &endpoint,
@@ -919,7 +945,7 @@ pub async fn get_home_section_list(
         &filter_value,
         &category,
         &week,
-        &auth,
+        &api_auth,
     );
     let (img_host_result, payload_result) = tokio::join!(img_host_future, payload_future);
     let img_host = match img_host_result {
@@ -983,9 +1009,11 @@ pub async fn get_week_items(
     }
 
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let img_host_future = request_remote_img_host(&client, &endpoint, &auth);
-    let payload_future = request_week_comics(&client, &endpoint, page, category_id, type_id, &auth);
+    let setting_auth = SettingAuth::current();
+    let api_auth = ApiAuth::current();
+    let img_host_future = request_remote_img_host(&client, &endpoint, &setting_auth);
+    let payload_future =
+        request_week_comics(&client, &endpoint, page, category_id, type_id, &api_auth);
     let (img_host_result, payload_result) = tokio::join!(img_host_future, payload_future);
     let img_host = match img_host_result {
         Ok(img_host) => Some(img_host),
@@ -1023,9 +1051,10 @@ pub async fn get_comic_detail(
 
     let endpoint = resolve_api_endpoint(endpoint)?;
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let img_host_future = request_remote_img_host(&client, &endpoint, &auth);
-    let payload_future = request_comic_detail(&client, &endpoint, &comic_id, &auth);
+    let setting_auth = SettingAuth::current();
+    let api_auth = ApiAuth::current();
+    let img_host_future = request_remote_img_host(&client, &endpoint, &setting_auth);
+    let payload_future = request_comic_detail(&client, &endpoint, &comic_id, &api_auth);
     let (img_host_result, payload_result) = tokio::join!(img_host_future, payload_future);
     let img_host = match img_host_result {
         Ok(img_host) => Some(img_host),
@@ -1061,9 +1090,7 @@ pub async fn toggle_comic_favorite(
     let request_name = format!("{endpoint}/favorite");
     let response = client
         .post(&request_name)
-        .header("accept", "application/json")
-        .header("token", &auth.token)
-        .header("tokenparam", &auth.tokenparam)
+        .with_jm_headers(&request_name, &auth, true)?
         .form(&[("aid", comic_id.as_str())])
         .send()
         .await
@@ -1096,10 +1123,11 @@ pub async fn get_favorite_comics(
     };
     let endpoint = resolve_api_endpoint(endpoint)?;
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let img_host_future = request_remote_img_host(&client, &endpoint, &auth);
+    let setting_auth = SettingAuth::current();
+    let api_auth = ApiAuth::current();
+    let img_host_future = request_remote_img_host(&client, &endpoint, &setting_auth);
     let payload_future =
-        request_favorite_comics(&client, &endpoint, page, &folder_id, &order, &auth);
+        request_favorite_comics(&client, &endpoint, page, &folder_id, &order, &api_auth);
     let (img_host_result, payload_result) = tokio::join!(img_host_future, payload_future);
     let img_host = match img_host_result {
         Ok(img_host) => Some(img_host),
@@ -1158,9 +1186,10 @@ pub async fn get_comic_comments(
 
     let endpoint = resolve_api_endpoint(endpoint)?;
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let img_host_future = request_remote_img_host(&client, &endpoint, &auth);
-    let payload_future = request_comic_comments(&client, &endpoint, &comic_id, page, &auth);
+    let setting_auth = SettingAuth::current();
+    let api_auth = ApiAuth::current();
+    let img_host_future = request_remote_img_host(&client, &endpoint, &setting_auth);
+    let payload_future = request_comic_comments(&client, &endpoint, &comic_id, page, &api_auth);
     let (img_host_result, payload_result) = tokio::join!(img_host_future, payload_future);
     let img_host = match img_host_result {
         Ok(img_host) => Some(img_host),
@@ -1200,11 +1229,13 @@ pub async fn login(
     let endpoint = resolve_api_endpoint(endpoint)?;
     clear_session();
     let client = build_http_client()?;
-    let setting_auth = ApiAuth::current();
-    let login_auth = ApiAuth::current_with_version(LOGIN_API_VERSION);
+    let setting_auth = SettingAuth::current();
+    let login_auth = ApiAuth::current();
     let img_host_future = request_remote_img_host(&client, &endpoint, &setting_auth);
     let payload_future = request_login(&client, &endpoint, &username, &password, &login_auth);
     let (img_host_result, payload_result) = tokio::join!(img_host_future, payload_future);
+    let payload = payload_result?;
+    set_jwt_token(payload.jwttoken.as_deref())?;
     let img_host = match img_host_result {
         Ok(img_host) => Some(img_host),
         Err(error) => {
@@ -1215,7 +1246,7 @@ pub async fn login(
 
     Ok(LoginResult {
         endpoint,
-        user: map_login_user(payload_result?, img_host.as_deref()),
+        user: map_login_user(payload, img_host.as_deref()),
     })
 }
 
@@ -1274,9 +1305,9 @@ pub async fn sign_in(
 }
 
 pub fn clear_session() {
-    if let Some(client) = SHARED_HTTP_CLIENT.get() {
-        if let Ok(mut client) = client.lock() {
-            *client = None;
+    if let Some(jwt_token) = JWT_TOKEN.get() {
+        if let Ok(mut jwt_token) = jwt_token.lock() {
+            *jwt_token = None;
         }
     }
 }
@@ -1320,11 +1351,9 @@ pub(crate) fn build_http_client() -> ApiResult<reqwest::Client> {
 }
 
 fn create_http_client() -> ApiResult<reqwest::Client> {
-    let cookie_store = Arc::new(reqwest::cookie::Jar::default());
     let mut builder = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(5))
-        .timeout(std::time::Duration::from_secs(8))
-        .cookie_provider(cookie_store);
+        .timeout(std::time::Duration::from_secs(8));
 
     if let Some(proxy_url) = current_proxy_url()? {
         let proxy = reqwest::Proxy::all(&proxy_url).map_err(|error| {
@@ -1339,6 +1368,69 @@ fn create_http_client() -> ApiResult<reqwest::Client> {
     builder
         .build()
         .map_err(|error| ApiError::new(ApiErrorKind::Client, error.to_string()))
+}
+
+fn set_jwt_token(token: Option<&str>) -> ApiResult<()> {
+    let token = token
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(str::to_string);
+    let jwt_token = JWT_TOKEN.get_or_init(|| Mutex::new(None));
+    let mut jwt_token = jwt_token
+        .lock()
+        .map_err(|error| ApiError::new(ApiErrorKind::Client, error.to_string()))?;
+
+    *jwt_token = token;
+
+    Ok(())
+}
+
+pub(crate) fn current_jwt_token() -> ApiResult<Option<String>> {
+    let jwt_token = JWT_TOKEN.get_or_init(|| Mutex::new(None));
+    jwt_token
+        .lock()
+        .map(|token| token.clone())
+        .map_err(|error| ApiError::new(ApiErrorKind::Client, error.to_string()))
+}
+
+trait JmRequestBuilderExt {
+    fn with_jm_headers(
+        self,
+        url: &str,
+        auth: &ApiAuth,
+        use_jwt: bool,
+    ) -> ApiResult<reqwest::RequestBuilder>;
+}
+
+impl JmRequestBuilderExt for reqwest::RequestBuilder {
+    fn with_jm_headers(
+        self,
+        url: &str,
+        auth: &ApiAuth,
+        use_jwt: bool,
+    ) -> ApiResult<reqwest::RequestBuilder> {
+        let builder = self
+            .header("accept", "application/json")
+            .header("token", &auth.token)
+            .header("tokenparam", &auth.tokenparam)
+            .header("user-agent", android_user_agent());
+        let builder = if let Some(host) = request_url_host(url) {
+            builder.header("Host", host)
+        } else {
+            builder
+        };
+        let builder = if use_jwt {
+            if let Some(jwt) = current_jwt_token()? {
+                builder.header("Authorization", format!("Bearer {jwt}"))
+            } else {
+                builder
+            }
+        } else {
+            builder
+        };
+
+        Ok(builder)
+    }
 }
 
 fn normalize_network_proxy_config(
@@ -1415,14 +1507,14 @@ fn current_proxy_url() -> ApiResult<Option<String>> {
 async fn request_remote_setting(
     client: &reqwest::Client,
     endpoint: &str,
-    auth: &ApiAuth,
+    auth: &SettingAuth,
 ) -> ApiResult<RemoteSettingPayload> {
     let request_name = format!("{endpoint}/setting");
     let response = client
         .get(&request_name)
         .header("Tokenparam", &auth.tokenparam)
         .header("Token", &auth.token)
-        .query(&[("app_img_shunt", "1"), ("t", &auth.ts.to_string())])
+        .query(&[("app_img_shunt", "1"), ("t", auth.ts.as_str())])
         .send()
         .await
         .map_err(|error| {
@@ -1440,23 +1532,21 @@ async fn request_remote_setting(
         ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
     })?;
 
-    decode_setting_payload::<RemoteSettingPayload>(body.trim(), &auth.ts.to_string()).map_err(
-        |error| {
-            ApiError::new(
-                ApiErrorKind::Payload,
-                format!(
-                    "{request_name}: Invalid setting payload: {error}. Body starts with: {}",
-                    response_preview(&body)
-                ),
-            )
-        },
-    )
+    decode_setting_payload::<RemoteSettingPayload>(body.trim(), &auth.ts).map_err(|error| {
+        ApiError::new(
+            ApiErrorKind::Payload,
+            format!(
+                "{request_name}: Invalid setting payload: {error}. Body starts with: {}",
+                response_preview(&body)
+            ),
+        )
+    })
 }
 
 async fn request_remote_img_host(
     client: &reqwest::Client,
     endpoint: &str,
-    auth: &ApiAuth,
+    auth: &SettingAuth,
 ) -> ApiResult<String> {
     if let Some(img_host) = cached_img_host(endpoint) {
         return Ok(img_host);
@@ -1466,6 +1556,15 @@ async fn request_remote_img_host(
     cache_img_host(endpoint, &setting.img_host);
 
     Ok(setting.img_host)
+}
+
+pub(crate) async fn resolve_cached_img_host(
+    client: &reqwest::Client,
+    endpoint: &str,
+) -> ApiResult<String> {
+    let auth = SettingAuth::current();
+
+    request_remote_img_host(client, endpoint, &auth).await
 }
 
 async fn discover_api_endpoint_candidates(client: &reqwest::Client) -> ApiResult<Vec<String>> {
@@ -2037,7 +2136,7 @@ async fn request_login(
     password: &str,
     auth: &ApiAuth,
 ) -> ApiResult<LoginPayload> {
-    request_api_multipart_data(
+    request_api_form_data_with_jwt(
         client,
         endpoint,
         "login",
@@ -2046,6 +2145,7 @@ async fn request_login(
             ("password".to_string(), password.to_string()),
         ],
         auth,
+        false,
     )
     .await
 }
@@ -2073,7 +2173,7 @@ async fn request_sign_in(
     daily_id: u32,
     auth: &ApiAuth,
 ) -> ApiResult<SignInPayload> {
-    request_api_multipart_data(
+    request_api_form_data(
         client,
         endpoint,
         "daily_chk",
@@ -2105,9 +2205,7 @@ where
 
     let response = client
         .get(url)
-        .header("accept", "application/json")
-        .header("token", &auth.token)
-        .header("tokenparam", &auth.tokenparam)
+        .with_jm_headers(&request_name, auth, true)?
         .query(&query)
         .send()
         .await
@@ -2169,7 +2267,7 @@ where
 
     match data {
         serde_json::Value::String(encrypted) => {
-            let decrypted = decrypt_data(&encrypted, auth.ts).map_err(|error| {
+            let decrypted = decrypt_data(&encrypted, &auth.ts).map_err(|error| {
                 ApiError::new(ApiErrorKind::Decrypt, format!("{request_name}: {error}"))
             })?;
             serde_json::from_str(&decrypted).map_err(|error| {
@@ -2191,7 +2289,7 @@ where
     }
 }
 
-async fn request_api_multipart_data<T>(
+async fn request_api_form_data<T>(
     client: &reqwest::Client,
     endpoint: &str,
     path: &str,
@@ -2201,20 +2299,27 @@ async fn request_api_multipart_data<T>(
 where
     T: DeserializeOwned,
 {
+    request_api_form_data_with_jwt(client, endpoint, path, fields, auth, true).await
+}
+
+async fn request_api_form_data_with_jwt<T>(
+    client: &reqwest::Client,
+    endpoint: &str,
+    path: &str,
+    fields: Vec<(String, String)>,
+    auth: &ApiAuth,
+    use_jwt: bool,
+) -> ApiResult<T>
+where
+    T: DeserializeOwned,
+{
     let request_name = format!("{endpoint}/{path}");
     let url = format!("{endpoint}/{path}");
-    let form = fields
-        .into_iter()
-        .fold(reqwest::multipart::Form::new(), |form, (key, value)| {
-            form.text(key, value)
-        });
 
     let response = client
         .post(url)
-        .header("accept", "application/json")
-        .header("token", &auth.token)
-        .header("tokenparam", &auth.tokenparam)
-        .multipart(form)
+        .with_jm_headers(&request_name, auth, use_jwt)?
+        .form(&fields)
         .send()
         .await
         .map_err(|error| {
@@ -2291,7 +2396,7 @@ where
 
     match data {
         serde_json::Value::String(encrypted) => {
-            let decrypted = decrypt_data(&encrypted, auth.ts).map_err(|error| {
+            let decrypted = decrypt_data(&encrypted, &auth.ts).map_err(|error| {
                 ApiError::new(ApiErrorKind::Decrypt, format!("{request_name}: {error}"))
             })?;
             serde_json::from_str(&decrypted).map_err(|error| {
@@ -2496,7 +2601,7 @@ fn map_week_types(types: Vec<WeekTypePayload>) -> Vec<WeekType> {
         .collect()
 }
 
-fn decrypt_data(data: &str, ts: u64) -> Result<String, String> {
+fn decrypt_data(data: &str, ts: &str) -> Result<String, String> {
     let key = md5_hex(&format!("{ts}{API_SECRET}"));
     decrypt_base64_with_key(data, &key)
 }
@@ -2518,6 +2623,28 @@ pub(crate) fn current_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+fn current_millis_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn current_seconds_timestamp() -> String {
+    current_timestamp().to_string()
+}
+
+fn android_user_agent() -> &'static str {
+    "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230305.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 Mobile Safari/537.36"
+}
+
+fn request_url_host(url: &str) -> Option<String> {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .filter(|host| !host.is_empty())
 }
 
 fn md5_hex(input: &str) -> String {

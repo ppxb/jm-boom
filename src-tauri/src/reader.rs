@@ -1,5 +1,7 @@
-use crate::api::{build_http_client, resolve_api_endpoint, ApiError, ApiErrorKind, ApiResult};
-use crate::plugin_codec::decode_setting_payload;
+use crate::api::{
+    build_http_client, current_jwt_token, resolve_api_endpoint, resolve_cached_img_host, ApiError,
+    ApiErrorKind, ApiResult,
+};
 use aes::Aes256;
 use base64::prelude::{Engine as _, BASE64_STANDARD};
 use ecb::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyInit};
@@ -21,7 +23,6 @@ const MAX_READER_CACHE_LIMIT_BYTES: u64 = 2048 * 1024 * 1024;
 const JM_API_VERSION: &str = "2.0.20";
 const JM_API_SECRET: &str = "185Hcomic3PAPP7R";
 const JM_SCRAMBLE_ID: u32 = 220_980;
-const SEED_MAP: [u32; 10] = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const SCRAMBLED_WEBP_QUALITY: f32 = 75.0;
 
 static MANIFEST_CACHE: OnceLock<Mutex<HashMap<String, ReaderManifest>>> = OnceLock::new();
@@ -267,8 +268,7 @@ async fn get_or_load_manifest(
     }
 
     let client = build_http_client()?;
-    let img_host =
-        request_reader_img_host(&client, &endpoint, &ReaderSettingRequest::current()).await?;
+    let img_host = resolve_cached_img_host(&client, &endpoint).await?;
     let chapter =
         request_reader_chapter(&client, &endpoint, &read_id, &ReaderApiRequest::current()).await?;
     let manifest = build_reader_manifest(&endpoint, &read_id, &img_host, chapter)?;
@@ -284,12 +284,19 @@ async fn request_reader_chapter(
     api_request: &ReaderApiRequest,
 ) -> ApiResult<ReaderChapterPayload> {
     let request_name = format!("{endpoint}/chapter");
-    let response = client
+    let request = client
         .get(&request_name)
         .header("accept", "application/json")
         .header("token", &api_request.token)
         .header("tokenparam", &api_request.tokenparam)
         .header("user-agent", android_user_agent())
+        .header("Host", url_host(&request_name));
+    let request = if let Some(jwt) = current_jwt_token()? {
+        request.header("Authorization", format!("Bearer {jwt}"))
+    } else {
+        request
+    };
+    let response = request
         .query(&[("skip", ""), ("id", read_id)])
         .send()
         .await
@@ -326,56 +333,6 @@ async fn request_reader_chapter(
                 ),
             )
         })
-}
-
-async fn request_reader_img_host(
-    client: &reqwest::Client,
-    endpoint: &str,
-    setting_request: &ReaderSettingRequest,
-) -> ApiResult<String> {
-    let request_name = format!("{endpoint}/setting");
-    let response = client
-        .get(&request_name)
-        .header("Tokenparam", &setting_request.tokenparam)
-        .header("Token", &setting_request.token)
-        .query(&[("app_img_shunt", "1"), ("t", setting_request.ts.as_str())])
-        .send()
-        .await
-        .map_err(|error| {
-            ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
-        })?;
-
-    if !response.status().is_success() {
-        return Err(ApiError::new(
-            ApiErrorKind::Http,
-            format!("{request_name}: API returned HTTP {}", response.status()),
-        ));
-    }
-
-    let body = response.text().await.map_err(|error| {
-        ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
-    })?;
-    let payload =
-        decode_setting_payload::<ReaderRemoteSettingPayload>(body.trim(), &setting_request.ts)
-            .map_err(|error| {
-                ApiError::new(
-                    ApiErrorKind::Payload,
-                    format!(
-                        "{request_name}: Invalid setting payload: {error}. Body starts with: {}",
-                        reader_response_preview(&body)
-                    ),
-                )
-            })?;
-    let img_host = payload.img_host.trim().trim_end_matches('/').to_string();
-
-    if img_host.is_empty() {
-        return Err(ApiError::new(
-            ApiErrorKind::MissingData,
-            "setting did not include image host",
-        ));
-    }
-
-    Ok(img_host)
 }
 
 fn build_reader_manifest(
@@ -438,12 +395,6 @@ fn build_reader_manifest(
     })
 }
 
-#[derive(Debug, Deserialize)]
-struct ReaderRemoteSettingPayload {
-    #[serde(default, deserialize_with = "deserialize_string_from_any")]
-    img_host: String,
-}
-
 #[derive(Debug, Clone)]
 struct ReaderApiRequest {
     ts: String,
@@ -456,24 +407,6 @@ impl ReaderApiRequest {
         let ts = current_millis_timestamp();
         Self {
             token: md5_hex(&format!("{ts}{JM_API_VERSION}")),
-            tokenparam: format!("{ts},{JM_API_VERSION}"),
-            ts,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ReaderSettingRequest {
-    ts: String,
-    token: String,
-    tokenparam: String,
-}
-
-impl ReaderSettingRequest {
-    fn current() -> Self {
-        let ts = current_seconds_timestamp();
-        Self {
-            token: md5_hex(&format!("{ts}{JM_API_SECRET}")),
             tokenparam: format!("{ts},{JM_API_VERSION}"),
             ts,
         }
@@ -627,7 +560,8 @@ async fn download_image_bytes(
     let host = url_host(source_url);
     let response = client
         .get(source_url)
-        .header("host", host)
+        .header("Host", host)
+        .timeout(Duration::from_secs(30))
         .send()
         .await
         .map_err(|error| ApiError::new(ApiErrorKind::Network, error.to_string()))?;
@@ -845,7 +779,7 @@ fn decode_scrambled_image(
     page_name: &str,
 ) -> ApiResult<RgbImage> {
     let rgb = original.to_rgb8();
-    let seed = calculate_seed(read_id, page_name);
+    let seed = segmentation_count(read_id, page_name);
 
     Ok(reorder_scrambled_rgb_rows(&rgb, seed))
 }
@@ -883,30 +817,33 @@ fn reorder_scrambled_rgb_rows(source: &RgbImage, seed: u32) -> RgbImage {
 }
 
 fn should_decode_image(manifest: &ReaderManifest, page: &ReaderPage) -> bool {
-    manifest.read_id_number > 0
-        && !is_gif_source(&page.source_url)
-        && manifest.read_id_number >= JM_SCRAMBLE_ID
+    !is_gif_source(&page.source_url)
+        && segmentation_count(manifest.read_id_number, &page.page_name) > 1
 }
 
-fn calculate_seed(read_id: u32, page_name: &str) -> u32 {
+fn segmentation_count(read_id: u32, page_name: &str) -> u32 {
+    if read_id < JM_SCRAMBLE_ID {
+        return 0;
+    }
+
+    if read_id < 268_850 {
+        return 10;
+    }
+
     let key = format!("{read_id}{page_name}");
     let key_md5 = format!("{:x}", md5::compute(key));
-    let mut char_code = key_md5
+    let last_char = key_md5
         .as_bytes()
         .last()
         .copied()
-        .map(usize::from)
+        .map(u32::from)
         .unwrap_or_default();
-    let left = 268850;
-    let right = 421925;
 
-    if (left..=right).contains(&read_id) {
-        char_code %= 10;
-    } else if read_id >= right + 1 {
-        char_code %= 8;
+    if read_id > 421_926 {
+        return (last_char % 8) * 2 + 2;
     }
 
-    SEED_MAP.get(char_code).copied().unwrap_or(10)
+    (last_char % 10) * 2 + 2
 }
 
 fn page_result(
@@ -1192,13 +1129,6 @@ fn current_millis_timestamp() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().to_string())
-        .unwrap_or_else(|_| "0".to_string())
-}
-
-fn current_seconds_timestamp() -> String {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_string())
 }
 
