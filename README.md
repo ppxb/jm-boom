@@ -22,6 +22,8 @@
 
 ![JM Boom 截图 5](screenshot/ScreenShot_2026-06-27_002814_315.png)
 
+![JM Boom 截图 9](screenshot/ScreenShot_2026-06-29_002045_218.png)
+
 ![JM Boom 截图 6](screenshot/ScreenShot_2026-06-27_002820_731.png)
 
 ![JM Boom 截图 7](screenshot/ScreenShot_2026-06-27_002849_983.png)
