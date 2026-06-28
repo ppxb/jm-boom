@@ -297,13 +297,13 @@ function SettingsPage() {
 
             <section className="space-y-5">
               <SectionTitle icon={<TvMinimalPlayIcon className="size-4" />} title="阅读" />
-              <SettingRow title="图片预载数量" description="当前页前后预载的窗口半径">
+              <SettingRow title="图片预载数量" description="当前页前后各预载 N 张">
                 <Select
                   value={String(prefetchCount)}
                   onValueChange={value => setPrefetchCount(Number(value))}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{`前后各 ${prefetchCount} 张`}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
