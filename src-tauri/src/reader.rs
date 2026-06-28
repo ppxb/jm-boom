@@ -1,45 +1,38 @@
-use crate::api::{
-    build_http_client, current_timestamp, resolve_api_endpoint, ApiAuth, ApiError, ApiErrorKind,
-    ApiResult,
-};
+use crate::api::{build_http_client, resolve_api_endpoint, ApiError, ApiErrorKind, ApiResult};
+use crate::plugin_codec::decode_setting_payload;
+use aes::Aes256;
+use base64::prelude::{Engine as _, BASE64_STANDARD};
+use ecb::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyInit};
 use image::{DynamicImage, RgbImage};
-use regex::Regex;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinSet;
 
-const DEFAULT_SHUNT: &str = "1";
 const DEFAULT_READER_CACHE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MIN_READER_CACHE_LIMIT_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_READER_CACHE_LIMIT_BYTES: u64 = 2048 * 1024 * 1024;
+const JM_API_VERSION: &str = "2.0.20";
+const JM_API_SECRET: &str = "185Hcomic3PAPP7R";
+const JM_SCRAMBLE_ID: u32 = 220_980;
 const SEED_MAP: [u32; 10] = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 const SCRAMBLED_WEBP_QUALITY: f32 = 75.0;
 
 static MANIFEST_CACHE: OnceLock<Mutex<HashMap<String, ReaderManifest>>> = OnceLock::new();
 static PAGE_MATERIALIZE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> =
     OnceLock::new();
-static PREFETCH_GENERATIONS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
-static CURRENT_PAGE_INTERESTS: OnceLock<Mutex<HashMap<PathBuf, u32>>> = OnceLock::new();
-static RESULT_RE: OnceLock<Regex> = OnceLock::new();
-static CONFIG_RE: OnceLock<Regex> = OnceLock::new();
-static AID_RE: OnceLock<Regex> = OnceLock::new();
-static SCRAMBLE_RE: OnceLock<Regex> = OnceLock::new();
-static SPEED_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 struct ReaderManifest {
     endpoint: String,
     read_id: String,
     read_id_number: u32,
-    shunt: String,
-    scramble_id: u32,
-    speed: String,
     pages: Vec<ReaderPage>,
 }
 
@@ -50,79 +43,41 @@ struct ReaderPage {
     source_url: String,
 }
 
-#[derive(Debug, Clone)]
-struct PrefetchGeneration {
-    key: String,
-    value: u64,
-}
-
 #[derive(Debug, Clone, Copy)]
 enum ReaderPageMaterializeOrigin {
-    Current,
-    Warm,
-    Prefetch,
+    Visible,
+    ChapterCache,
 }
 
 impl ReaderPageMaterializeOrigin {
     fn as_str(self) -> &'static str {
         match self {
-            Self::Current => "current",
-            Self::Warm => "warm",
-            Self::Prefetch => "prefetch",
-        }
-    }
-}
-
-#[derive(Debug)]
-struct CurrentPageInterest {
-    cache_path: PathBuf,
-}
-
-impl CurrentPageInterest {
-    fn track(cache_path: &Path) -> Self {
-        let cache_path = cache_path.to_path_buf();
-        let mut interests = CURRENT_PAGE_INTERESTS
-            .get_or_init(|| Mutex::new(HashMap::new()))
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-
-        *interests.entry(cache_path.clone()).or_insert(0) += 1;
-
-        Self { cache_path }
-    }
-}
-
-impl Drop for CurrentPageInterest {
-    fn drop(&mut self) {
-        let Ok(mut interests) = CURRENT_PAGE_INTERESTS
-            .get_or_init(|| Mutex::new(HashMap::new()))
-            .lock()
-        else {
-            return;
-        };
-
-        let Some(count) = interests.get_mut(&self.cache_path) else {
-            return;
-        };
-
-        if *count <= 1 {
-            interests.remove(&self.cache_path);
-        } else {
-            *count -= 1;
+            Self::Visible => "visible",
+            Self::ChapterCache => "chapter_cache",
         }
     }
 }
 
 #[derive(Debug, Deserialize)]
-struct ReaderResultScript {
+struct ReaderChapterPayload {
+    #[serde(default, deserialize_with = "deserialize_string_from_any")]
+    id: String,
+    #[serde(default)]
     images: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ReaderConfigScript {
-    imghost: String,
-    jmid: String,
-    cache: String,
+struct ReaderChapterEnvelope {
+    images: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReaderApiEnvelope {
+    #[serde(default)]
+    code: i32,
+    data: Option<serde_json::Value>,
+    #[serde(default, rename = "errorMsg")]
+    error_msg: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -130,7 +85,6 @@ pub struct ComicReadManifestResult {
     pub endpoint: String,
     #[serde(rename = "readId")]
     pub read_id: String,
-    pub shunt: String,
     #[serde(rename = "pageCount")]
     pub page_count: u32,
     #[serde(rename = "cacheLimitBytes")]
@@ -152,7 +106,7 @@ pub struct ComicReadPageResult {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ComicReadPrefetchResult {
+pub struct ComicReadChapterCacheResult {
     pub requested: u32,
     pub completed: u32,
 }
@@ -173,10 +127,9 @@ pub struct ReaderCacheStatsResult {
 
 pub async fn get_comic_read_manifest(
     read_id: String,
-    shunt: Option<String>,
     endpoint: Option<String>,
 ) -> ApiResult<ComicReadManifestResult> {
-    let manifest = get_or_load_manifest(read_id, shunt, endpoint).await?;
+    let manifest = get_or_load_manifest(read_id, endpoint).await?;
 
     Ok(manifest.to_result())
 }
@@ -185,12 +138,11 @@ pub async fn get_comic_read_page(
     app: &AppHandle,
     read_id: String,
     index: u32,
-    shunt: Option<String>,
     endpoint: Option<String>,
     request_origin: Option<String>,
     cache_limit_bytes: Option<u64>,
 ) -> ApiResult<ComicReadPageResult> {
-    let manifest = get_or_load_manifest(read_id, shunt, endpoint).await?;
+    let manifest = get_or_load_manifest(read_id, endpoint).await?;
 
     materialize_reader_page(
         app,
@@ -202,43 +154,38 @@ pub async fn get_comic_read_page(
     .await
 }
 
-pub async fn prefetch_comic_read_pages(
+pub async fn cache_comic_read_chapter(
     app: &AppHandle,
     read_id: String,
-    center_index: u32,
-    radius: u32,
-    shunt: Option<String>,
     endpoint: Option<String>,
     request_origin: Option<String>,
     cache_limit_bytes: Option<u64>,
-) -> ApiResult<ComicReadPrefetchResult> {
-    let manifest = get_or_load_manifest(read_id, shunt, endpoint).await?;
+) -> ApiResult<ComicReadChapterCacheResult> {
+    let manifest = get_or_load_manifest(read_id, endpoint).await?;
     let cache_limit_bytes = normalize_cache_limit(cache_limit_bytes);
     let page_count = manifest.pages.len() as u32;
 
     if page_count == 0 {
-        return Ok(ComicReadPrefetchResult {
+        return Ok(ComicReadChapterCacheResult {
             requested: 0,
             completed: 0,
         });
     }
 
-    let indexes = prefetch_indexes(center_index, radius, page_count);
-    let generation = next_prefetch_generation(&manifest);
+    let indexes = (0..page_count).collect::<Vec<_>>();
     let requested = indexes.len() as u32;
     let mut completed = 0;
-    let concurrency = 1;
+    let concurrency = 5;
     let mut pending = VecDeque::from(indexes);
     let mut tasks = JoinSet::new();
 
     for _ in 0..concurrency {
-        spawn_prefetch_task(
+        spawn_chapter_cache_task(
             &mut tasks,
             app,
             &manifest,
             &mut pending,
             cache_limit_bytes,
-            &generation,
             request_origin.clone(),
         );
     }
@@ -248,18 +195,17 @@ pub async fn prefetch_comic_read_pages(
             completed += 1;
         }
 
-        spawn_prefetch_task(
+        spawn_chapter_cache_task(
             &mut tasks,
             app,
             &manifest,
             &mut pending,
             cache_limit_bytes,
-            &generation,
             request_origin.clone(),
         );
     }
 
-    Ok(ComicReadPrefetchResult {
+    Ok(ComicReadChapterCacheResult {
         requested,
         completed,
     })
@@ -302,7 +248,6 @@ impl ReaderManifest {
         ComicReadManifestResult {
             endpoint: self.endpoint.clone(),
             read_id: self.read_id.clone(),
-            shunt: self.shunt.clone(),
             page_count: self.pages.len() as u32,
             cache_limit_bytes: DEFAULT_READER_CACHE_LIMIT_BYTES,
         }
@@ -311,48 +256,41 @@ impl ReaderManifest {
 
 async fn get_or_load_manifest(
     read_id: String,
-    shunt: Option<String>,
     endpoint: Option<String>,
 ) -> ApiResult<ReaderManifest> {
     let read_id = normalize_read_id(read_id)?;
-    let shunt = normalize_shunt(shunt);
     let endpoint = resolve_api_endpoint(endpoint)?;
-    let cache_key = manifest_cache_key(&endpoint, &read_id, &shunt);
+    let cache_key = manifest_cache_key(&endpoint, &read_id);
 
     if let Some(manifest) = cached_manifest(&cache_key) {
         return Ok(manifest);
     }
 
     let client = build_http_client()?;
-    let auth = ApiAuth::current();
-    let html = request_reader_html(&client, &endpoint, &read_id, &shunt, &auth).await?;
-    let manifest = parse_reader_manifest(&endpoint, &read_id, &shunt, &html)?;
+    let img_host =
+        request_reader_img_host(&client, &endpoint, &ReaderSettingRequest::current()).await?;
+    let chapter =
+        request_reader_chapter(&client, &endpoint, &read_id, &ReaderApiRequest::current()).await?;
+    let manifest = build_reader_manifest(&endpoint, &read_id, &img_host, chapter)?;
     cache_manifest(cache_key, manifest.clone());
 
     Ok(manifest)
 }
 
-async fn request_reader_html(
+async fn request_reader_chapter(
     client: &reqwest::Client,
     endpoint: &str,
     read_id: &str,
-    shunt: &str,
-    auth: &ApiAuth,
-) -> ApiResult<String> {
-    let request_name = format!("{endpoint}/chapter_view_template");
+    api_request: &ReaderApiRequest,
+) -> ApiResult<ReaderChapterPayload> {
+    let request_name = format!("{endpoint}/chapter");
     let response = client
         .get(&request_name)
-        .header("accept", "text/html,application/xhtml+xml")
-        .header("token", &auth.token)
-        .header("tokenparam", &auth.tokenparam)
-        .query(&[
-            ("id", read_id.to_string()),
-            ("app_img_shunt", shunt.to_string()),
-            ("mode", "vertical".to_string()),
-            ("page", "0".to_string()),
-            ("express", "off".to_string()),
-            ("v", current_timestamp().to_string()),
-        ])
+        .header("accept", "application/json")
+        .header("token", &api_request.token)
+        .header("tokenparam", &api_request.tokenparam)
+        .header("user-agent", android_user_agent())
+        .query(&[("skip", ""), ("id", read_id)])
         .send()
         .await
         .map_err(|error| {
@@ -366,57 +304,107 @@ async fn request_reader_html(
         ));
     }
 
-    response.text().await.map_err(|error| {
+    let body = response.text().await.map_err(|error| {
         ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
-    })
+    })?;
+
+    decode_plugin_payload::<ReaderChapterPayload>(body.trim(), &api_request.ts)
+        .or_else(|_| {
+            serde_json::from_str::<ReaderChapterEnvelope>(body.trim()).map(|payload| {
+                ReaderChapterPayload {
+                    id: read_id.to_string(),
+                    images: payload.images,
+                }
+            })
+        })
+        .map_err(|error| {
+            ApiError::new(
+                ApiErrorKind::Payload,
+                format!(
+                    "{request_name}: Invalid chapter payload: {error}. Body starts with: {}",
+                    reader_response_preview(&body)
+                ),
+            )
+        })
 }
 
-fn parse_reader_manifest(
+async fn request_reader_img_host(
+    client: &reqwest::Client,
+    endpoint: &str,
+    setting_request: &ReaderSettingRequest,
+) -> ApiResult<String> {
+    let request_name = format!("{endpoint}/setting");
+    let response = client
+        .get(&request_name)
+        .header("Tokenparam", &setting_request.tokenparam)
+        .header("Token", &setting_request.token)
+        .query(&[("app_img_shunt", "1"), ("t", setting_request.ts.as_str())])
+        .send()
+        .await
+        .map_err(|error| {
+            ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
+        })?;
+
+    if !response.status().is_success() {
+        return Err(ApiError::new(
+            ApiErrorKind::Http,
+            format!("{request_name}: API returned HTTP {}", response.status()),
+        ));
+    }
+
+    let body = response.text().await.map_err(|error| {
+        ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
+    })?;
+    let payload =
+        decode_setting_payload::<ReaderRemoteSettingPayload>(body.trim(), &setting_request.ts)
+            .map_err(|error| {
+                ApiError::new(
+                    ApiErrorKind::Payload,
+                    format!(
+                        "{request_name}: Invalid setting payload: {error}. Body starts with: {}",
+                        reader_response_preview(&body)
+                    ),
+                )
+            })?;
+    let img_host = payload.img_host.trim().trim_end_matches('/').to_string();
+
+    if img_host.is_empty() {
+        return Err(ApiError::new(
+            ApiErrorKind::MissingData,
+            "setting did not include image host",
+        ));
+    }
+
+    Ok(img_host)
+}
+
+fn build_reader_manifest(
     endpoint: &str,
     read_id: &str,
-    shunt: &str,
-    html: &str,
+    img_host: &str,
+    chapter: ReaderChapterPayload,
 ) -> ApiResult<ReaderManifest> {
-    let result_script = capture_script_object(result_regex(), html, "result")?;
-    let config_script = capture_script_object(config_regex(), html, "config")?;
-    let result = json5::from_str::<ReaderResultScript>(result_script).map_err(|error| {
-        ApiError::new(
-            ApiErrorKind::Payload,
-            format!(
-                "chapter_view_template result is invalid: {error}. Script starts with: {}",
-                reader_response_preview(result_script)
-            ),
-        )
-    })?;
-    let config = json5::from_str::<ReaderConfigScript>(config_script).map_err(|error| {
-        ApiError::new(
-            ApiErrorKind::Payload,
-            format!(
-                "chapter_view_template config is invalid: {error}. Script starts with: {}",
-                reader_response_preview(config_script)
-            ),
-        )
-    })?;
-
-    if result.images.is_empty() {
+    if chapter.images.is_empty() {
         return Err(ApiError::new(
             ApiErrorKind::MissingData,
-            "chapter_view_template did not include page images",
+            "chapter did not include page images",
         ));
     }
 
-    let img_host = config.imghost.trim().trim_end_matches('/');
-    let jmid = config.jmid.trim();
-    let cache = config.cache;
-
-    if img_host.is_empty() || jmid.is_empty() {
+    let img_host = img_host.trim().trim_end_matches('/');
+    if img_host.is_empty() {
         return Err(ApiError::new(
             ApiErrorKind::MissingData,
-            "chapter_view_template did not include image host or jmid",
+            "setting did not include image host",
         ));
     }
 
-    let pages = result
+    let chapter_id = if chapter.id.trim().is_empty() {
+        read_id
+    } else {
+        chapter.id.trim()
+    };
+    let pages = chapter
         .images
         .into_iter()
         .enumerate()
@@ -430,7 +418,7 @@ fn parse_reader_manifest(
             Some(ReaderPage {
                 index: index as u32,
                 page_name: page_name_from_image(&image),
-                source_url: format!("{img_host}/media/photos/{jmid}/{image}{cache}"),
+                source_url: format!("{img_host}/media/photos/{chapter_id}/{image}"),
             })
         })
         .collect::<Vec<_>>();
@@ -438,21 +426,58 @@ fn parse_reader_manifest(
     if pages.is_empty() {
         return Err(ApiError::new(
             ApiErrorKind::MissingData,
-            "chapter_view_template page image list is empty",
+            "chapter page image list is empty",
         ));
     }
-
-    let aid = capture_u32(aid_regex(), html).unwrap_or_default();
 
     Ok(ReaderManifest {
         endpoint: endpoint.to_string(),
         read_id: read_id.to_string(),
-        read_id_number: read_id.parse::<u32>().unwrap_or(aid),
-        shunt: shunt.to_string(),
-        scramble_id: capture_u32(scramble_regex(), html).unwrap_or_default(),
-        speed: capture_string(speed_regex(), html).unwrap_or_default(),
+        read_id_number: read_id.parse::<u32>().unwrap_or_default(),
         pages,
     })
+}
+
+#[derive(Debug, Deserialize)]
+struct ReaderRemoteSettingPayload {
+    #[serde(default, deserialize_with = "deserialize_string_from_any")]
+    img_host: String,
+}
+
+#[derive(Debug, Clone)]
+struct ReaderApiRequest {
+    ts: String,
+    token: String,
+    tokenparam: String,
+}
+
+impl ReaderApiRequest {
+    fn current() -> Self {
+        let ts = current_millis_timestamp();
+        Self {
+            token: md5_hex(&format!("{ts}{JM_API_VERSION}")),
+            tokenparam: format!("{ts},{JM_API_VERSION}"),
+            ts,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ReaderSettingRequest {
+    ts: String,
+    token: String,
+    tokenparam: String,
+}
+
+impl ReaderSettingRequest {
+    fn current() -> Self {
+        let ts = current_seconds_timestamp();
+        Self {
+            token: md5_hex(&format!("{ts}{JM_API_SECRET}")),
+            tokenparam: format!("{ts},{JM_API_VERSION}"),
+            ts,
+        }
+    }
 }
 
 async fn materialize_reader_page(
@@ -462,14 +487,7 @@ async fn materialize_reader_page(
     cache_limit_bytes: u64,
     request_origin: Option<String>,
 ) -> ApiResult<ComicReadPageResult> {
-    materialize_reader_page_inner(app, manifest, index, cache_limit_bytes, None, request_origin)
-        .await?
-        .ok_or_else(|| {
-            ApiError::new(
-                ApiErrorKind::Cache,
-                "Reader page materialization was skipped",
-            )
-        })
+    materialize_reader_page_inner(app, manifest, index, cache_limit_bytes, request_origin).await
 }
 
 async fn materialize_reader_page_inner(
@@ -477,11 +495,10 @@ async fn materialize_reader_page_inner(
     manifest: &ReaderManifest,
     index: u32,
     cache_limit_bytes: u64,
-    prefetch_generation: Option<PrefetchGeneration>,
     request_origin: Option<String>,
-) -> ApiResult<Option<ComicReadPageResult>> {
+) -> ApiResult<ComicReadPageResult> {
     let materialize_started_at = Instant::now();
-    let origin = resolve_reader_materialize_origin(prefetch_generation.is_some(), request_origin);
+    let origin = resolve_reader_materialize_origin(request_origin);
     let page = manifest
         .pages
         .get(index as usize)
@@ -489,19 +506,10 @@ async fn materialize_reader_page_inner(
         .clone();
     let cache_root = reader_cache_root(app)?;
     let cache_path = reader_page_cache_path(&cache_root, manifest, &page)?;
-    let _current_interest = match origin {
-        ReaderPageMaterializeOrigin::Current => Some(CurrentPageInterest::track(&cache_path)),
-        ReaderPageMaterializeOrigin::Warm => None,
-        ReaderPageMaterializeOrigin::Prefetch => None,
-    };
     let materialize_lock = reader_page_materialize_lock(&cache_path);
     let lock_started_at = Instant::now();
     let _materialize_guard = materialize_lock.lock().await;
     let lock_wait_elapsed = lock_started_at.elapsed();
-
-    if is_stale_prefetch(&prefetch_generation) {
-        return Ok(None);
-    }
 
     if cache_path.exists() {
         let path = cache_path.clone();
@@ -516,9 +524,9 @@ async fn materialize_reader_page_inner(
                     elapsed_ms(materialize_started_at.elapsed()),
                 );
 
-                return Ok(Some(page_result(
+                return Ok(page_result(
                     manifest, index, cache_path, width, height, true,
-                )));
+                ));
             }
             Ok(Err(error)) => {
                 eprintln!("Failed to read cached reader page, refreshing it: {error}");
@@ -537,31 +545,6 @@ async fn materialize_reader_page_inner(
     let download_started_at = Instant::now();
     let bytes = download_image_bytes(&client, &page.source_url, &manifest.endpoint).await?;
     let download_elapsed = download_started_at.elapsed();
-
-    if is_stale_prefetch(&prefetch_generation) {
-        if current_page_has_interest(&cache_path) {
-            eprintln!(
-                "Reader prefetch kept stale page for current read_id={} page={} origin={} lock_wait_ms={:.1} download_ms={:.1}",
-                manifest.read_id,
-                index + 1,
-                origin.as_str(),
-                elapsed_ms(lock_wait_elapsed),
-                elapsed_ms(download_elapsed),
-            );
-        } else {
-            eprintln!(
-                "Reader prefetch skipped stale page read_id={} page={} origin={} lock_wait_ms={:.1} download_ms={:.1} total_ms={:.1}",
-                manifest.read_id,
-                index + 1,
-                origin.as_str(),
-                elapsed_ms(lock_wait_elapsed),
-                elapsed_ms(download_elapsed),
-                elapsed_ms(materialize_started_at.elapsed()),
-            );
-
-            return Ok(None);
-        }
-    }
 
     let page_for_decode = page.clone();
     let manifest_for_decode = manifest.clone();
@@ -586,7 +569,9 @@ async fn materialize_reader_page_inner(
             format!("Failed to decode reader page: {error}"),
         )
     })??;
-    let cache_elapsed = download_started_at.elapsed().saturating_sub(download_elapsed);
+    let cache_elapsed = download_started_at
+        .elapsed()
+        .saturating_sub(download_elapsed);
 
     eprintln!(
         "Reader page materialized read_id={} page={} origin={} lock_wait_ms={:.1} download_ms={:.1} cache_ms={:.1} total_ms={:.1}",
@@ -599,18 +584,17 @@ async fn materialize_reader_page_inner(
         elapsed_ms(materialize_started_at.elapsed())
     );
 
-    Ok(Some(page_result(
+    Ok(page_result(
         manifest, index, cache_path, width, height, false,
-    )))
+    ))
 }
 
-fn spawn_prefetch_task(
+fn spawn_chapter_cache_task(
     tasks: &mut JoinSet<bool>,
     app: &AppHandle,
     manifest: &ReaderManifest,
     pending: &mut VecDeque<u32>,
     cache_limit_bytes: u64,
-    generation: &PrefetchGeneration,
     request_origin: Option<String>,
 ) {
     let Some(index) = pending.pop_front() else {
@@ -618,97 +602,32 @@ fn spawn_prefetch_task(
     };
     let app = app.clone();
     let manifest = manifest.clone();
-    let generation = generation.clone();
 
     tasks.spawn(async move {
-        materialize_reader_page_inner(
-            &app,
-            &manifest,
-            index,
-            cache_limit_bytes,
-            Some(generation),
-            request_origin,
-        )
+        materialize_reader_page_inner(&app, &manifest, index, cache_limit_bytes, request_origin)
             .await
-            .ok()
-            .flatten()
-            .is_some()
+            .is_ok()
     });
 }
 
-fn next_prefetch_generation(manifest: &ReaderManifest) -> PrefetchGeneration {
-    let key = manifest_cache_key(&manifest.endpoint, &manifest.read_id, &manifest.shunt);
-    let mut generations = PREFETCH_GENERATIONS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let value = generations.get(&key).copied().unwrap_or_default() + 1;
-
-    generations.insert(key.clone(), value);
-
-    PrefetchGeneration { key, value }
-}
-
-fn is_stale_prefetch(generation: &Option<PrefetchGeneration>) -> bool {
-    let Some(generation) = generation else {
-        return false;
-    };
-    let generations = PREFETCH_GENERATIONS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-
-    generations
-        .get(&generation.key)
-        .is_none_or(|value| *value != generation.value)
-}
-
-fn prefetch_indexes(center_index: u32, radius: u32, page_count: u32) -> Vec<u32> {
-    if page_count == 0 {
-        return Vec::new();
-    }
-
-    let mut indexes = Vec::new();
-
-    for offset in 1..=radius {
-        if let Some(next_index) = center_index.checked_add(offset) {
-            if next_index < page_count {
-                indexes.push(next_index);
-            }
-        }
-
-        if let Some(previous_index) = center_index.checked_sub(offset) {
-            indexes.push(previous_index);
-        }
-    }
-
-    indexes
-}
-
 fn resolve_reader_materialize_origin(
-    is_prefetch_generation: bool,
     request_origin: Option<String>,
 ) -> ReaderPageMaterializeOrigin {
-    if is_prefetch_generation {
-        return ReaderPageMaterializeOrigin::Prefetch;
-    }
-
     match request_origin.as_deref() {
-        Some("warm") => ReaderPageMaterializeOrigin::Warm,
-        Some("prefetch") => ReaderPageMaterializeOrigin::Prefetch,
-        _ => ReaderPageMaterializeOrigin::Current,
+        Some("chapter_cache") => ReaderPageMaterializeOrigin::ChapterCache,
+        _ => ReaderPageMaterializeOrigin::Visible,
     }
 }
 
 async fn download_image_bytes(
     client: &reqwest::Client,
     source_url: &str,
-    endpoint: &str,
+    _endpoint: &str,
 ) -> ApiResult<Vec<u8>> {
+    let host = url_host(source_url);
     let response = client
         .get(source_url)
-        .header("accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
-        .header("referer", endpoint)
+        .header("host", host)
         .send()
         .await
         .map_err(|error| ApiError::new(ApiErrorKind::Network, error.to_string()))?;
@@ -777,65 +696,34 @@ fn write_reader_page_cache(
     let decode_elapsed = decode_started_at.elapsed();
     let (decoded_width, decoded_height) = decoded.dimensions();
 
-    if matches!(origin, ReaderPageMaterializeOrigin::Current) {
-        let encode_started_at = Instant::now();
-        let webp_bytes = encode_scrambled_webp_cache(&decoded);
-        let encode_elapsed = encode_started_at.elapsed();
-        let write_started_at = Instant::now();
-        write_temp_reader_cache_file(cache_path, |temp_path| {
-            fs::write(temp_path, &webp_bytes).map_err(map_cache_error)
-        })?;
-        let write_elapsed = write_started_at.elapsed();
-        let output_bytes = file_size_bytes(cache_path);
-        let cleanup_started_at = Instant::now();
-        cleanup_reader_cache(cache_root, cache_limit_bytes)?;
-        let cleanup_elapsed = cleanup_started_at.elapsed();
-        log_reader_cache_timing(
-            manifest,
-            page,
-            origin,
-            "current_webp_q75",
-            bytes.len(),
-            output_bytes,
-            &[
-                ("load_ms", load_elapsed),
-                ("reorder_ms", decode_elapsed),
-                ("encode_ms", encode_elapsed),
-                ("write_ms", write_elapsed),
-                ("cleanup_ms", cleanup_elapsed),
-                ("total_ms", total_started_at.elapsed()),
-            ],
-        );
-    } else {
-        let encode_started_at = Instant::now();
-        let webp_bytes = encode_scrambled_webp_cache(&decoded);
-        let encode_elapsed = encode_started_at.elapsed();
-        let write_started_at = Instant::now();
-        write_temp_reader_cache_file(cache_path, |temp_path| {
-            fs::write(temp_path, &webp_bytes).map_err(map_cache_error)
-        })?;
-        let write_elapsed = write_started_at.elapsed();
-        let output_bytes = file_size_bytes(cache_path);
-        let cleanup_started_at = Instant::now();
-        cleanup_reader_cache(cache_root, cache_limit_bytes)?;
-        let cleanup_elapsed = cleanup_started_at.elapsed();
-        log_reader_cache_timing(
-            manifest,
-            page,
-            origin,
-            "scrambled_webp_q75",
-            bytes.len(),
-            output_bytes,
-            &[
-                ("load_ms", load_elapsed),
-                ("reorder_ms", decode_elapsed),
-                ("encode_ms", encode_elapsed),
-                ("write_ms", write_elapsed),
-                ("cleanup_ms", cleanup_elapsed),
-                ("total_ms", total_started_at.elapsed()),
-            ],
-        );
-    }
+    let encode_started_at = Instant::now();
+    let webp_bytes = encode_scrambled_webp_cache(&decoded);
+    let encode_elapsed = encode_started_at.elapsed();
+    let write_started_at = Instant::now();
+    write_temp_reader_cache_file(cache_path, |temp_path| {
+        fs::write(temp_path, &webp_bytes).map_err(map_cache_error)
+    })?;
+    let write_elapsed = write_started_at.elapsed();
+    let output_bytes = file_size_bytes(cache_path);
+    let cleanup_started_at = Instant::now();
+    cleanup_reader_cache(cache_root, cache_limit_bytes)?;
+    let cleanup_elapsed = cleanup_started_at.elapsed();
+    log_reader_cache_timing(
+        manifest,
+        page,
+        origin,
+        "scrambled_webp_q75",
+        bytes.len(),
+        output_bytes,
+        &[
+            ("load_ms", load_elapsed),
+            ("reorder_ms", decode_elapsed),
+            ("encode_ms", encode_elapsed),
+            ("write_ms", write_elapsed),
+            ("cleanup_ms", cleanup_elapsed),
+            ("total_ms", total_started_at.elapsed()),
+        ],
+    );
 
     Ok((decoded_width, decoded_height))
 }
@@ -904,15 +792,6 @@ fn file_size_bytes(path: &Path) -> Option<u64> {
 
 fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
-}
-
-fn current_page_has_interest(cache_path: &Path) -> bool {
-    let interests = CURRENT_PAGE_INTERESTS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-
-    interests.get(cache_path).is_some_and(|count| *count > 0)
 }
 
 fn reader_page_materialize_lock(cache_path: &Path) -> Arc<AsyncMutex<()>> {
@@ -1006,8 +885,7 @@ fn reorder_scrambled_rgb_rows(source: &RgbImage, seed: u32) -> RgbImage {
 fn should_decode_image(manifest: &ReaderManifest, page: &ReaderPage) -> bool {
     manifest.read_id_number > 0
         && !is_gif_source(&page.source_url)
-        && manifest.read_id_number > manifest.scramble_id
-        && manifest.speed != "1"
+        && manifest.read_id_number >= JM_SCRAMBLE_ID
 }
 
 fn calculate_seed(read_id: u32, page_name: &str) -> u32 {
@@ -1090,7 +968,12 @@ fn reader_page_temp_cache_path(cache_path: &Path) -> PathBuf {
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
 
-    cache_path.with_file_name(format!("{}.{}.{}.tmp", file_name, std::process::id(), nonce))
+    cache_path.with_file_name(format!(
+        "{}.{}.{}.tmp",
+        file_name,
+        std::process::id(),
+        nonce
+    ))
 }
 
 fn is_reader_cache_temp_path(path: &Path) -> bool {
@@ -1122,7 +1005,10 @@ fn cleanup_reader_cache(cache_root: &Path, cache_limit_bytes: u64) -> ApiResult<
                 current_size = current_size.saturating_sub(file.size);
             }
             Err(error) => {
-                eprintln!("Failed to remove reader cache file {:?}: {error}", file.path);
+                eprintln!(
+                    "Failed to remove reader cache file {:?}: {error}",
+                    file.path
+                );
             }
         }
     }
@@ -1213,17 +1099,10 @@ fn clear_manifest_cache() {
     {
         cache.clear();
     }
-
-    if let Ok(mut generations) = PREFETCH_GENERATIONS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-    {
-        generations.clear();
-    }
 }
 
-fn manifest_cache_key(endpoint: &str, read_id: &str, shunt: &str) -> String {
-    format!("{endpoint}|{read_id}|{shunt}")
+fn manifest_cache_key(endpoint: &str, read_id: &str) -> String {
+    format!("{endpoint}|{read_id}")
 }
 
 fn normalize_read_id(read_id: String) -> ApiResult<String> {
@@ -1239,17 +1118,6 @@ fn normalize_read_id(read_id: String) -> ApiResult<String> {
     Ok(read_id)
 }
 
-fn normalize_shunt(shunt: Option<String>) -> String {
-    let shunt = shunt.unwrap_or_else(|| DEFAULT_SHUNT.to_string());
-    let shunt = shunt.trim();
-
-    if shunt.is_empty() {
-        DEFAULT_SHUNT.to_string()
-    } else {
-        shunt.to_string()
-    }
-}
-
 fn normalize_cache_limit(cache_limit_bytes: Option<u64>) -> u64 {
     cache_limit_bytes
         .unwrap_or(DEFAULT_READER_CACHE_LIMIT_BYTES)
@@ -1258,36 +1126,6 @@ fn normalize_cache_limit(cache_limit_bytes: Option<u64>) -> u64 {
 
 fn cache_trim_bytes(cache_limit_bytes: u64) -> u64 {
     cache_limit_bytes.saturating_mul(82) / 100
-}
-
-fn capture_script_object<'a>(regex: &Regex, html: &'a str, name: &str) -> ApiResult<&'a str> {
-    regex
-        .captures(html)
-        .and_then(|captures| captures.get(1))
-        .map(|matched| matched.as_str())
-        .ok_or_else(|| {
-            ApiError::new(
-                ApiErrorKind::MissingData,
-                format!(
-                    "chapter_view_template did not include {name} script. Body starts with: {}",
-                    reader_response_preview(html)
-                ),
-            )
-        })
-}
-
-fn capture_u32(regex: &Regex, html: &str) -> Option<u32> {
-    regex
-        .captures(html)
-        .and_then(|captures| captures.get(1))
-        .and_then(|matched| matched.as_str().parse::<u32>().ok())
-}
-
-fn capture_string(regex: &Regex, html: &str) -> Option<String> {
-    regex
-        .captures(html)
-        .and_then(|captures| captures.get(1))
-        .map(|matched| matched.as_str().to_string())
 }
 
 fn page_name_from_image(image: &str) -> String {
@@ -1334,26 +1172,6 @@ fn safe_path_segment(value: &str) -> String {
     }
 }
 
-fn result_regex() -> &'static Regex {
-    RESULT_RE.get_or_init(|| Regex::new(r#"(?s)const\s+result\s*=\s*(\{.*?\});"#).unwrap())
-}
-
-fn config_regex() -> &'static Regex {
-    CONFIG_RE.get_or_init(|| Regex::new(r#"(?s)const\s+config\s*=\s*(\{.*?\});"#).unwrap())
-}
-
-fn aid_regex() -> &'static Regex {
-    AID_RE.get_or_init(|| Regex::new(r#"var\s+aid\s*=\s*(\d+);"#).unwrap())
-}
-
-fn scramble_regex() -> &'static Regex {
-    SCRAMBLE_RE.get_or_init(|| Regex::new(r#"var\s+scramble_id\s*=\s*(\d+);"#).unwrap())
-}
-
-fn speed_regex() -> &'static Regex {
-    SPEED_RE.get_or_init(|| Regex::new(r#"var\s+speed\s*=\s*'([^']*)';"#).unwrap())
-}
-
 fn map_image_error(error: image::ImageError) -> ApiError {
     ApiError::new(ApiErrorKind::Decode, error.to_string())
 }
@@ -1368,4 +1186,115 @@ fn reader_response_preview(value: &str) -> String {
         .take(180)
         .collect::<String>()
         .replace('\n', "\\n")
+}
+
+fn current_millis_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn current_seconds_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn android_user_agent() -> &'static str {
+    "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230305.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 Mobile Safari/537.36"
+}
+
+fn url_host(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+fn decode_plugin_payload<T>(body: &str, ts: &str) -> ApiResult<T>
+where
+    T: DeserializeOwned,
+{
+    let envelope: ReaderApiEnvelope = serde_json::from_str(body).map_err(|error| {
+        ApiError::new(
+            ApiErrorKind::Payload,
+            format!(
+                "Invalid plugin envelope: {error}. Body starts with: {}",
+                reader_response_preview(body)
+            ),
+        )
+    })?;
+
+    if envelope.code != 200 {
+        return Err(ApiError::new(
+            ApiErrorKind::Api,
+            envelope
+                .error_msg
+                .unwrap_or_else(|| format!("API returned code {}", envelope.code)),
+        ));
+    }
+
+    let data = envelope.data.ok_or_else(|| {
+        ApiError::new(
+            ApiErrorKind::MissingData,
+            "API response did not include data",
+        )
+    })?;
+
+    match data {
+        serde_json::Value::String(encrypted) => {
+            let decrypted = decrypt_plugin_data(&encrypted, ts)
+                .map_err(|error| ApiError::new(ApiErrorKind::Decrypt, error))?;
+            serde_json::from_str(&decrypted).map_err(|error| {
+                ApiError::new(
+                    ApiErrorKind::Payload,
+                    format!(
+                        "Invalid decrypted payload: {error}. Payload starts with: {}",
+                        reader_response_preview(&decrypted)
+                    ),
+                )
+            })
+        }
+        value => serde_json::from_value(value).map_err(|error| {
+            ApiError::new(ApiErrorKind::Payload, format!("Invalid payload: {error}"))
+        }),
+    }
+}
+
+fn decrypt_plugin_data(data: &str, ts: &str) -> Result<String, String> {
+    let key = md5_hex(&format!("{ts}{JM_API_SECRET}"));
+    decrypt_base64_with_key(data, &key)
+}
+
+fn decrypt_base64_with_key(data: &str, key: &str) -> Result<String, String> {
+    let encrypted = BASE64_STANDARD
+        .decode(data)
+        .map_err(|error| format!("Invalid encrypted data: {error}"))?;
+    let decrypted = ecb::Decryptor::<Aes256>::new_from_slice(key.as_bytes())
+        .map_err(|error| format!("Invalid AES key: {error}"))?
+        .decrypt_padded_vec_mut::<Pkcs7>(&encrypted)
+        .map_err(|error| format!("Failed to decrypt response: {error}"))?;
+
+    String::from_utf8(decrypted).map_err(|error| format!("Invalid decrypted text: {error}"))
+}
+
+fn md5_hex(input: &str) -> String {
+    format!("{:x}", md5::compute(input))
+}
+
+fn deserialize_string_from_any<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+
+    match value {
+        serde_json::Value::String(value) => Ok(value),
+        serde_json::Value::Number(value) => Ok(value.to_string()),
+        serde_json::Value::Bool(value) => Ok(value.to_string()),
+        serde_json::Value::Null => Ok(String::new()),
+        _ => Err(serde::de::Error::custom("expected a scalar value")),
+    }
 }

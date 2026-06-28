@@ -1,40 +1,26 @@
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
-  type ComicReadPageResult,
+  cacheComicReadChapter,
   getComicReadManifest,
   getComicReadPage,
-  prefetchComicReadPages,
   readerFileSrc
 } from '@/lib/api/reader'
-import {
-  PREFETCH_SETTLE_MS,
-  READER_GC_TIME,
-  READER_STALE_TIME
-} from './constants'
+import { READER_GC_TIME, READER_STALE_TIME } from './constants'
 import { useSettingsStore } from '@/stores/settings-store'
-
-const WARMED_READER_IMAGES = new Set<string>()
-
-type PrefetchWindow = {
-  key: string
-  centerIndex: number
-}
 
 export function useReaderPages(comicId: string, initialIndex = 0) {
   const endpoint = useSettingsStore(state => state.api)
-  const shunt = useSettingsStore(state => state.shunt)
-  const prefetchCount = useSettingsStore(state => state.prefetchCount)
   const readerCacheLimitMb = useSettingsStore(state => state.readerCacheLimitMb)
   const cacheLimitBytes = readerCacheLimitMb * 1024 * 1024
   const initialPageIndex = normalizePageIndex(initialIndex)
   const [currentIndex, setCurrentIndex] = useState(initialPageIndex)
-  const lastPrefetchWindowRef = useRef<PrefetchWindow | null>(null)
+  const chapterCacheKeyRef = useRef('')
 
   const manifest = useQuery({
-    queryKey: ['jm-reader-manifest', endpoint, shunt, comicId],
-    queryFn: () => getComicReadManifest({ readId: comicId, shunt, endpoint }),
+    queryKey: ['jm-reader-manifest', endpoint, comicId],
+    queryFn: () => getComicReadManifest({ readId: comicId, endpoint }),
     staleTime: READER_STALE_TIME,
     gcTime: READER_GC_TIME,
     refetchOnMount: false,
@@ -51,29 +37,22 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
       [
         'jm-reader-page',
         endpoint,
-        shunt,
-        cacheLimitBytes,
         comicId,
-        index,
-        manifest.data?.shunt
+        cacheLimitBytes,
+        index
       ] as const,
-    [cacheLimitBytes, comicId, endpoint, manifest.data?.shunt, shunt]
-  )
-  const fetchPage = useCallback(
-    (index: number, requestOrigin: 'visible' | 'warm' | 'prefetch' = 'visible') =>
-      getComicReadPage({
-        readId: comicId,
-        index,
-        shunt: manifest.data?.shunt ?? shunt,
-        endpoint,
-        requestOrigin,
-        cacheLimitBytes
-      }),
-    [cacheLimitBytes, comicId, endpoint, manifest.data?.shunt, shunt]
+    [cacheLimitBytes, comicId, endpoint]
   )
   const page = useQuery({
     queryKey: pageQueryKey(effectiveCurrentIndex),
-    queryFn: () => fetchPage(effectiveCurrentIndex, 'visible'),
+    queryFn: () =>
+      getComicReadPage({
+        readId: comicId,
+        index: effectiveCurrentIndex,
+        endpoint,
+        requestOrigin: 'visible',
+        cacheLimitBytes
+      }),
     enabled: manifest.isSuccess && pageCount > 0,
     staleTime: READER_STALE_TIME,
     gcTime: READER_GC_TIME,
@@ -81,27 +60,6 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
     refetchOnWindowFocus: false
   })
   const isPageReady = page.data?.index === effectiveCurrentIndex
-  const warmPageIndexes = useMemo(() => {
-    if (pageCount === 0) {
-      return []
-    }
-
-    return [effectiveCurrentIndex + 1, effectiveCurrentIndex - 1].filter(
-      index => index >= 0 && index < pageCount
-    )
-  }, [effectiveCurrentIndex, pageCount, prefetchCount])
-  const warmPages = useQueries({
-    queries: warmPageIndexes.map(index => ({
-      queryKey: pageQueryKey(index),
-      queryFn: () => fetchPage(index, 'warm'),
-      enabled: manifest.isSuccess && isPageReady,
-      staleTime: READER_STALE_TIME,
-      gcTime: READER_GC_TIME,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false
-    }))
-  })
-
   const goToPreviousPage = useCallback(() => {
     if (pageCount === 0) {
       return
@@ -132,7 +90,7 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
 
   useEffect(() => {
     setCurrentIndex(initialPageIndex)
-  }, [comicId, endpoint, initialPageIndex, shunt])
+  }, [comicId, endpoint, initialPageIndex])
 
   useEffect(() => {
     if (currentIndex < pageCount || pageCount === 0) {
@@ -143,68 +101,31 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
   }, [currentIndex, pageCount])
 
   useEffect(() => {
-    warmPages.forEach(result => {
-      const page = result.data as ComicReadPageResult | undefined
-
-      if (page) {
-        warmReaderImage(readerFileSrc(page.path))
-      }
-    })
-  }, [warmPages])
-
-  useEffect(() => {
-    if (!manifest.data || pageCount === 0 || !isPageReady) {
+    if (!manifest.data || pageCount === 0) {
       return
     }
 
-    const prefetchStep = Math.max(1, Math.ceil(prefetchCount / 4))
-    const prefetchKey = [
+    const cacheKey = [
       endpoint,
-      manifest.data.shunt,
       cacheLimitBytes,
       comicId,
-      pageCount,
-      prefetchCount
+      pageCount
     ].join('|')
-    const lastPrefetchWindow = lastPrefetchWindowRef.current
 
-    if (
-      lastPrefetchWindow?.key === prefetchKey &&
-      Math.abs(effectiveCurrentIndex - lastPrefetchWindow.centerIndex) < prefetchStep
-    ) {
+    if (chapterCacheKeyRef.current === cacheKey) {
       return
     }
 
-    const timer = window.setTimeout(() => {
-      lastPrefetchWindowRef.current = {
-        key: prefetchKey,
-        centerIndex: effectiveCurrentIndex
-      }
-
-      void prefetchComicReadPages({
-        readId: comicId,
-        centerIndex: effectiveCurrentIndex,
-        radius: prefetchCount,
-        shunt: manifest.data.shunt,
-        endpoint,
-        requestOrigin: 'prefetch',
-        cacheLimitBytes
-      }).catch(error => {
-        console.debug('Reader prefetch failed', error)
-      })
-    }, PREFETCH_SETTLE_MS)
-
-    return () => window.clearTimeout(timer)
-  }, [
-    cacheLimitBytes,
-    comicId,
-    effectiveCurrentIndex,
-    endpoint,
-    isPageReady,
-    manifest.data,
-    pageCount,
-    prefetchCount
-  ])
+    chapterCacheKeyRef.current = cacheKey
+    void cacheComicReadChapter({
+      readId: comicId,
+      endpoint,
+      requestOrigin: 'chapter_cache',
+      cacheLimitBytes
+    }).catch(error => {
+      console.debug('Reader chapter cache failed', error)
+    })
+  }, [cacheLimitBytes, comicId, endpoint, manifest.data, pageCount])
 
   return {
     currentIndex,
@@ -220,20 +141,6 @@ export function useReaderPages(comicId: string, initialIndex = 0) {
     goToNextPage,
     retry
   }
-}
-
-function warmReaderImage(src: string) {
-  if (!src || WARMED_READER_IMAGES.has(src)) {
-    return
-  }
-
-  WARMED_READER_IMAGES.add(src)
-
-  const image = new Image()
-  image.decoding = 'async'
-  image.src = src
-
-  void image.decode?.().catch(() => {})
 }
 
 function normalizePageIndex(index: number) {

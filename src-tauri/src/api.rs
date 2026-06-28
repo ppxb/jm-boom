@@ -1,3 +1,4 @@
+use crate::plugin_codec::decode_setting_payload;
 use aes::Aes256;
 use base64::prelude::{Engine as _, BASE64_STANDARD};
 use ecb::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyInit};
@@ -347,6 +348,7 @@ struct CommentPayload {
 
 #[derive(Debug, Deserialize)]
 struct RemoteSettingPayload {
+    #[serde(default, deserialize_with = "deserialize_string_from_any")]
     img_host: String,
 }
 
@@ -1415,17 +1417,40 @@ async fn request_remote_setting(
     endpoint: &str,
     auth: &ApiAuth,
 ) -> ApiResult<RemoteSettingPayload> {
-    request_api_data::<RemoteSettingPayload>(
-        client,
-        endpoint,
-        "setting",
-        &[
-            ("app_img_shunt", "1".to_string()),
-            ("t", auth.ts.to_string()),
-        ],
-        auth,
+    let request_name = format!("{endpoint}/setting");
+    let response = client
+        .get(&request_name)
+        .header("Tokenparam", &auth.tokenparam)
+        .header("Token", &auth.token)
+        .query(&[("app_img_shunt", "1"), ("t", &auth.ts.to_string())])
+        .send()
+        .await
+        .map_err(|error| {
+            ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
+        })?;
+
+    if !response.status().is_success() {
+        return Err(ApiError::new(
+            ApiErrorKind::Http,
+            format!("{request_name}: API returned HTTP {}", response.status()),
+        ));
+    }
+
+    let body = response.text().await.map_err(|error| {
+        ApiError::new(ApiErrorKind::Network, format!("{request_name}: {error}"))
+    })?;
+
+    decode_setting_payload::<RemoteSettingPayload>(body.trim(), &auth.ts.to_string()).map_err(
+        |error| {
+            ApiError::new(
+                ApiErrorKind::Payload,
+                format!(
+                    "{request_name}: Invalid setting payload: {error}. Body starts with: {}",
+                    response_preview(&body)
+                ),
+            )
+        },
     )
-    .await
 }
 
 async fn request_remote_img_host(
@@ -1682,9 +1707,7 @@ async fn request_home_section_list(
         HomeSectionListMode::Weekly => {
             request_weekly_update_list(client, endpoint, page, week, category, auth).await
         }
-        HomeSectionListMode::Latest => {
-            request_latest_list(client, endpoint, page, auth).await
-        }
+        HomeSectionListMode::Latest => request_latest_list(client, endpoint, page, auth).await,
     }
 }
 
@@ -1769,11 +1792,7 @@ async fn request_weekly_update_list(
     let request_page = (start / SOURCE_PAGE_SIZE) as u32 + 1;
     let offset = start % SOURCE_PAGE_SIZE;
     let date = parse_u32_or_default(week).unwrap_or_else(current_china_weekday);
-    let category = if category.is_empty() {
-        "all"
-    } else {
-        category
-    };
+    let category = if category.is_empty() { "all" } else { category };
     let value: serde_json::Value = request_api_data(
         client,
         endpoint,
@@ -1807,8 +1826,8 @@ async fn request_weekly_update_list(
         )
     })?;
     let source_count = payload.list.len();
-    let has_more = source_count > offset + HOME_SECTION_LIST_PAGE_SIZE
-        || source_count >= SOURCE_PAGE_SIZE;
+    let has_more =
+        source_count > offset + HOME_SECTION_LIST_PAGE_SIZE || source_count >= SOURCE_PAGE_SIZE;
     let items = payload
         .list
         .into_iter()
@@ -1843,8 +1862,8 @@ async fn request_latest_list(
     )
     .await?;
     let source_count = items.len();
-    let has_more = source_count > offset + HOME_SECTION_LIST_PAGE_SIZE
-        || source_count >= SOURCE_PAGE_SIZE;
+    let has_more =
+        source_count > offset + HOME_SECTION_LIST_PAGE_SIZE || source_count >= SOURCE_PAGE_SIZE;
     let items = items
         .into_iter()
         .skip(offset)

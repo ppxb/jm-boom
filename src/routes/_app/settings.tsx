@@ -14,8 +14,7 @@ import {
   SunIcon,
   XCircleIcon,
   ShieldIcon,
-  GlobeCheckIcon,
-  TvMinimalPlayIcon
+  GlobeCheckIcon
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -45,8 +44,6 @@ import {
 import { cn } from '@/lib/utils'
 import {
   FALLBACK_API_ENDPOINTS,
-  IMAGE_SHUNTS,
-  PREFETCH_COUNTS,
   PROXY_MODES,
   READER_CACHE_LIMITS_MB,
   useSettingsStore
@@ -66,8 +63,6 @@ function SettingsPage() {
   const queryClient = useQueryClient()
   const { theme = 'system', setTheme } = useTheme()
   const api = useSettingsStore(state => state.api)
-  const shunt = useSettingsStore(state => state.shunt)
-  const prefetchCount = useSettingsStore(state => state.prefetchCount)
   const readerCacheLimitMb = useSettingsStore(state => state.readerCacheLimitMb)
   const cacheLimitBytes = readerCacheLimitMb * 1024 * 1024
   const proxyMode = useSettingsStore(state => state.proxyMode)
@@ -75,8 +70,6 @@ function SettingsPage() {
   const proxyPort = useSettingsStore(state => state.proxyPort)
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const setApi = useSettingsStore(state => state.setApi)
-  const setShunt = useSettingsStore(state => state.setShunt)
-  const setPrefetchCount = useSettingsStore(state => state.setPrefetchCount)
   const setReaderCacheLimitMb = useSettingsStore(state => state.setReaderCacheLimitMb)
   const setProxyMode = useSettingsStore(state => state.setProxyMode)
   const setProxyHost = useSettingsStore(state => state.setProxyHost)
@@ -243,22 +236,6 @@ function SettingsPage() {
                 </div>
               </SettingRow>
 
-              <SettingRow title="图片线路" description="切换图片加载使用的分流线路">
-                <Select value={shunt} onValueChange={setShunt}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {IMAGE_SHUNTS.map(option => (
-                        <SelectItem key={option} value={option}>
-                          线路 {option}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
             </section>
 
             <Separator />
@@ -303,31 +280,6 @@ function SettingsPage() {
                     type="number"
                   />
                 </div>
-              </SettingRow>
-            </section>
-
-            <Separator />
-
-            <section className="space-y-5">
-              <SectionTitle icon={<TvMinimalPlayIcon className="size-4" />} title="阅读" />
-              <SettingRow title="图片预载数量" description="当前页预载图片数量">
-                <Select
-                  value={String(prefetchCount)}
-                  onValueChange={value => setPrefetchCount(Number(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue>{`前后各 ${prefetchCount} 张`}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {PREFETCH_COUNTS.map(option => (
-                        <SelectItem key={option} value={String(option)}>
-                          前后各 {option} 张
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
               </SettingRow>
             </section>
 

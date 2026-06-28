@@ -3,7 +3,6 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 export type ComicReadManifestResult = {
   endpoint: string
   readId: string
-  shunt: string
   pageCount: number
   cacheLimitBytes: number
 }
@@ -18,7 +17,7 @@ export type ComicReadPageResult = {
   isCached: boolean
 }
 
-export type ComicReadPrefetchResult = {
+export type ComicReadChapterCacheResult = {
   requested: number
   completed: number
 }
@@ -33,18 +32,15 @@ export type ReaderCacheStatsResult = {
 
 export async function getComicReadManifest({
   readId,
-  shunt = null,
   endpoint = null
 }: {
   readId: string
-  shunt?: string | null
   endpoint?: string | null
 }): Promise<ComicReadManifestResult> {
   ensureTauriRuntime()
 
   return invoke<ComicReadManifestResult>('get_comic_read_manifest', {
     readId,
-    shunt,
     endpoint
   })
 }
@@ -52,16 +48,14 @@ export async function getComicReadManifest({
 export async function getComicReadPage({
   readId,
   index,
-  shunt = null,
   endpoint = null,
   requestOrigin = null,
   cacheLimitBytes = null
 }: {
   readId: string
   index: number
-  shunt?: string | null
   endpoint?: string | null
-  requestOrigin?: 'visible' | 'warm' | 'prefetch' | null
+  requestOrigin?: 'visible' | 'chapter_cache' | null
   cacheLimitBytes?: number | null
 }): Promise<ComicReadPageResult> {
   ensureTauriRuntime()
@@ -69,37 +63,27 @@ export async function getComicReadPage({
   return invoke<ComicReadPageResult>('get_comic_read_page', {
     readId,
     index,
-    shunt,
     endpoint,
     requestOrigin,
     cacheLimitBytes
   })
 }
 
-export async function prefetchComicReadPages({
+export async function cacheComicReadChapter({
   readId,
-  centerIndex,
-  radius,
-  shunt = null,
   endpoint = null,
   requestOrigin = null,
   cacheLimitBytes = null
 }: {
   readId: string
-  centerIndex: number
-  radius: number
-  shunt?: string | null
   endpoint?: string | null
-  requestOrigin?: 'visible' | 'warm' | 'prefetch' | null
+  requestOrigin?: 'visible' | 'chapter_cache' | null
   cacheLimitBytes?: number | null
-}): Promise<ComicReadPrefetchResult> {
+}): Promise<ComicReadChapterCacheResult> {
   ensureTauriRuntime()
 
-  return invoke<ComicReadPrefetchResult>('prefetch_comic_read_pages', {
+  return invoke<ComicReadChapterCacheResult>('cache_comic_read_chapter', {
     readId,
-    centerIndex,
-    radius,
-    shunt,
     endpoint,
     requestOrigin,
     cacheLimitBytes

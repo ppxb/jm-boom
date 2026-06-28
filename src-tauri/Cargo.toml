@@ -26,9 +26,7 @@ aes = "0.8"
 base64 = "0.22"
 ecb = { version = "0.1", features = ["alloc", "block-padding"] }
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
-json5 = "0.4"
 md5 = "0.7"
-regex = "1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies", "multipart", "socks"], default-features = false }
 tokio = { version = "1", features = ["rt", "time", "macros", "sync"] }
 webp = "0.3.1"

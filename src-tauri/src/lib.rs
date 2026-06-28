@@ -1,4 +1,5 @@
 mod api;
+mod plugin_codec;
 mod reader;
 
 use api::{
@@ -7,7 +8,8 @@ use api::{
     SearchAlbumsResult, SignInDataResult, SignInResult, WeekFiltersResult, WeekItemsResult,
 };
 use reader::{
-    ComicReadManifestResult, ComicReadPageResult, ComicReadPrefetchResult, ReaderCacheStatsResult,
+    ComicReadChapterCacheResult, ComicReadManifestResult, ComicReadPageResult,
+    ReaderCacheStatsResult,
 };
 
 #[tauri::command]
@@ -204,10 +206,9 @@ fn open_reader_cache_dir(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn get_comic_read_manifest(
     read_id: String,
-    shunt: Option<String>,
     endpoint: Option<String>,
 ) -> Result<ComicReadManifestResult, String> {
-    reader::get_comic_read_manifest(read_id, shunt, endpoint)
+    reader::get_comic_read_manifest(read_id, endpoint)
         .await
         .map_err(|error| error.to_string())
 }
@@ -217,7 +218,6 @@ async fn get_comic_read_page(
     app: tauri::AppHandle,
     read_id: String,
     index: u32,
-    shunt: Option<String>,
     endpoint: Option<String>,
     request_origin: Option<String>,
     cache_limit_bytes: Option<u64>,
@@ -226,7 +226,6 @@ async fn get_comic_read_page(
         &app,
         read_id,
         index,
-        shunt,
         endpoint,
         request_origin,
         cache_limit_bytes,
@@ -236,28 +235,16 @@ async fn get_comic_read_page(
 }
 
 #[tauri::command]
-async fn prefetch_comic_read_pages(
+async fn cache_comic_read_chapter(
     app: tauri::AppHandle,
     read_id: String,
-    center_index: u32,
-    radius: u32,
-    shunt: Option<String>,
     endpoint: Option<String>,
     request_origin: Option<String>,
     cache_limit_bytes: Option<u64>,
-) -> Result<ComicReadPrefetchResult, String> {
-    reader::prefetch_comic_read_pages(
-        &app,
-        read_id,
-        center_index,
-        radius,
-        shunt,
-        endpoint,
-        request_origin,
-        cache_limit_bytes,
-    )
-    .await
-    .map_err(|error| error.to_string())
+) -> Result<ComicReadChapterCacheResult, String> {
+    reader::cache_comic_read_chapter(&app, read_id, endpoint, request_origin, cache_limit_bytes)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -286,7 +273,7 @@ pub fn run() {
             open_reader_cache_dir,
             get_comic_read_manifest,
             get_comic_read_page,
-            prefetch_comic_read_pages
+            cache_comic_read_chapter
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
