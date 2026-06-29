@@ -111,14 +111,72 @@
 - 当前阅读器性能日志包含 `origin=visible|prefetch`、`lock_wait_ms`、`download_ms`、`cache_ms`、`load_ms`、`reorder_ms`、`encode_ms`、`write_ms`、`cleanup_ms`、`source_kb`、`output_kb`、`ratio`、`delta_kb`。
 - 当前没有单独的 Rust `prefetch_comic_read_pages` command，也没有设置页“预载数量/阅读线路”选项；如需恢复，先重新设计前后端契约。
 
-## 后续优化重点
+## 重构优化 TODO LIST
 
-- 保证可见页优先返回，不被后台预热任务拖慢；分析日志时优先看 `origin=visible`。
+重构原则：每个 Phase 尽量保持行为不变；先移动和收边界，再做语义调整；每轮完成后同步建议 `commit msg`。
 
-- 评估是否提前触发预取，不必等当前页完全 ready 才补后续页。
-- 检查 `ReaderImage` 的 loading 状态切换，避免图片已可用但界面还在停顿。
-- 当前日志适合调参，但发布前应考虑 debug 开关或收敛日志量。
-- 后续排版方向参考 Breeze：单页 `contain` 当前已接近；滚动模式可学习 Breeze 的图片尺寸缓存，避免列表高度跳动；双页/RTL/LTR 支持尚未实现。
+### Phase 0：建立重构基线
+
+- [ ] 跑一次当前基线验证：前端 `bun run build`，涉及 Rust 时在 `src-tauri` 跑 `cargo check`。
+- [ ] 记录当前大文件和高风险边界：`src-tauri/src/api.rs`、`src-tauri/src/reader.rs`、`src-tauri/src/download.rs`、`src/routes/_app/settings.tsx`。
+- [ ] 不做功能改动，只确认重构起点可构建。
+- 建议 commit msg：`chore: establish refactor baseline`。
+
+### Phase 1：运行日志与 DEBUG 日志治理
+
+- [ ] 去掉或门控发布版中的临时调试输出：`eprintln!`、`console.debug`、过量 reader 性能日志等。
+- [ ] 引入应用打包后的运行日志，用于用户反馈问题排查；默认记录 `info/warn/error`，开发调参日志仅在 debug 或显式开关下启用。
+- [ ] 日志写入应用日志目录，提供“打开日志目录”或“导出诊断日志”入口；日志需有大小限制或轮转策略。
+- [ ] 日志内容避免敏感信息：不记录密码、JWT、完整鉴权 header；endpoint 可记录 host/耗时/状态，必要时脱敏。
+- [ ] 统一 Rust 侧日志入口，优先考虑 `tracing`/`log` facade 或 Tauri 日志插件；前端错误后续接入同一诊断路径。
+- 建议 commit msg：`feat(logging): add runtime diagnostics and gate debug logs`。
+
+### Phase 2：前端基础清理
+
+- [ ] 抽 `src/lib/api/tauri.ts`，统一 `tauriInvoke<T>()`，移除各 `src/lib/api/*.ts` 中重复的 `ensureTauriRuntime`。
+- [ ] 抽 `src/lib/query-keys.ts`，集中管理 TanStack Query key，避免缓存 key 散落。
+- [ ] 抽 `src/lib/format.ts`，统一 `formatBytes`、`formatDuration` 等格式化函数。
+- [ ] 修掉 `src/features/comic-detail/page.tsx` 中的 `any`，保持 TypeScript strict 友好。
+- 建议 commit msg：`refactor(frontend): centralize api helpers and shared utilities`。
+
+### Phase 3：拆分设置页
+
+- [ ] 将 `src/routes/_app/settings.tsx` 拆到 `src/features/settings/`，路由文件仅保留 `createFileRoute` 和页面入口。
+- [ ] 按 section 拆分：版本更新、外观、API endpoint、代理、缓存、隐私模式。
+- [ ] 抽 `SettingRow`、`SectionTitle`、endpoint 选择/测速展示等稳定组件或 hooks。
+- [ ] 保持 UI 和交互行为不变。
+- 建议 commit msg：`refactor(settings): split settings page into feature modules`。
+
+### Phase 4：拆分 Rust API 与收窄 serde 兼容
+
+- [ ] 将 `src-tauri/src/api.rs` 拆为 `api/error.rs`、`client.rs`、`auth.rs`、`codec.rs`、`setting.rs`、`search.rs`、`home.rs`、`comic.rs`、`user.rs`、`models.rs` 等模块。
+- [ ] 第一轮只移动代码，不改 Tauri command 名称和前端契约。
+- [ ] 将 `deserialize_*_from_any` 抽到 `serde_ext.rs`，再按字段逐步收窄为明确语义：`string_or_number`、`bool_or_int`、`string_vec_from_array_or_string` 等。
+- [ ] 只有展示型脏字段保留 lossy helper，并在命名中体现 `lossy`，避免吞掉上游 schema 变化。
+- 建议 commit msg：`refactor(rust): split api module and isolate serde helpers`。
+
+### Phase 5：拆分阅读器 Rust 与前端 hooks
+
+- [ ] 将 `src-tauri/src/reader.rs` 拆为 `reader/types.rs`、`manifest.rs`、`page.rs`、`cache.rs`、`image_decode.rs`。
+- [ ] 保留 `get_comic_read_page` 的 `index` 语义、缓存路径命名规则和阅读页 search 参数。
+- [ ] 拆分 `src/features/reader/use-reader-pages.ts`：导航状态、manifest query、page query、prefetch 策略分离。
+- [ ] 保证可见页优先返回，不被后台预取拖慢；重新评估是否提前触发预取。
+- [ ] 检查 `ReaderImage` loading 状态，避免图片已可用但界面仍停顿。
+- 建议 commit msg：`refactor(reader): separate manifest page cache and prefetch logic`。
+
+### Phase 6：拆分下载模块
+
+- [ ] 拆分 `src/routes/_app/downloads.tsx`，抽 `DownloadTaskCard`、`DownloadEmptyState`、`DeleteTaskDialog`、`useDownloadTasks`。
+- [ ] 将 `src-tauri/src/download.rs` 拆为 `download/types.rs`、`manager.rs`、`storage.rs`、`paths.rs`、`progress.rs`。
+- [ ] 保持下载任务状态机、持久化格式、任务目录规则不变。
+- 建议 commit msg：`refactor(downloads): split download ui and manager modules`。
+
+### Phase 7：收尾与架构文档同步
+
+- [ ] 清理重复 helper、过时 fallback、无用兼容写法；不因 lint 扩大无关改动。
+- [ ] 后续排版方向参考 Breeze：单页 `contain` 当前已接近；滚动模式可学习图片尺寸缓存；双页/RTL/LTR 支持尚未实现。
+- [ ] 更新本文件中已经变化的项目结构和实现说明。
+- 建议 commit msg：`chore: document refactored module boundaries`。
 
 ## 注意事项
 
