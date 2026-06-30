@@ -20,7 +20,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const upsertReadingHistory = useReadingHistoryStore(state => state.upsert)
   const {
     isVisible: isToolbarVisible,
-    show: showToolbar,
+    toggle: toggleToolbar,
     hide: hideToolbar
   } = useReaderToolbarVisibility()
   const initialPageIndex = Number.parseInt(search.pageIndex ?? '', 10)
@@ -98,7 +98,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   return (
     <main
       className="relative flex h-screen overflow-hidden bg-neutral-950 text-neutral-50"
-      onMouseMove={showToolbar}
+      onClick={toggleToolbar}
     >
       <ReaderTopBar
         fallbackReadId={comicId}
