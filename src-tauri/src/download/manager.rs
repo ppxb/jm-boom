@@ -19,18 +19,22 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::async_runtime::{self, JoinHandle};
 use tauri::AppHandle;
+use tokio::sync::Mutex as AsyncMutex;
 
 static DOWNLOAD_MANAGER: OnceLock<Arc<DownloadManager>> = OnceLock::new();
 
 pub(crate) struct DownloadManager {
     app: AppHandle,
     state: Mutex<DownloadState>,
+    persist_lock: AsyncMutex<()>,
 }
 
 #[derive(Default)]
 struct DownloadState {
     tasks: Vec<DownloadTask>,
     worker: Option<JoinHandle<()>>,
+    loaded: bool,
+    revision: u64,
 }
 
 pub(crate) fn download_manager(app: AppHandle) -> Arc<DownloadManager> {
@@ -39,18 +43,22 @@ pub(crate) fn download_manager(app: AppHandle) -> Arc<DownloadManager> {
             Arc::new(DownloadManager {
                 app,
                 state: Mutex::new(DownloadState::default()),
+                persist_lock: AsyncMutex::new(()),
             })
         })
         .clone()
 }
 
 impl DownloadManager {
-    pub(crate) fn enqueue(self: &Arc<Self>, request: EnqueueDownloadRequest) -> ApiResult<()> {
+    pub(crate) async fn enqueue(
+        self: &Arc<Self>,
+        request: EnqueueDownloadRequest,
+    ) -> ApiResult<()> {
         let album_id = normalize_required(&request.album_id, "album_id")?;
         let comic_title = normalize_required(&request.comic_title, "comic_title")?;
         let endpoint = resolve_api_endpoint(request.endpoint)?;
         let chapters = normalize_chapters(request.chapters)?;
-        self.load_tasks_if_needed()?;
+        self.load_tasks_if_needed().await?;
         let now = current_timestamp();
         let task_id = format!(
             "{now}-{}",
@@ -82,16 +90,17 @@ impl DownloadManager {
         {
             let mut state = self.lock_state()?;
             state.tasks.push(task);
-            persist_tasks(&self.app, &state.tasks)?;
+            bump_revision(&mut state);
         }
+        self.persist_latest_tasks().await?;
 
         self.ensure_worker();
 
         Ok(())
     }
 
-    pub(crate) fn list(self: &Arc<Self>) -> ApiResult<DownloadTaskListResult> {
-        self.load_tasks_if_needed()?;
+    pub(crate) async fn list(self: &Arc<Self>) -> ApiResult<DownloadTaskListResult> {
+        self.load_tasks_if_needed().await?;
         let mut tasks = self.lock_state()?.tasks.clone();
         let should_resume_worker = tasks
             .iter()
@@ -110,61 +119,70 @@ impl DownloadManager {
         })
     }
 
-    pub(crate) fn cancel(self: &Arc<Self>, task_id: String) -> ApiResult<()> {
+    pub(crate) async fn cancel(self: &Arc<Self>, task_id: String) -> ApiResult<()> {
         let task_id = task_id.trim();
         if task_id.is_empty() {
             return Ok(());
         }
 
-        let mut state = self.lock_state()?;
-        if let Some(task) = state.tasks.iter_mut().find(|task| task.task_id == task_id) {
-            if matches!(
-                task.status,
-                DownloadTaskStatus::Queued
-                    | DownloadTaskStatus::Running
-                    | DownloadTaskStatus::Paused
-            ) {
-                task.status = DownloadTaskStatus::Cancelled;
-                task.updated_at = current_timestamp();
-                task.completed_at = Some(task.updated_at);
-                task.eta_seconds = None;
-                task.speed_bytes_per_second = 0;
-                task.error = None;
+        self.load_tasks_if_needed().await?;
+        {
+            let mut state = self.lock_state()?;
+            if let Some(task) = state.tasks.iter_mut().find(|task| task.task_id == task_id) {
+                if matches!(
+                    task.status,
+                    DownloadTaskStatus::Queued
+                        | DownloadTaskStatus::Running
+                        | DownloadTaskStatus::Paused
+                ) {
+                    task.status = DownloadTaskStatus::Cancelled;
+                    task.updated_at = current_timestamp();
+                    task.completed_at = Some(task.updated_at);
+                    task.eta_seconds = None;
+                    task.speed_bytes_per_second = 0;
+                    task.error = None;
+                }
             }
+            bump_revision(&mut state);
         }
-        persist_tasks(&self.app, &state.tasks)
+        self.persist_latest_tasks().await
     }
 
-    pub(crate) fn pause(&self, task_id: String) -> ApiResult<()> {
+    pub(crate) async fn pause(&self, task_id: String) -> ApiResult<()> {
         let task_id = task_id.trim();
         if task_id.is_empty() {
             return Ok(());
         }
 
-        let mut state = self.lock_state()?;
-        if let Some(task) = state.tasks.iter_mut().find(|task| task.task_id == task_id) {
-            if matches!(
-                task.status,
-                DownloadTaskStatus::Queued | DownloadTaskStatus::Running
-            ) {
-                task.status = DownloadTaskStatus::Paused;
-                task.updated_at = current_timestamp();
-                task.completed_at = None;
-                task.eta_seconds = None;
-                task.speed_bytes_per_second = 0;
-                task.error = None;
+        self.load_tasks_if_needed().await?;
+        {
+            let mut state = self.lock_state()?;
+            if let Some(task) = state.tasks.iter_mut().find(|task| task.task_id == task_id) {
+                if matches!(
+                    task.status,
+                    DownloadTaskStatus::Queued | DownloadTaskStatus::Running
+                ) {
+                    task.status = DownloadTaskStatus::Paused;
+                    task.updated_at = current_timestamp();
+                    task.completed_at = None;
+                    task.eta_seconds = None;
+                    task.speed_bytes_per_second = 0;
+                    task.error = None;
+                }
             }
+            bump_revision(&mut state);
         }
-        persist_tasks(&self.app, &state.tasks)
+        self.persist_latest_tasks().await
     }
 
-    pub(crate) fn resume(self: &Arc<Self>, task_id: String) -> ApiResult<()> {
+    pub(crate) async fn resume(self: &Arc<Self>, task_id: String) -> ApiResult<()> {
         let task_id = task_id.trim();
         if task_id.is_empty() {
             return Ok(());
         }
 
         let mut resumed = false;
+        self.load_tasks_if_needed().await?;
         {
             let mut state = self.lock_state()?;
             if let Some(task) = state.tasks.iter_mut().find(|task| task.task_id == task_id) {
@@ -185,8 +203,9 @@ impl DownloadManager {
                     resumed = true;
                 }
             }
-            persist_tasks(&self.app, &state.tasks)?;
+            bump_revision(&mut state);
         }
+        self.persist_latest_tasks().await?;
 
         if resumed {
             self.ensure_worker();
@@ -195,32 +214,40 @@ impl DownloadManager {
         Ok(())
     }
 
-    pub(crate) fn remove(&self, task_id: String) -> ApiResult<()> {
+    pub(crate) async fn remove(&self, task_id: String) -> ApiResult<()> {
         let task_id = task_id.trim();
         if task_id.is_empty() {
             return Ok(());
         }
 
-        let mut state = self.lock_state()?;
-        let task_to_remove = state
-            .tasks
-            .iter()
-            .find(|task| task.task_id == task_id && task.status != DownloadTaskStatus::Running)
-            .cloned();
+        self.load_tasks_if_needed().await?;
+        let task_to_remove = {
+            let state = self.lock_state()?;
+            state
+                .tasks
+                .iter()
+                .find(|task| task.task_id == task_id && task.status != DownloadTaskStatus::Running)
+                .cloned()
+        };
         if let Some(task) = &task_to_remove {
             remove_task_files(&self.app, task)?;
         }
-        state.tasks.retain(|task| {
-            if task.task_id != task_id {
-                return true;
-            }
+        {
+            let mut state = self.lock_state()?;
+            state.tasks.retain(|task| {
+                if task.task_id != task_id {
+                    return true;
+                }
 
-            matches!(task.status, DownloadTaskStatus::Running)
-        });
-        persist_tasks(&self.app, &state.tasks)
+                matches!(task.status, DownloadTaskStatus::Running)
+            });
+            bump_revision(&mut state);
+        }
+        self.persist_latest_tasks().await
     }
 
-    pub(crate) fn open_task_dir(&self, task_id: String) -> ApiResult<()> {
+    pub(crate) async fn open_task_dir(&self, task_id: String) -> ApiResult<()> {
+        self.load_tasks_if_needed().await?;
         let task_id = task_id.trim();
         let task = self
             .lock_state()?
@@ -257,7 +284,7 @@ impl DownloadManager {
 
     async fn process_queue(self: Arc<Self>) {
         loop {
-            let next_task = match self.mark_next_task_running() {
+            let next_task = match self.mark_next_task_running().await {
                 Ok(task) => task,
                 Err(error) => {
                     diagnostics::warn(format!("Failed to read download queue: {error}"));
@@ -274,35 +301,41 @@ impl DownloadManager {
 
             let result = self.run_task(task.clone()).await;
             if let Err(error) = result {
-                let _ = self.mark_task_failed(&task.task_id, error.to_string());
+                let _ = self
+                    .mark_task_failed(&task.task_id, error.to_string())
+                    .await;
             }
         }
     }
 
-    fn mark_next_task_running(&self) -> ApiResult<Option<DownloadTask>> {
-        self.load_tasks_if_needed()?;
-        let mut state = self.lock_state()?;
-        let Some(index) = state
-            .tasks
-            .iter()
-            .position(|task| task.status == DownloadTaskStatus::Queued)
-        else {
-            return Ok(None);
+    async fn mark_next_task_running(&self) -> ApiResult<Option<DownloadTask>> {
+        self.load_tasks_if_needed().await?;
+        let task = {
+            let mut state = self.lock_state()?;
+            let Some(index) = state
+                .tasks
+                .iter()
+                .position(|task| task.status == DownloadTaskStatus::Queued)
+            else {
+                return Ok(None);
+            };
+            let now = current_timestamp();
+            let task = &mut state.tasks[index];
+            task.status = DownloadTaskStatus::Running;
+            task.started_at = Some(now);
+            task.updated_at = now;
+            task.completed_at = None;
+            task.current_chapter_title.clear();
+            task.total_pages = 0;
+            task.completed_pages = 0;
+            task.eta_seconds = None;
+            task.speed_bytes_per_second = 0;
+            task.error = None;
+            let task = task.clone();
+            bump_revision(&mut state);
+            task
         };
-        let now = current_timestamp();
-        let task = &mut state.tasks[index];
-        task.status = DownloadTaskStatus::Running;
-        task.started_at = Some(now);
-        task.updated_at = now;
-        task.completed_at = None;
-        task.current_chapter_title.clear();
-        task.total_pages = 0;
-        task.completed_pages = 0;
-        task.eta_seconds = None;
-        task.speed_bytes_per_second = 0;
-        task.error = None;
-        let task = task.clone();
-        persist_tasks(&self.app, &state.tasks)?;
+        self.persist_latest_tasks().await?;
 
         Ok(Some(task))
     }
@@ -326,14 +359,16 @@ impl DownloadManager {
             self.update_task(&task.task_id, |task| {
                 task.total_pages = total_pages;
                 task.current_chapter_title = chapter.title.clone();
-            })?;
+            })
+            .await?;
         }
 
         while let Some((chapter, manifest)) = manifests.pop_front() {
             self.ensure_task_can_continue(&task.task_id)?;
             self.update_task(&task.task_id, |task| {
                 task.current_chapter_title = chapter.title.clone();
-            })?;
+            })
+            .await?;
             let chapter_dir = download_chapter_dir(&task.output_dir, &chapter);
 
             for index in 0..manifest.page_count() {
@@ -358,7 +393,8 @@ impl DownloadManager {
                     task.eta_seconds = eta_seconds;
                     task.speed_bytes_per_second = speed_bytes_per_second;
                     task.current_chapter_title = chapter.title.clone();
-                })?;
+                })
+                .await?;
             }
         }
 
@@ -372,6 +408,7 @@ impl DownloadManager {
             task.updated_at = now;
             task.completed_at = Some(now);
         })
+        .await
     }
 
     fn ensure_task_can_continue(&self, task_id: &str) -> ApiResult<()> {
@@ -397,7 +434,7 @@ impl DownloadManager {
         Ok(())
     }
 
-    fn mark_task_failed(&self, task_id: &str, message: String) -> ApiResult<()> {
+    async fn mark_task_failed(&self, task_id: &str, message: String) -> ApiResult<()> {
         self.update_task(task_id, |task| {
             if matches!(
                 task.status,
@@ -414,36 +451,62 @@ impl DownloadManager {
             task.updated_at = now;
             task.completed_at = Some(now);
         })
+        .await
     }
 
-    fn update_task<F>(&self, task_id: &str, update: F) -> ApiResult<()>
+    async fn update_task<F>(&self, task_id: &str, update: F) -> ApiResult<()>
     where
         F: FnOnce(&mut DownloadTask),
     {
-        let mut state = self.lock_state()?;
-        if let Some(task) = state.tasks.iter_mut().find(|task| task.task_id == task_id) {
-            update(task);
-            if task.status != DownloadTaskStatus::Completed {
-                task.updated_at = current_timestamp();
+        {
+            let mut state = self.lock_state()?;
+            if let Some(task) = state.tasks.iter_mut().find(|task| task.task_id == task_id) {
+                update(task);
+                if task.status != DownloadTaskStatus::Completed {
+                    task.updated_at = current_timestamp();
+                }
             }
+            bump_revision(&mut state);
         }
-        persist_tasks(&self.app, &state.tasks)
+        self.persist_latest_tasks().await
     }
 
-    fn load_tasks_if_needed(&self) -> ApiResult<()> {
-        let mut state = self.lock_state()?;
-        if !state.tasks.is_empty() {
+    async fn load_tasks_if_needed(&self) -> ApiResult<()> {
+        if self.lock_state()?.loaded {
             return Ok(());
         }
 
-        state.tasks = load_tasks(&self.app)?;
-        let recovered = recover_interrupted_tasks(&mut state.tasks);
-        let migrated = migrate_pending_task_output_dirs(&self.app, &mut state.tasks)?;
+        let mut tasks = load_tasks().await?;
+        let recovered = recover_interrupted_tasks(&mut tasks);
+        let migrated = migrate_pending_task_output_dirs(&self.app, &mut tasks)?;
         if recovered || migrated {
-            persist_tasks(&self.app, &state.tasks)?;
+            persist_tasks(&tasks).await?;
+        }
+
+        let mut state = self.lock_state()?;
+        if !state.loaded {
+            state.tasks = tasks;
+            state.loaded = true;
+            bump_revision(&mut state);
         }
 
         Ok(())
+    }
+
+    async fn persist_latest_tasks(&self) -> ApiResult<()> {
+        let _persist_guard = self.persist_lock.lock().await;
+
+        loop {
+            let (revision, tasks) = {
+                let state = self.lock_state()?;
+                (state.revision, state.tasks.clone())
+            };
+            persist_tasks(&tasks).await?;
+
+            if self.lock_state()?.revision == revision {
+                return Ok(());
+            }
+        }
     }
 
     fn lock_state(&self) -> ApiResult<std::sync::MutexGuard<'_, DownloadState>> {
@@ -496,4 +559,8 @@ fn normalize_required(value: &str, field: &str) -> ApiResult<String> {
     }
 
     Ok(value.to_string())
+}
+
+fn bump_revision(state: &mut DownloadState) {
+    state.revision = state.revision.saturating_add(1);
 }

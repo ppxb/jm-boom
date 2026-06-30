@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub(crate) async fn run(pool: &SqlitePool) -> Result<(), String> {
     sqlx::query("PRAGMA foreign_keys = ON")
@@ -8,7 +8,7 @@ pub(crate) async fn run(pool: &SqlitePool) -> Result<(), String> {
         .await
         .map_err(map_sqlx_error)?;
 
-    let (current_version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+    let (mut current_version,): (i64,) = sqlx::query_as("PRAGMA user_version")
         .fetch_one(pool)
         .await
         .map_err(map_sqlx_error)?;
@@ -21,8 +21,14 @@ pub(crate) async fn run(pool: &SqlitePool) -> Result<(), String> {
 
     if current_version < 1 {
         create_schema_v1(pool).await?;
-        set_schema_version(pool, SCHEMA_VERSION).await?;
+        current_version = 1;
     }
+
+    if current_version < 2 {
+        migrate_schema_v2(pool).await?;
+    }
+
+    set_schema_version(pool, SCHEMA_VERSION).await?;
 
     Ok(())
 }
@@ -114,6 +120,30 @@ async fn create_schema_v1(pool: &SqlitePool) -> Result<(), String> {
         "CREATE INDEX IF NOT EXISTS idx_runtime_cache_kind_expires ON runtime_cache_entries(cache_kind, expires_at)",
     )
     .await?;
+
+    Ok(())
+}
+
+async fn migrate_schema_v2(pool: &SqlitePool) -> Result<(), String> {
+    let has_chapter_order = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM pragma_table_info('download_chapters')
+        WHERE name = 'chapter_order'
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx_error)?
+        > 0;
+
+    if !has_chapter_order {
+        execute(
+            pool,
+            "ALTER TABLE download_chapters ADD COLUMN chapter_order INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+    }
 
     Ok(())
 }

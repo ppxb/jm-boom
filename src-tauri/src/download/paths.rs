@@ -4,13 +4,6 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-pub(crate) fn tasks_path(app: &AppHandle) -> ApiResult<PathBuf> {
-    app.path()
-        .app_data_dir()
-        .map(|path| path.join("downloads").join("task.json"))
-        .map_err(|error| ApiError::new(ApiErrorKind::Cache, error.to_string()))
-}
-
 pub(crate) fn download_files_root(app: &AppHandle) -> ApiResult<PathBuf> {
     app.path()
         .app_data_dir()

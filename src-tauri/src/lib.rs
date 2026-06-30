@@ -259,53 +259,55 @@ async fn get_comic_read_page(
 }
 
 #[tauri::command]
-fn enqueue_comic_download(
+async fn enqueue_comic_download(
     app: tauri::AppHandle,
     request: download::EnqueueDownloadRequest,
 ) -> Result<download::DownloadTaskListResult, String> {
-    download::enqueue_comic_download(app, request)
+    download::enqueue_comic_download(app, request).await
 }
 
 #[tauri::command]
-fn list_download_tasks(app: tauri::AppHandle) -> Result<download::DownloadTaskListResult, String> {
-    download::list_download_tasks(app)
+async fn list_download_tasks(
+    app: tauri::AppHandle,
+) -> Result<download::DownloadTaskListResult, String> {
+    download::list_download_tasks(app).await
 }
 
 #[tauri::command]
-fn cancel_download_task(
+async fn cancel_download_task(
     app: tauri::AppHandle,
     task_id: String,
 ) -> Result<download::DownloadTaskListResult, String> {
-    download::cancel_download_task(app, task_id)
+    download::cancel_download_task(app, task_id).await
 }
 
 #[tauri::command]
-fn pause_download_task(
+async fn pause_download_task(
     app: tauri::AppHandle,
     task_id: String,
 ) -> Result<download::DownloadTaskListResult, String> {
-    download::pause_download_task(app, task_id)
+    download::pause_download_task(app, task_id).await
 }
 
 #[tauri::command]
-fn resume_download_task(
+async fn resume_download_task(
     app: tauri::AppHandle,
     task_id: String,
 ) -> Result<download::DownloadTaskListResult, String> {
-    download::resume_download_task(app, task_id)
+    download::resume_download_task(app, task_id).await
 }
 
 #[tauri::command]
-fn remove_download_task(
+async fn remove_download_task(
     app: tauri::AppHandle,
     task_id: String,
 ) -> Result<download::DownloadTaskListResult, String> {
-    download::remove_download_task(app, task_id)
+    download::remove_download_task(app, task_id).await
 }
 
 #[tauri::command]
-fn open_download_task_dir(app: tauri::AppHandle, task_id: String) -> Result<(), String> {
-    download::open_download_task_dir(app, task_id)
+async fn open_download_task_dir(app: tauri::AppHandle, task_id: String) -> Result<(), String> {
+    download::open_download_task_dir(app, task_id).await
 }
 
 #[tauri::command]
