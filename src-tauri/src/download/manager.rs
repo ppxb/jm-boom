@@ -17,11 +17,13 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::async_runtime::{self, JoinHandle};
 use tauri::AppHandle;
 use tokio::sync::Mutex as AsyncMutex;
 
 static DOWNLOAD_MANAGER: OnceLock<Arc<DownloadManager>> = OnceLock::new();
+const DOWNLOAD_PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_millis(1000);
 
 pub(crate) struct DownloadManager {
     app: AppHandle,
@@ -35,6 +37,14 @@ struct DownloadState {
     worker: Option<JoinHandle<()>>,
     loaded: bool,
     revision: u64,
+    persisted_revision: u64,
+    last_persisted_at: Option<Instant>,
+}
+
+#[derive(Clone, Copy)]
+enum PersistMode {
+    Force,
+    Throttled,
 }
 
 pub(crate) fn download_manager(app: AppHandle) -> Arc<DownloadManager> {
@@ -356,7 +366,7 @@ impl DownloadManager {
             .await?;
             total_pages = total_pages.saturating_add(manifest.page_count());
             manifests.push_back((chapter.clone(), manifest));
-            self.update_task(&task.task_id, |task| {
+            self.update_task(&task.task_id, PersistMode::Force, |task| {
                 task.total_pages = total_pages;
                 task.current_chapter_title = chapter.title.clone();
             })
@@ -365,7 +375,7 @@ impl DownloadManager {
 
         while let Some((chapter, manifest)) = manifests.pop_front() {
             self.ensure_task_can_continue(&task.task_id)?;
-            self.update_task(&task.task_id, |task| {
+            self.update_task(&task.task_id, PersistMode::Force, |task| {
                 task.current_chapter_title = chapter.title.clone();
             })
             .await?;
@@ -387,7 +397,7 @@ impl DownloadManager {
                     estimate_eta(task_started_at.elapsed(), completed_pages, total_pages);
                 let speed_bytes_per_second =
                     estimate_speed(task_started_at.elapsed(), downloaded_bytes);
-                self.update_task(&task.task_id, |task| {
+                self.update_task(&task.task_id, PersistMode::Throttled, |task| {
                     task.completed_pages = completed_pages;
                     task.total_pages = total_pages;
                     task.eta_seconds = eta_seconds;
@@ -398,7 +408,7 @@ impl DownloadManager {
             }
         }
 
-        self.update_task(&task.task_id, |task| {
+        self.update_task(&task.task_id, PersistMode::Force, |task| {
             let now = current_timestamp();
             task.status = DownloadTaskStatus::Completed;
             task.completed_pages = total_pages;
@@ -435,7 +445,7 @@ impl DownloadManager {
     }
 
     async fn mark_task_failed(&self, task_id: &str, message: String) -> ApiResult<()> {
-        self.update_task(task_id, |task| {
+        self.update_task(task_id, PersistMode::Force, |task| {
             if matches!(
                 task.status,
                 DownloadTaskStatus::Cancelled | DownloadTaskStatus::Paused
@@ -454,7 +464,12 @@ impl DownloadManager {
         .await
     }
 
-    async fn update_task<F>(&self, task_id: &str, update: F) -> ApiResult<()>
+    async fn update_task<F>(
+        &self,
+        task_id: &str,
+        persist_mode: PersistMode,
+        update: F,
+    ) -> ApiResult<()>
     where
         F: FnOnce(&mut DownloadTask),
     {
@@ -468,7 +483,11 @@ impl DownloadManager {
             }
             bump_revision(&mut state);
         }
-        self.persist_latest_tasks().await
+
+        match persist_mode {
+            PersistMode::Force => self.persist_latest_tasks().await,
+            PersistMode::Throttled => self.persist_latest_tasks_if_due().await,
+        }
     }
 
     async fn load_tasks_if_needed(&self) -> ApiResult<()> {
@@ -503,10 +522,35 @@ impl DownloadManager {
             };
             persist_tasks(&tasks).await?;
 
-            if self.lock_state()?.revision == revision {
+            let mut state = self.lock_state()?;
+            state.persisted_revision = revision;
+            state.last_persisted_at = Some(Instant::now());
+            if state.revision == revision {
                 return Ok(());
             }
         }
+    }
+
+    async fn persist_latest_tasks_if_due(&self) -> ApiResult<()> {
+        let should_persist = {
+            let state = self.lock_state()?;
+            if state.persisted_revision == state.revision {
+                false
+            } else {
+                state
+                    .last_persisted_at
+                    .map(|last_persisted_at| {
+                        last_persisted_at.elapsed() >= DOWNLOAD_PROGRESS_PERSIST_INTERVAL
+                    })
+                    .unwrap_or(true)
+            }
+        };
+
+        if should_persist {
+            self.persist_latest_tasks().await?;
+        }
+
+        Ok(())
     }
 
     fn lock_state(&self) -> ApiResult<std::sync::MutexGuard<'_, DownloadState>> {
