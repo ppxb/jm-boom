@@ -10,6 +10,7 @@ export function useReaderPrefetch({
   cacheLimitBytes,
   currentIndex,
   pageCount,
+  pageStep,
   enabled,
   pageQueryKey,
   requestPage
@@ -19,6 +20,7 @@ export function useReaderPrefetch({
   cacheLimitBytes: number
   currentIndex: number
   pageCount: number
+  pageStep: number
   enabled: boolean
   pageQueryKey: ReaderPageQueryKeyFactory
   requestPage: ReaderPageRequester
@@ -34,6 +36,7 @@ export function useReaderPrefetch({
     const prefetchIndexes = readerPrefetchIndexes(
       currentIndex,
       pageCount,
+      pageStep,
       READER_PREFETCH_RADIUS
     )
 
@@ -88,27 +91,42 @@ export function useReaderPrefetch({
     enabled,
     endpoint,
     pageCount,
+    pageStep,
     pageQueryKey,
     queryClient,
     requestPage
   ])
 }
 
-function readerPrefetchIndexes(currentIndex: number, pageCount: number, radius: number) {
+function readerPrefetchIndexes(
+  currentIndex: number,
+  pageCount: number,
+  pageStep: number,
+  radius: number
+) {
+  const normalizedPageStep = Math.max(1, Math.floor(pageStep))
   const indexes: number[] = []
 
-  for (let distance = 1; distance <= radius; distance += 1) {
-    const nextIndex = currentIndex + distance
-    const previousIndex = currentIndex - distance
+  for (let groupDistance = 1; groupDistance <= radius; groupDistance += 1) {
+    const nextStart = currentIndex + groupDistance * normalizedPageStep
+    const previousStart = currentIndex - groupDistance * normalizedPageStep
 
-    if (nextIndex < pageCount) {
-      indexes.push(nextIndex)
+    for (let offset = 0; offset < normalizedPageStep; offset += 1) {
+      const nextIndex = nextStart + offset
+
+      if (nextIndex < pageCount) {
+        indexes.push(nextIndex)
+      }
     }
 
-    if (previousIndex >= 0) {
-      indexes.push(previousIndex)
+    for (let offset = 0; offset < normalizedPageStep; offset += 1) {
+      const previousIndex = previousStart + offset
+
+      if (previousIndex >= 0 && previousIndex < pageCount) {
+        indexes.push(previousIndex)
+      }
     }
   }
 
-  return indexes
+  return [...new Set(indexes)]
 }

@@ -69,25 +69,31 @@ export function useReaderPageQuery({
 export function useAdjacentReaderPageQueries({
   pageIndex,
   pageCount,
+  pageStep,
   enabled,
   pageQueryKey,
   requestPage
 }: {
   pageIndex: number
   pageCount: number
+  pageStep: number
   enabled: boolean
   pageQueryKey: ReaderPageQueryKeyFactory
   requestPage: ReaderPageRequester
 }) {
   const adjacentIndexes = useMemo(
-    () => readerWindowIndexes(pageIndex, pageCount).filter(index => index !== pageIndex),
-    [pageCount, pageIndex]
+    () => readerWindowIndexes(pageIndex, pageCount, pageStep).filter(index => index !== pageIndex),
+    [pageCount, pageIndex, pageStep]
+  )
+  const eagerIndexSet = useMemo(
+    () => new Set(readerEagerWindowIndexes(pageIndex, pageCount, pageStep)),
+    [pageCount, pageIndex, pageStep]
   )
   const adjacentQueries = useQueries({
     queries: adjacentIndexes.map(index => ({
       queryKey: pageQueryKey(index),
       queryFn: () => requestPage(index, 'prefetch'),
-      enabled,
+      enabled: enabled && eagerIndexSet.has(index),
       staleTime: READER_STALE_TIME,
       gcTime: READER_GC_TIME,
       retry: false,
@@ -111,16 +117,41 @@ export function useAdjacentReaderPageQueries({
   )
 }
 
-function readerWindowIndexes(currentIndex: number, pageCount: number) {
+function readerWindowIndexes(currentIndex: number, pageCount: number, pageStep: number) {
   if (pageCount <= 0) {
     return []
   }
 
+  const normalizedPageStep = Math.max(1, Math.floor(pageStep))
   const indexes: number[] = []
-  const start = Math.max(0, currentIndex - 1)
-  const end = Math.min(pageCount - 1, currentIndex + 1)
+  const start = Math.max(0, currentIndex - normalizedPageStep)
+  const end = Math.min(pageCount - 1, currentIndex + normalizedPageStep * 2 - 1)
 
   for (let index = start; index <= end; index += 1) {
+    indexes.push(index)
+  }
+
+  return indexes
+}
+
+function readerEagerWindowIndexes(currentIndex: number, pageCount: number, pageStep: number) {
+  if (pageCount <= 0) {
+    return []
+  }
+
+  const normalizedPageStep = Math.max(1, Math.floor(pageStep))
+
+  if (normalizedPageStep === 1) {
+    return [
+      currentIndex - 1,
+      currentIndex + 1
+    ].filter(index => index >= 0 && index < pageCount)
+  }
+
+  const indexes: number[] = []
+  const end = Math.min(pageCount - 1, currentIndex + normalizedPageStep - 1)
+
+  for (let index = currentIndex + 1; index <= end; index += 1) {
     indexes.push(index)
   }
 

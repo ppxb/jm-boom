@@ -38,6 +38,7 @@ export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) 
   const adjacentPages = useAdjacentReaderPageQueries({
     pageIndex: effectiveCurrentIndex,
     pageCount,
+    pageStep,
     enabled: manifest.isSuccess && pageCount > 0,
     pageQueryKey,
     requestPage
@@ -59,6 +60,7 @@ export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) 
     endpoint,
     currentIndex: effectiveCurrentIndex,
     pageCount,
+    pageStep,
     enabled: manifest.isSuccess && isPageReady && pageCount > 0,
     pageQueryKey,
     requestPage

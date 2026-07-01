@@ -77,6 +77,7 @@ function ReaderDoublePageWindow({
   const rightPage = pageDirection === 'rtl' ? currentPage : nextPage
   const leftIndex = pageDirection === 'rtl' && showNextSlot ? nextIndex : currentIndex
   const rightIndex = pageDirection === 'rtl' ? currentIndex : nextIndex
+  const visibleIndexes = showNextSlot ? [leftIndex, rightIndex] : [currentIndex]
 
   return (
     <div className="pointer-events-none flex h-screen w-screen items-center justify-center overflow-hidden px-6 py-6">
@@ -99,6 +100,38 @@ function ReaderDoublePageWindow({
           />
         ) : null}
       </div>
+      <ReaderHiddenImagePreloads pages={pages} visibleIndexes={visibleIndexes} />
+    </div>
+  )
+}
+
+function ReaderHiddenImagePreloads({
+  pages,
+  visibleIndexes
+}: {
+  pages: ReaderWindowPage[]
+  visibleIndexes: number[]
+}) {
+  const visibleIndexSet = new Set(visibleIndexes)
+  const preloadPages = pages.filter(page => !visibleIndexSet.has(page.index))
+
+  if (preloadPages.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0">
+      {preloadPages.map(page => (
+        <img
+          key={page.index}
+          src={page.src}
+          alt=""
+          className="h-px w-px"
+          draggable={false}
+          loading="eager"
+          decoding="async"
+        />
+      ))}
     </div>
   )
 }
