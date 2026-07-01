@@ -7,7 +7,12 @@ export function PageBackButton() {
   const router = useRouter()
 
   return (
-    <Button variant="ghost" size="sm" onClick={() => router.history.back()}>
+    <Button
+      variant="ghost"
+      size="sm"
+      className="self-start"
+      onClick={() => router.history.back()}
+    >
       <ArrowLeftIcon className="size-4" />
       返回
     </Button>
