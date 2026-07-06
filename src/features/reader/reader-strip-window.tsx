@@ -1,5 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+  type WheelEvent
+} from 'react'
 
 import { Button } from '@/components/ui/button'
 import { readerFileSrc } from '@/lib/api/reader'
@@ -8,6 +16,7 @@ import { READER_GC_TIME, READER_STALE_TIME } from './constants'
 import type { ReaderPageQueryKeyFactory, ReaderPageRequester } from './use-reader-page-query'
 
 const STRIP_PAGE_PRELOAD_DISTANCE = 2
+const STRIP_END_SCROLL_THRESHOLD_PX = 24
 
 export function ReaderStripWindow({
   containerRef,
@@ -16,7 +25,8 @@ export function ReaderStripWindow({
   navigationRequestId,
   pageQueryKey,
   requestPage,
-  onCurrentIndexChange
+  onCurrentIndexChange,
+  onScrollPastEnd
 }: {
   containerRef: RefObject<HTMLDivElement | null>
   pageCount: number
@@ -25,6 +35,7 @@ export function ReaderStripWindow({
   pageQueryKey: ReaderPageQueryKeyFactory
   requestPage: ReaderPageRequester
   onCurrentIndexChange: (index: number) => void
+  onScrollPastEnd?: () => boolean
 }) {
   const indexes = useMemo(() => Array.from({ length: pageCount }, (_, index) => index), [pageCount])
   const pageRefs = useRef<Array<HTMLElement | null>>([])
@@ -89,6 +100,26 @@ export function ReaderStripWindow({
     })
   }, [resolveCurrentIndex])
 
+  const handleWheel = useCallback(
+    (event: WheelEvent<HTMLDivElement>) => {
+      if (event.deltaY <= 0) {
+        return
+      }
+
+      const container = event.currentTarget
+      const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
+
+      if (maxScrollTop - container.scrollTop > STRIP_END_SCROLL_THRESHOLD_PX) {
+        return
+      }
+
+      if (onScrollPastEnd?.()) {
+        event.preventDefault()
+      }
+    },
+    [onScrollPastEnd]
+  )
+
   useEffect(
     () => () => {
       if (frameRef.current !== null) {
@@ -119,8 +150,9 @@ export function ReaderStripWindow({
   return (
     <div
       ref={containerRef}
-      className="h-screen w-screen overflow-y-auto overscroll-contain bg-neutral-950 scroll-smooth [scrollbar-gutter:stable]"
+      className="h-screen w-screen [scrollbar-gutter:stable] overflow-y-auto overscroll-contain scroll-smooth bg-neutral-950"
       onScroll={scheduleResolveCurrentIndex}
+      onWheel={handleWheel}
     >
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center pb-32">
         {indexes.map(index => (
@@ -219,17 +251,14 @@ function ReaderStripImage({
   return (
     <article
       ref={registerElement}
-      className={cn(
-        'flex w-full justify-center bg-neutral-950',
-        src ? 'min-h-0' : 'min-h-[64vh]'
-      )}
+      className={cn('flex w-full justify-center bg-neutral-950', src ? 'min-h-0' : 'min-h-[64vh]')}
       data-reader-page-index={index}
     >
       {src ? (
         <img
           src={src}
           alt=""
-          className="block w-full select-none object-contain"
+          className="block w-full object-contain select-none"
           draggable={false}
           loading="eager"
           decoding={Math.abs(index - currentIndex) <= 1 ? 'sync' : 'async'}

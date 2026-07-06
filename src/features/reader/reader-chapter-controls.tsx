@@ -35,6 +35,7 @@ export function ReaderChapterControls({
 }) {
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false)
   const hasChapterList = chapters.length > 1
+  const hasChapterNavigation = hasChapterList || previousChapter != null || nextChapter != null
   const pageLabel =
     doublePageMode && currentIndex + 1 < pageCount
       ? `${currentIndex + 1}-${currentIndex + 2} / ${pageCount}`
@@ -47,7 +48,7 @@ export function ReaderChapterControls({
           <ChapterNavButton
             title={title}
             albumId={albumId}
-            chapter={hasChapterList ? previousChapter : null}
+            chapter={hasChapterNavigation ? previousChapter : null}
             chapters={chapters}
           >
             <ChevronLeftIcon className="size-3.5" />
@@ -57,7 +58,7 @@ export function ReaderChapterControls({
           <ChapterNavButton
             title={title}
             albumId={albumId}
-            chapter={hasChapterList ? nextChapter : null}
+            chapter={hasChapterNavigation ? nextChapter : null}
             chapters={chapters}
           >
             下一章
@@ -79,7 +80,7 @@ export function ReaderChapterControls({
           <ReaderSettingsMenu />
         </div>
 
-        <div className="shrink-0 text-xs tabular-nums text-neutral-300">{pageLabel}</div>
+        <div className="shrink-0 text-xs text-neutral-300 tabular-nums">{pageLabel}</div>
       </div>
 
       <ReaderChapterDrawer

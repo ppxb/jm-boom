@@ -18,6 +18,7 @@ type ReadingHistoryState = {
   items: ReadingHistoryItem[]
   upsert: (item: Omit<ReadingHistoryItem, 'updatedAt'>) => void
   remove: (comicId: string) => void
+  removeMany: (comicIds: string[]) => void
   clear: () => void
 }
 
@@ -40,6 +41,13 @@ export const useReadingHistoryStore = create<ReadingHistoryState>()(
       remove: comicId => {
         set(state => ({
           items: state.items.filter(item => item.comicId !== comicId)
+        }))
+      },
+      removeMany: comicIds => {
+        const comicIdSet = new Set(comicIds)
+
+        set(state => ({
+          items: state.items.filter(item => !comicIdSet.has(item.comicId))
         }))
       },
       clear: () => {

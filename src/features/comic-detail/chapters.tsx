@@ -62,10 +62,10 @@ export function ChaptersSection({
           <div className="space-y-2">
             {visibleChapters.map((chapter, index) => {
               const chapterIndex = (safePage - 1) * CHAPTER_PAGE_SIZE + index
-              const nextChapter = sortedChapters[chapterIndex + 1] ?? null
+              const nextChapter = sortedChapters[chapterIndex - 1] ?? null
               const chapterTitle = formatChapterTitle(chapter, chapterIndex)
               const nextChapterTitle = nextChapter
-                ? formatChapterTitle(nextChapter, chapterIndex + 1)
+                ? formatChapterTitle(nextChapter, chapterIndex - 1)
                 : ''
 
               return (

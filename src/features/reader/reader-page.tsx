@@ -1,12 +1,13 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { ReaderBottomBar, ReaderTopBar } from './reader-bars'
 import { ReaderHotZones } from './reader-hot-zones'
 import { ReaderImageWindow } from './reader-image'
 import { ReaderError, ReaderLoading } from './reader-state'
 import { ReaderStripWindow } from './reader-strip-window'
-import type { ReaderSearch } from './types'
+import { toReaderChapterSearch } from './reader-chapter-link'
+import type { ReaderChapterItem, ReaderSearch } from './types'
 import { useReaderAutoRead } from './use-reader-auto-read'
 import { useReaderChapterInfo } from './use-reader-chapter-info'
 import { useReaderKeyboardNavigation } from './use-reader-keyboard-navigation'
@@ -18,6 +19,7 @@ import { useReadingHistoryStore } from '@/stores/reading-history-store'
 import { useSettingsStore } from '@/stores/settings-store'
 
 const DEFAULT_CHAPTER_TITLE = '正文'
+const STRIP_END_SCROLL_THRESHOLD_PX = 24
 
 export function ReaderPage({ comicId, search }: { comicId: string; search: ReaderSearch }) {
   const navigate = useNavigate()
@@ -32,6 +34,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const pageStep = isDoublePageMode ? 2 : 1
   const stripScrollRef = useRef<HTMLDivElement | null>(null)
   const autoReadEntryComicIdRef = useRef<string | null>(null)
+  const nextChapterNavigationRef = useRef<string | null>(null)
   const {
     isVisible: isToolbarVisible,
     toggle: toggleToolbar,
@@ -54,6 +57,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     isPageLoading,
     pageError,
     isFetching,
+    isLastPage,
     goToPreviousPage,
     goToNextPage,
     goToPage,
@@ -62,6 +66,10 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     requestPage,
     retry
   } = useReaderPages(comicId, Number.isNaN(initialPageIndex) ? 0 : initialPageIndex, pageStep)
+  const availableNextChapter = useMemo(
+    () => nextChapter ?? resolveSearchNextChapter(search, comicId),
+    [comicId, nextChapter, search.nextChapter, search.nextId]
+  )
 
   useEffect(() => {
     if (!comicId || pageCount <= 0) {
@@ -107,6 +115,10 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     }
   }, [comicId, hideToolbar, readerAutoReadEnabled])
 
+  useEffect(() => {
+    nextChapterNavigationRef.current = null
+  }, [comicId])
+
   const goBack = useCallback(() => {
     if (window.history.length > 1) {
       router.history.back()
@@ -120,24 +132,67 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
 
     void navigate({ to: '/' })
   }, [albumId, navigate, router, search.fromDetail])
-  const scrollStripBy = useCallback((direction: 1 | -1) => {
-    const container = stripScrollRef.current
+  const goToNextChapter = useCallback(() => {
+    if (!availableNextChapter) {
+      return false
+    }
 
-    if (!container) {
+    if (nextChapterNavigationRef.current === availableNextChapter.id) {
+      return true
+    }
+
+    nextChapterNavigationRef.current = availableNextChapter.id
+    void navigate({
+      to: '/reader/$comicId',
+      params: { comicId: availableNextChapter.id },
+      replace: true,
+      search: toReaderChapterSearch({
+        title,
+        albumId,
+        chapter: availableNextChapter,
+        chapters
+      })
+    }).catch(() => {
+      nextChapterNavigationRef.current = null
+    })
+
+    return true
+  }, [albumId, availableNextChapter, chapters, navigate, title])
+  const goToNextPageOrChapter = useCallback(() => {
+    if (isLastPage && goToNextChapter()) {
       return
     }
 
-    container.scrollBy({
-      top: direction * Math.max(220, container.clientHeight * 0.35),
-      behavior: 'smooth'
-    })
-  }, [])
+    goToNextPage()
+  }, [goToNextChapter, goToNextPage, isLastPage])
+  const scrollStripBy = useCallback(
+    (direction: 1 | -1) => {
+      const container = stripScrollRef.current
+
+      if (!container) {
+        return
+      }
+
+      const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
+      const isAtEnd = maxScrollTop - container.scrollTop <= STRIP_END_SCROLL_THRESHOLD_PX
+
+      if (direction > 0 && isAtEnd && goToNextChapter()) {
+        return
+      }
+
+      container.scrollBy({
+        top: direction * Math.max(220, container.clientHeight * 0.35),
+        behavior: 'smooth'
+      })
+    },
+    [goToNextChapter]
+  )
 
   useReaderKeyboardNavigation({
     readMode: readerReadMode,
     pageDirection: readerPageDirection,
     onPrevious: goToPreviousPage,
-    onNext: goToNextPage,
+    onNext: goToNextPageOrChapter,
     onScrollPrevious: () => scrollStripBy(-1),
     onScrollNext: () => scrollStripBy(1),
     onBack: goBack,
@@ -146,7 +201,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   useNextChapterPrefetch({
     currentIndex,
     pageCount,
-    nextChapter,
+    nextChapter: availableNextChapter,
     pageStep
   })
 
@@ -185,7 +240,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
         <ReaderHotZones
           pageDirection={readerPageDirection}
           onPrevious={goToPreviousPage}
-          onNext={goToNextPage}
+          onNext={goToNextPageOrChapter}
         />
       )}
 
@@ -211,6 +266,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
             pageQueryKey={pageQueryKey}
             requestPage={requestPage}
             onCurrentIndexChange={setObservedPage}
+            onScrollPastEnd={goToNextChapter}
           />
         ) : isPageLoading ? (
           <ReaderLoading label="正在准备图片" />
@@ -233,7 +289,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
         title={title}
         currentReadId={comicId}
         previousChapter={previousChapter}
-        nextChapter={nextChapter}
+        nextChapter={availableNextChapter}
         chapters={chapters}
         albumId={albumId}
         currentIndex={currentIndex}
@@ -244,4 +300,20 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
       />
     </main>
   )
+}
+
+function resolveSearchNextChapter(
+  search: ReaderSearch,
+  currentReadId: string
+): ReaderChapterItem | null {
+  const nextId = search.nextId.trim()
+
+  if (!nextId || nextId === currentReadId) {
+    return null
+  }
+
+  return {
+    id: nextId,
+    title: search.nextChapter.trim() || '下一章'
+  }
 }
