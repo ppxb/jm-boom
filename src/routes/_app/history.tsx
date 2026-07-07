@@ -95,7 +95,7 @@ function HistoryPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
-        <PageHeader title="历史观看" desc="本地保存的阅读进度">
+        <PageHeader title="历史观看" desc="本地保存的历史阅读进度">
           {isSelecting ? (
             <>
               <span className="text-sm text-muted-foreground">
