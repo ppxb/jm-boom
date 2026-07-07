@@ -42,7 +42,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "macOS":{
+    "macOS": {
       "minimumSystemVersion": "12.0"
     }
   },
