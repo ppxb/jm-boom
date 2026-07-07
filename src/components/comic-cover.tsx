@@ -1,5 +1,5 @@
 import { ImageIcon } from 'lucide-react'
-import { memo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settings-store'
@@ -20,22 +20,29 @@ const COVER_RATIO_CLASS: Record<ComicCoverRatio, string> = {
   square: 'aspect-square'
 }
 
-export const ComicCover = memo(function ComicCover({
+export function ComicCover({
   id,
   image,
   className,
   ratio = 'portrait',
   showIdBadge = false
 }: ComicCoverProps) {
-  const [failedImage, setFailedImage] = useState('')
+  const [hasImageError, setHasImageError] = useState(false)
   const hideCovers = useSettingsStore(state => state.hideCovers)
+  const shouldShowImage = !hideCovers && image.length > 0 && !hasImageError
 
-  const hasImage = image.length > 0
-  const hasImageError = failedImage === image
-  const shouldShowImage = hasImage && !hasImageError && !hideCovers
+  useEffect(() => {
+    setHasImageError(false)
+  }, [image])
 
   return (
-    <div className={cn('relative overflow-hidden bg-muted', COVER_RATIO_CLASS[ratio], className)}>
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-md bg-muted',
+        COVER_RATIO_CLASS[ratio],
+        className
+      )}
+    >
       {shouldShowImage ? (
         <img
           src={image}
@@ -43,20 +50,19 @@ export const ComicCover = memo(function ComicCover({
           decoding="async"
           referrerPolicy="no-referrer"
           className="h-full w-full object-cover"
-          onError={() => setFailedImage(image)}
+          onError={() => setHasImageError(true)}
         />
       ) : (
         <CoverPlaceholder />
       )}
-
       {showIdBadge && id ? (
-        <div className="absolute top-2 left-2 rounded-full border bg-background/45 px-2 py-1 text-[10px] backdrop-blur">
+        <div className="absolute top-2 left-2 rounded-full bg-background/45 px-2 py-1 text-[10px] backdrop-blur">
           JM {id}
         </div>
       ) : null}
     </div>
   )
-})
+}
 
 function CoverPlaceholder() {
   return (
