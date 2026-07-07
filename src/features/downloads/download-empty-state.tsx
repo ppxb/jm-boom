@@ -1,14 +1,8 @@
-import { ClockIcon } from 'lucide-react'
-
-import { Card, CardContent } from '@/components/ui/card'
-
 export function DownloadEmptyState({ label }: { label: string }) {
   return (
-    <Card>
-      <CardContent className="flex h-64 flex-col items-center justify-center gap-3 text-muted-foreground">
-        <ClockIcon className="size-10" />
-        <div className="text-sm">{label}</div>
-      </CardContent>
-    </Card>
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 text-center">
+      <p className="text-6xl font-bold text-foreground">(˘･_･˘)</p>
+      <p className="text-sm text-muted-foreground">{label}</p>
+    </div>
   )
 }

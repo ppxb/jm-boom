@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { CheckSquareIcon, Clock3Icon, Trash2Icon, XIcon } from 'lucide-react'
+import { CheckSquareIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -93,7 +93,7 @@ function HistoryPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="relative min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
         <PageHeader title="历史观看" desc="本地保存的历史阅读进度">
           {isSelecting ? (
@@ -341,12 +341,10 @@ function HistoryCard({
 
 function EmptyState() {
   return (
-    <Card>
-      <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-        <Clock3Icon className="size-8 text-muted-foreground" />
-        <div className="text-sm text-muted-foreground">暂无阅读记录</div>
-      </CardContent>
-    </Card>
+    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 text-center">
+      <p className="text-6xl font-bold text-foreground">˙ᯅ˙)</p>
+      <p className="text-sm text-muted-foreground">暂无阅读记录</p>
+    </div>
   )
 }
 
