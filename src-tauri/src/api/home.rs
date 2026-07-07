@@ -177,18 +177,29 @@ pub(crate) fn map_home_feed_sections(
     payload
         .into_iter()
         .filter(|section| !is_unsupported_home_section(&section.title))
-        .map(|section| HomeFeedSection {
-            id: section.id,
-            title: section.title,
-            slug: section.slug,
-            section_type: section.section_type,
-            filter_value: section.filter_val,
-            items: section
-                .content
-                .into_iter()
-                .take(preview_limit)
-                .map(|item| map_feed_comic(item, img_host))
-                .collect(),
+        .map(|section| {
+            let list_mode = resolve_home_section_list_mode(&section);
+            let rank_tag = if matches!(list_mode, Some(HomeSectionListMode::Ranking)) {
+                resolve_home_section_ranking_tag(&section)
+            } else {
+                String::new()
+            };
+
+            HomeFeedSection {
+                id: section.id,
+                title: section.title,
+                slug: section.slug,
+                section_type: section.section_type,
+                filter_value: section.filter_val,
+                list_mode,
+                rank_tag,
+                items: section
+                    .content
+                    .into_iter()
+                    .take(preview_limit)
+                    .map(|item| map_feed_comic(item, img_host))
+                    .collect(),
+            }
         })
         .collect()
 }
@@ -446,6 +457,64 @@ pub(crate) async fn request_category_filter_list(
 pub(crate) fn is_unsupported_home_section(title: &str) -> bool {
     let title = title.trim();
     UNSUPPORTED_HOME_SECTION_TITLES.contains(&title)
+}
+
+fn resolve_home_section_list_mode(section: &HomeFeedSectionPayload) -> Option<HomeSectionListMode> {
+    let title = section.title.trim();
+    let lower = format!(
+        "{} {} {} {}",
+        section.id, section.slug, section.section_type, section.filter_val
+    )
+    .to_lowercase();
+
+    if title.contains("推荐")
+        || title.contains("推薦")
+        || section.id == "30"
+        || title == "禁漫去码&全彩化"
+        || title == "禁漫去碼&全彩化"
+    {
+        return Some(HomeSectionListMode::Promote);
+    }
+
+    if section.id == "26" || title.ends_with("连载更新") || title.ends_with("連載更新") {
+        return Some(HomeSectionListMode::Weekly);
+    }
+
+    if section.id == "998"
+        || section.id == "999"
+        || section.id == "1000"
+        || title == "禁漫汉化组"
+        || title == "禁漫漢化組"
+        || title == "韩漫更新"
+        || title == "韓漫更新"
+        || title == "其他更新"
+    {
+        return Some(HomeSectionListMode::Ranking);
+    }
+
+    if title.contains("最新") || lower.contains("latest") {
+        return Some(HomeSectionListMode::Latest);
+    }
+
+    None
+}
+
+fn resolve_home_section_ranking_tag(section: &HomeFeedSectionPayload) -> String {
+    let title = section.title.trim();
+
+    if section.id == "998" || title == "禁漫汉化组" || title == "禁漫漢化組" {
+        return "禁漫汉化组".to_string();
+    }
+
+    if section.id == "999" || title == "韩漫更新" || title == "韓漫更新" {
+        return "hanManTypeMap".to_string();
+    }
+
+    if section.id == "1000" || title == "其他更新" {
+        return "qiTaLeiTypeMap".to_string();
+    }
+
+    String::new()
 }
 
 pub(crate) fn parse_home_section_list_mode(value: &str) -> ApiResult<HomeSectionListMode> {

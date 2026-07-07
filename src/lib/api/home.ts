@@ -16,6 +16,8 @@ export type HomeFeedSection = {
   slug: string
   type: string
   filterValue: string
+  listMode: HomeSectionListMode | null
+  rankTag: string
   items: FeedComic[]
 }
 

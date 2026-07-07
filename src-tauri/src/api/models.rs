@@ -601,6 +601,10 @@ pub struct HomeFeedSection {
     pub section_type: String,
     #[serde(rename = "filterValue")]
     pub filter_value: String,
+    #[serde(rename = "listMode")]
+    pub list_mode: Option<HomeSectionListMode>,
+    #[serde(rename = "rankTag")]
+    pub rank_tag: String,
     pub items: Vec<FeedComic>,
 }
 
