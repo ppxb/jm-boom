@@ -1,4 +1,4 @@
-import type { ComicChapter } from '@/lib/api/comic'
+import type { ComicChapter, ComicDetail } from '@/lib/api/comic'
 
 export const SINGLE_CHAPTER_TITLE = '单章'
 
@@ -52,6 +52,26 @@ export function getNextChapter(currentId: string, chapters: ComicChapter[]) {
   }
 
   return sortedChapters[currentIndex - 1] ?? null
+}
+
+export function resolveStartReadingTarget(comic: ComicDetail) {
+  const sortedChapters = sortChapters(comic.series)
+  const firstChapterIndex = sortedChapters.length - 1
+  const firstChapter = sortedChapters[firstChapterIndex]
+
+  if (!firstChapter) {
+    return {
+      readId: comic.id,
+      chapterTitle: SINGLE_CHAPTER_TITLE,
+      nextChapter: null
+    }
+  }
+
+  return {
+    readId: firstChapter.id,
+    chapterTitle: formatChapterTitle(firstChapter, firstChapterIndex),
+    nextChapter: toReaderNextChapter(sortedChapters[firstChapterIndex - 1], firstChapterIndex - 1)
+  }
 }
 
 export function resolveAlbumId(comic: { id: string; seriesId?: string | null }) {
@@ -193,4 +213,15 @@ function isValidDate(value: Date) {
 
 function hasTimeComponent(value: string) {
   return /(?:\d{1,2}:\d{2}|T\d{2})/.test(value)
+}
+
+function toReaderNextChapter(chapter: ComicChapter | undefined, index: number) {
+  if (!chapter) {
+    return null
+  }
+
+  return {
+    id: chapter.id,
+    title: formatChapterTitle(chapter, index)
+  }
 }

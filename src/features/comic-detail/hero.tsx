@@ -15,15 +15,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import type { ComicChapter, ComicDetail } from '@/lib/api/comic'
+import type { ComicDetail } from '@/lib/api/comic'
 import { ComicCover } from './shared'
 import {
-  SINGLE_CHAPTER_TITLE,
-  formatChapterTitle,
   formatNumber,
   getDisplayChapterCount,
   resolveAlbumId,
-  sortChapters
+  resolveStartReadingTarget
 } from './utils'
 
 export function ComicHero({
@@ -99,10 +97,6 @@ export function ComicHero({
               开始阅读
             </Link>
           </Button>
-          <Button variant="outline" disabled={downloadBusy} onClick={onDownloadClick}>
-            <DownloadIcon className="size-4" />
-            下载
-          </Button>
           <Button
             variant={comic.isFavorite ? 'secondary' : 'outline'}
             onClick={onFavoriteClick}
@@ -115,6 +109,10 @@ export function ComicHero({
             )}
             {comic.isFavorite ? '已收藏' : '收藏'}
           </Button>
+          <Button variant="outline" disabled={downloadBusy} onClick={onDownloadClick}>
+            <DownloadIcon className="size-4" />
+            下载
+          </Button>
         </div>
 
         <div className="space-y-3">
@@ -125,37 +123,6 @@ export function ComicHero({
       </div>
     </section>
   )
-}
-
-function resolveStartReadingTarget(comic: ComicDetail) {
-  const sortedChapters = sortChapters(comic.series)
-  const firstChapterIndex = sortedChapters.length - 1
-  const firstChapter = sortedChapters[firstChapterIndex]
-
-  if (!firstChapter) {
-    return {
-      readId: comic.id,
-      chapterTitle: SINGLE_CHAPTER_TITLE,
-      nextChapter: null
-    }
-  }
-
-  return {
-    readId: firstChapter.id,
-    chapterTitle: formatChapterTitle(firstChapter, firstChapterIndex),
-    nextChapter: toReaderNextChapter(sortedChapters[firstChapterIndex - 1], firstChapterIndex - 1)
-  }
-}
-
-function toReaderNextChapter(chapter: ComicChapter | undefined, index: number) {
-  if (!chapter) {
-    return null
-  }
-
-  return {
-    id: chapter.id,
-    title: formatChapterTitle(chapter, index)
-  }
 }
 
 function StatsRow({ comic, onCommentsClick }: { comic: ComicDetail; onCommentsClick: () => void }) {

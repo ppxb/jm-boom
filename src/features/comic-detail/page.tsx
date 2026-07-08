@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { PageBackButton } from '@/components/page-back-button'
 import {
@@ -10,6 +10,7 @@ import {
   type ComicDetail,
   type ComicDetailResult
 } from '@/lib/api/comic'
+import { getComicReadManifest } from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import { ChaptersSection } from './chapters'
@@ -17,7 +18,12 @@ import { CommentsDrawer } from './comments'
 import { ComicHero } from './hero'
 import { RelatedPanel } from './related'
 import { BackTop, ComicDetailSkeleton, StatePanel } from './shared'
-import { SINGLE_CHAPTER_TITLE, resolveAlbumId, sortChapters } from './utils'
+import {
+  SINGLE_CHAPTER_TITLE,
+  resolveAlbumId,
+  resolveStartReadingTarget,
+  sortChapters
+} from './utils'
 import { useSettingsStore } from '@/stores/settings-store'
 import {
   ComicDownloadDrawer,
@@ -67,6 +73,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
   const albumId = resolveAlbumId(comic)
+  const startReadingTarget = useMemo(() => resolveStartReadingTarget(comic), [comic])
   const downloadChapters = useMemo(() => {
     const chapters = sortChapters(comic.series)
 
@@ -82,6 +89,34 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
 
     return toDownloadChapterOptions(chapters)
   }, [comic.id, comic.series])
+
+  useEffect(() => {
+    const readId = startReadingTarget.readId.trim()
+
+    if (readId.length === 0) {
+      return
+    }
+
+    let isActive = true
+
+    void queryClient
+      .prefetchQuery({
+        queryKey: queryKeys.readerManifest(endpoint, readId),
+        queryFn: () => getComicReadManifest({ readId, endpoint }),
+        staleTime: CACHE.READER_STALE_TIME,
+        gcTime: CACHE.READER_GC_TIME
+      })
+      .catch(error => {
+        if (isActive && import.meta.env.DEV) {
+          console.debug('Comic detail reader manifest prefetch failed', error)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [endpoint, queryClient, startReadingTarget.readId])
+
   const favoriteMutation = useMutation({
     mutationFn: async () =>
       toggleComicFavorite({
