@@ -1,18 +1,20 @@
 # JM Boom
 
-A free and open source cross-platform manga reader.
+跨平台禁漫天堂第三方客户端。
 
 ## WIP
 
 当前项目处于高速开发中，功能和特性可能会发生巨大变化。
 
-测试版本已发布，支持 `Windows`、`Linux`、`MacOS`。
+支持 `Windows`、`Linux`、`MacOS`。
 
-`Linux` 和 `MacOS` 的构建未经过任何测试。
+> \[!IMPORTANT]
+>
+> `Linux` 和 `MacOS` 的构建未经过任何测试。
 
 ### MacOS 安装
 
-出现 `应用已损坏` 或 `无法验证开发者`，请使用 `xattr -cr` 进行放行。
+出现 `应用已损坏` 或 `无法验证开发者`，请使用 `xattr -cr` 放行。
 
 前往下载 [Release](https://github.com/ppxb/jm-boom/releases)。
 
@@ -52,25 +54,22 @@ A free and open source cross-platform manga reader.
 - [x] 搜索页
 - [x] 章节/批量章节下载
 - [x] 自动阅读模式
+- [x] 多平台打包与发布流程
 
 ### 进行中
 
 - [ ] 阅读器体验进一步优化
-- [ ] 更完整的多平台打包与发布流程
 
 ### 规划中
 
-- [ ] 更细的阅读器性能优化
 - [ ] 更完善的离线缓存管理体验
 - [ ] 细化桌面端交互和快捷键支持
 - [ ] 桌面端系统托盘
 - [ ] 本地漫画管理
-- [ ] 其他漫画源的接入
 
-## 环境依赖
+### 预计不会实现的特性
 
-- Bun：用于安装前端依赖、运行 Vite 和 Tauri CLI
-- Rust stable：用于编译 `src-tauri`
+在接入多个源的测试后，并没有带来更好的体验，反而造成了性能问题和额外的心智负担。其他源多是通过 `Html` 抓取而来，且字段不统一，项目因此变得臃肿、低效，于是放弃接入多漫画源。
 
 ## 启动项目
 
@@ -106,8 +105,8 @@ bun run tauri dev
 
 <a href="https://www.star-history.com/?repos=ppxb%2Fjm-boom&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ppxb/jm-boom&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ppxb/jm-boom&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ppxb/jm-boom&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ppxb/jm-boom&type=date&theme=dark&legend=top-left&sealed_token=xBdzI13ThPSrBmsH1hTwkJ4k3BeQH7GmAkzvOlPpvyQDS8IMlHCI00IiBHU4zpMhErHtg6nTgZdwthEO1yDLoenKZOo1owHT7pObsu8FOq_2KI80Aw1RoDW-3oaLeFdGzqs0F3DVRs-3fyEn92_Hi32SmjeVMoSF0IcSPo6z7VixmjZhG2B66b5GL_eI" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ppxb/jm-boom&type=date&legend=top-left&sealed_token=xBdzI13ThPSrBmsH1hTwkJ4k3BeQH7GmAkzvOlPpvyQDS8IMlHCI00IiBHU4zpMhErHtg6nTgZdwthEO1yDLoenKZOo1owHT7pObsu8FOq_2KI80Aw1RoDW-3oaLeFdGzqs0F3DVRs-3fyEn92_Hi32SmjeVMoSF0IcSPo6z7VixmjZhG2B66b5GL_eI" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ppxb/jm-boom&type=date&legend=top-left&sealed_token=xBdzI13ThPSrBmsH1hTwkJ4k3BeQH7GmAkzvOlPpvyQDS8IMlHCI00IiBHU4zpMhErHtg6nTgZdwthEO1yDLoenKZOo1owHT7pObsu8FOq_2KI80Aw1RoDW-3oaLeFdGzqs0F3DVRs-3fyEn92_Hi32SmjeVMoSF0IcSPo6z7VixmjZhG2B66b5GL_eI" />
  </picture>
 </a>
