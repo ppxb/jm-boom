@@ -1,12 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type RefObject,
-  type WheelEvent
-} from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject, type WheelEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { readerFileSrc } from '@/lib/api/reader'
@@ -148,7 +141,7 @@ export function ReaderStripWindow({
   return (
     <div
       ref={containerRef}
-      className="h-screen w-screen [scrollbar-gutter:stable] overflow-y-auto overscroll-contain scroll-smooth bg-neutral-950"
+      className="h-screen w-screen scrollbar-none overflow-y-auto overscroll-contain scroll-smooth bg-neutral-950"
       onScroll={scheduleResolveCurrentIndex}
       onWheel={handleWheel}
     >
