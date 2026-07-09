@@ -1,3 +1,4 @@
+import { Skeleton } from '@/components/ui/skeleton'
 import { UI } from '@/lib/constants'
 
 export { ComicCover } from '@/components/comic'
@@ -17,20 +18,20 @@ export function ComicDetailSkeleton() {
   return (
     <div className="space-y-10">
       <section className="grid grid-cols-[240px_minmax(0,1fr)] gap-8">
-        <div className="aspect-3/4 animate-pulse rounded-md bg-muted" />
+        <Skeleton className="aspect-3/4" />
         <div className="space-y-5 py-1">
-          <div className="h-5 w-56 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-5 w-56" />
           <div className="space-y-3">
-            <div className="h-10 w-2/3 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-64 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-10 w-2/3" />
+            <Skeleton className="h-4 w-64" />
           </div>
           <div className="h-px bg-border" />
-          <div className="h-24 max-w-3xl animate-pulse rounded-md bg-muted" />
+          <Skeleton className="h-24 max-w-3xl" />
           <div className="h-px bg-border" />
           <div className="space-y-2">
-            <div className="h-4 max-w-3xl animate-pulse rounded bg-muted" />
-            <div className="h-4 max-w-2xl animate-pulse rounded bg-muted" />
-            <div className="h-4 max-w-xl animate-pulse rounded bg-muted" />
+            <Skeleton className="h-4 max-w-3xl" />
+            <Skeleton className="h-4 max-w-2xl" />
+            <Skeleton className="h-4 max-w-xl" />
           </div>
         </div>
       </section>
@@ -38,7 +39,7 @@ export function ComicDetailSkeleton() {
         <div className="space-y-8">
           <ChapterSkeletonList />
         </div>
-        <div className="h-80 animate-pulse rounded-xl bg-muted" />
+        <Skeleton className="h-80" />
       </div>
     </div>
   )
@@ -50,12 +51,12 @@ export function CommentSkeletonList() {
       {Array.from({ length: UI.COMMENT_SKELETON_COUNT }).map((_, index) => (
         <div key={index} className="space-y-3 px-px py-1">
           <div className="space-y-2">
-            <div className="h-4 w-40 animate-pulse rounded bg-muted" />
-            <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-24" />
           </div>
           <div className="space-y-2">
-            <div className="h-4 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
           </div>
         </div>
       ))}
@@ -67,12 +68,12 @@ function ChapterSkeletonList() {
   return (
     <section className="space-y-4">
       <div className="space-y-2">
-        <div className="h-6 w-24 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-6 w-24" />
+        <Skeleton className="h-4 w-32" />
       </div>
       <div className="space-y-2">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-18 animate-pulse rounded-xl bg-muted" />
+          <Skeleton key={index} className="h-18" />
         ))}
       </div>
     </section>
