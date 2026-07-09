@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
 
 import { ComicCover } from '@/components/comic-cover'
+import { OverflowTooltip } from '@/components/overflow-tooltip'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn, formatDate } from '@/lib/utils'
 import { type ReadingHistoryItem } from '@/stores/reading-history-store'
 
@@ -66,12 +66,9 @@ export function HistoryCard({
         </div>
       </div>
       <CardContent className="space-y-1.5 p-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="truncate text-sm font-semibold">{title}</div>
-          </TooltipTrigger>
-          <TooltipContent side="top">{title}</TooltipContent>
-        </Tooltip>
+        <OverflowTooltip asChild content={title}>
+          <div className="truncate text-sm font-semibold">{title}</div>
+        </OverflowTooltip>
         <p className="line-clamp-1 text-xs text-muted-foreground">{item.chapterTitle}</p>
         <p className="text-xs text-muted-foreground">
           {item.pageIndex + 1}/{item.pageCount} • {formatDate(item.updatedAt)}

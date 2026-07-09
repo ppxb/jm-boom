@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
+import { OverflowTooltip } from '@/components/overflow-tooltip'
 import { Badge } from '@/components/ui/badge'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { RelatedComic } from '@/lib/api/comic'
 import { ComicCover } from './shared'
 
@@ -32,12 +32,9 @@ function RelatedItem({ item }: { item: RelatedComic }) {
     >
       <ComicCover id={item.id} title={item.title} image={item.image} className="w-16" />
       <div className="min-w-0 space-y-1 self-center">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="truncate text-sm font-medium">{item.title}</div>
-          </TooltipTrigger>
-          <TooltipContent>{item.title}</TooltipContent>
-        </Tooltip>
+        <OverflowTooltip asChild content={item.title}>
+          <div className="truncate text-sm font-semibold">{item.title}</div>
+        </OverflowTooltip>
         <div className="truncate text-xs text-muted-foreground">{item.author || 'N/A'}</div>
         <Badge variant="outline">JM {item.id}</Badge>
       </div>

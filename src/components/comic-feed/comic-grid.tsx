@@ -1,9 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
 
 import { ComicCover } from '@/components/comic-cover'
+import { OverflowTooltip } from '@/components/overflow-tooltip'
 import { Card, CardContent } from '@/components/ui/card'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { FeedComic } from '@/lib/api/home'
 
 export function ComicGrid({ items }: { items: FeedComic[] }) {
@@ -36,59 +35,12 @@ function ComicCard({ item }: { item: FeedComic }) {
           showIdBadge
         />
         <CardContent className="space-y-1.5 p-3">
-          <OverflowTooltipTitle title={item.title} />
+          <OverflowTooltip asChild content={item.title}>
+            <div className="truncate text-sm font-semibold">{item.title}</div>
+          </OverflowTooltip>
           <p className="line-clamp-1 text-xs text-muted-foreground">{item.author || 'N/A'}</p>
         </CardContent>
       </Card>
     </Link>
-  )
-}
-
-function OverflowTooltipTitle({ title }: { title: string }) {
-  const titleRef = useRef<HTMLDivElement>(null)
-  const [isOverflowing, setIsOverflowing] = useState(false)
-  const titleElement = (
-    <div ref={titleRef} className="truncate text-sm font-semibold">
-      {title}
-    </div>
-  )
-
-  useEffect(() => {
-    const element = titleRef.current
-
-    if (!element) {
-      return
-    }
-
-    const target = element
-    let frame = 0
-
-    function updateOverflow() {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => {
-        setIsOverflowing(target.scrollWidth > target.clientWidth + 1)
-      })
-    }
-
-    updateOverflow()
-
-    const resizeObserver = new ResizeObserver(updateOverflow)
-    resizeObserver.observe(target)
-
-    return () => {
-      cancelAnimationFrame(frame)
-      resizeObserver.disconnect()
-    }
-  }, [isOverflowing, title])
-
-  if (!isOverflowing) {
-    return titleElement
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{titleElement}</TooltipTrigger>
-      <TooltipContent side="top">{title}</TooltipContent>
-    </Tooltip>
   )
 }

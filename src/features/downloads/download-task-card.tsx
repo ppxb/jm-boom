@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react'
 import {
   BanIcon,
   CheckCircle2Icon,
@@ -10,10 +9,10 @@ import {
   RotateCcwIcon
 } from 'lucide-react'
 
+import { OverflowTooltip } from '@/components/overflow-tooltip'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { DownloadTask, DownloadTaskStatus } from '@/lib/api/download'
 import { formatBytes, formatDuration } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -60,7 +59,11 @@ export function DownloadTaskCard({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <StatusIcon status={task.status} />
-              <OverflowTooltipTitle title={task.comicTitle} />
+              <OverflowTooltip asChild content={task.comicTitle}>
+                <h2 className="min-w-0 flex-1 truncate text-base font-medium">
+                  {task.comicTitle}
+                </h2>
+              </OverflowTooltip>
             </div>
             <div className="mt-1 text-xs text-muted-foreground">{formatChapterSummary(task)}</div>
           </div>
@@ -165,53 +168,4 @@ function formatTaskMeta(task: DownloadTask) {
   if (task.status === 'completed') return '已完成'
   if (task.status === 'cancelled') return '已取消'
   return '失败'
-}
-
-function OverflowTooltipTitle({ title }: { title: string }) {
-  const titleRef = useRef<HTMLHeadingElement>(null)
-  const [isOverflowing, setIsOverflowing] = useState(false)
-  const titleElement = (
-    <h2 ref={titleRef} className="min-w-0 flex-1 truncate text-base font-medium">
-      {title}
-    </h2>
-  )
-
-  useEffect(() => {
-    const element = titleRef.current
-
-    if (!element) {
-      return
-    }
-
-    const target = element
-    let frame = 0
-
-    function updateOverflow() {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => {
-        setIsOverflowing(target.scrollWidth > target.clientWidth + 1)
-      })
-    }
-
-    updateOverflow()
-
-    const resizeObserver = new ResizeObserver(updateOverflow)
-    resizeObserver.observe(target)
-
-    return () => {
-      cancelAnimationFrame(frame)
-      resizeObserver.disconnect()
-    }
-  }, [title])
-
-  if (!isOverflowing) {
-    return titleElement
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{titleElement}</TooltipTrigger>
-      <TooltipContent side="top">{title}</TooltipContent>
-    </Tooltip>
-  )
 }
