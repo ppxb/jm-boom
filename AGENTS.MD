@@ -24,11 +24,12 @@
 - 发布日志按上一个 tag 到本次发布的 commit 生成，建议先看提交范围：
   - `git describe --tags --abbrev=0`
   - `git log <previous-tag>..HEAD --oneline`
-- GitHub Actions 会校验发布日志包含以下四个板块，为空则不保留标题：
+- GitHub Actions 会校验发布日志**必须包含**以下四个板块（即使为空也必须存在）：
   - `## 功能`
   - `## 优化`
   - `## 修复`
   - `## 其他`
+- 板块为空时，可以只写标题不写内容，或写”无。”。
 - 发布日志不需要带类似 “# JM Boom vx.x.x” 的版本号。
 - 每条发布日志记录尽量带对应 commit hash 链接，格式示例：`- 设置页进入时自动检查更新 ([abc1234](https://github.com/ppxb/jm-boom/commit/abc1234))`。
 - 发布日志突出重点。
