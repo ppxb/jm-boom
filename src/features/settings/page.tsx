@@ -75,7 +75,7 @@ export function SettingsPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-5xl space-y-8 p-[32px_32px_16px_96px]">
-        <PageHeader title="设置" desc="调整 APP 配置和内容显示偏好">
+        <PageHeader title="设置" description="调整 APP 配置和内容显示偏好">
           <Button variant="outline" size="sm" onClick={resetSettings} className="text-xs">
             <RotateCcwIcon className="size-4" />
             恢复默认

@@ -4,8 +4,9 @@ import { BookmarkIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { BackTopButton } from '@/components/back-top-button'
-import { ComicGrid, ComicGridSkeleton, FeedHeader } from '@/components/comic'
+import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
+import { PageHeader } from '@/components/page-header'
 import { ListPagination } from '@/components/list-pagination'
 import { Button } from '@/components/ui/button'
 import {
@@ -70,7 +71,7 @@ function FavoritesPage() {
   return (
     <main className="relative min-h-screen bg-background text-foreground">
       <div className="mx-auto grid min-h-screen w-full max-w-6xl grid-rows-[auto_auto_1fr] gap-6 p-[32px_32px_16px_96px]">
-        <FeedHeader title="收藏" description="同步禁漫天堂云收藏" />
+        <PageHeader title="收藏" description="同步禁漫天堂云收藏" />
 
         <div className="flex items-center gap-3">
           <Select value={folderId} onValueChange={changeFolder}>

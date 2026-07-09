@@ -28,7 +28,7 @@ export function DownloadsPage() {
   return (
     <main className="relative min-h-screen bg-background p-[32px_32px_16px_96px] text-foreground">
       <div className="mx-auto max-w-6xl space-y-6">
-        <PageHeader title="下载" desc="查看下载进度、剩余时间和已完成文件目录">
+        <PageHeader title="下载" description="查看下载进度、剩余时间和已完成文件目录">
           <Button
             variant="outline"
             size="sm"
