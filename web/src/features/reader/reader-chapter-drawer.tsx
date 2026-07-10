@@ -38,12 +38,10 @@ export function ReaderChapterDrawer({
     }
 
     const timeoutId = window.setTimeout(() => {
-      listRef.current
-        ?.querySelector<HTMLElement>('[data-current-chapter="true"]')
-        ?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        })
+      listRef.current?.querySelector<HTMLElement>('[data-current-chapter="true"]')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      })
     }, 180)
 
     return () => window.clearTimeout(timeoutId)
@@ -51,7 +49,7 @@ export function ReaderChapterDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="h-full w-[420px] max-w-[calc(100vw-24px)] overflow-hidden rounded-l-xl border-l border-white/10 bg-neutral-950/90 p-0 text-neutral-50 shadow-2xl backdrop-blur-xl before:hidden data-[vaul-drawer-direction=right]:w-[420px] data-[vaul-drawer-direction=right]:sm:max-w-[420px]">
+      <DrawerContent className="h-full w-[82vw] max-w-[280px] overflow-hidden rounded-l-xl border-l border-white/10 bg-neutral-950/90 p-0 text-neutral-50 shadow-2xl backdrop-blur-xl before:hidden data-[vaul-drawer-direction=right]:w-[82vw] data-[vaul-drawer-direction=right]:max-w-[280px] data-[vaul-drawer-direction=right]:sm:w-[420px] data-[vaul-drawer-direction=right]:sm:max-w-[420px]">
         <DrawerHeader className="relative border-b border-white/10 pr-12">
           <DrawerTitle className="text-neutral-50">章节目录</DrawerTitle>
           <DrawerDescription className="line-clamp-1 text-neutral-400">

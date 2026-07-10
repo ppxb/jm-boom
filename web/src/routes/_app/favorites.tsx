@@ -30,7 +30,7 @@ function FavoritesPage() {
 
   return (
     <AppPage>
-      <PageHeader title="收藏" description="保存在当前浏览器中的漫画">
+      <PageHeader title="收藏" description="收藏在本地的漫画">
         <ConfirmDialog
           trigger={
             <Button variant="outline" size="sm" disabled={sortedItems.length === 0}>

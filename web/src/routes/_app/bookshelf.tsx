@@ -48,7 +48,7 @@ function BookshelfPage() {
 
   return (
     <AppPage>
-      <PageHeader title="书架" description="继续阅读本地保存的作品">
+      <PageHeader title="书架" description="继续阅读或管理漫画">
         {selection.isSelecting ? (
           <>
             <Button

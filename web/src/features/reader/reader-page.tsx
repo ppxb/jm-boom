@@ -135,6 +135,14 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
 
     goToNextPage()
   }, [goToNextChapter, goToNextPage, isLastPage])
+  const goToPreviousPageFromContent = useCallback(() => {
+    hideToolbar()
+    goToPreviousPage()
+  }, [goToPreviousPage, hideToolbar])
+  const goToNextPageOrChapterFromContent = useCallback(() => {
+    hideToolbar()
+    goToNextPageOrChapter()
+  }, [goToNextPageOrChapter, hideToolbar])
   const scrollStripBy = useCallback(
     (direction: 1 | -1) => {
       const container = stripScrollRef.current
@@ -196,6 +204,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     <main
       className="relative flex h-screen overflow-hidden bg-neutral-950 text-neutral-50"
       onClick={toggleToolbar}
+      onTouchMove={hideToolbar}
     >
       <ReaderTopBar
         fallbackReadId={comicId}
@@ -210,8 +219,8 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
       {isStripMode ? null : (
         <ReaderHotZones
           pageDirection={readerPageDirection}
-          onPrevious={goToPreviousPage}
-          onNext={goToNextPageOrChapter}
+          onPrevious={goToPreviousPageFromContent}
+          onNext={goToNextPageOrChapterFromContent}
         />
       )}
 

@@ -24,7 +24,7 @@ export function DownloadsPage() {
 
   return (
     <AppPage>
-      <PageHeader title="离线缓存" description="将章节图片缓存到服务端，供阅读器重复使用" />
+      <PageHeader title="下载" description="可查看和管理下载任务" />
 
       <Tabs value={filter} onValueChange={value => setFilter(value as DownloadFilter)}>
         <TabsList className="max-w-full overflow-x-auto">
@@ -51,11 +51,7 @@ export function DownloadsPage() {
       ) : taskList.length === 0 ? (
         <EmptyState className="min-h-0 flex-1" emoji="(˘･_･˘)" title="暂无下载任务" />
       ) : filteredTasks.length === 0 ? (
-        <EmptyState
-          className="min-h-0 flex-1"
-          emoji="(˘･_･˘)"
-          title="当前筛选下暂无任务"
-        />
+        <EmptyState className="min-h-0 flex-1" emoji="(˘･_･˘)" title="当前筛选下暂无任务" />
       ) : (
         <div className="space-y-3">
           {filteredTasks.map(task => (

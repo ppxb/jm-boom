@@ -21,7 +21,7 @@ import {
 } from '@/stores/settings-store'
 
 const READER_SETTING_BUTTON_CLASS =
-  'h-7 rounded-md px-2 text-xs text-neutral-200 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50'
+  'h-11 w-11 rounded-md px-0 text-xs text-neutral-200 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50 sm:h-7 sm:w-auto sm:px-2'
 
 const READER_SETTING_ITEM_CLASS =
   'text-neutral-100 focus:bg-white/10 focus:text-neutral-50 [&_svg]:text-neutral-300'
@@ -59,9 +59,15 @@ export function ReaderSettingsMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="xs" className={READER_SETTING_BUTTON_CLASS}>
-          <Settings2Icon className="size-3.5" />
-          阅读设置
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          aria-label="阅读设置"
+          className={READER_SETTING_BUTTON_CLASS}
+        >
+          <Settings2Icon className="size-5 sm:size-3.5" />
+          <span className="hidden sm:inline">阅读设置</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

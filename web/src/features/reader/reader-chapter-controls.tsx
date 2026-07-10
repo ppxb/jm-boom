@@ -10,7 +10,7 @@ import { ReaderSettingsMenu } from './reader-settings-menu'
 import type { ReaderChapterItem } from './types'
 
 const CHAPTER_BUTTON_CLASS =
-  'h-7 rounded-md px-2 text-xs text-neutral-200 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50 disabled:text-neutral-500'
+  'h-11 w-11 rounded-md px-0 text-xs text-neutral-200 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50 disabled:text-neutral-500 sm:h-7 sm:w-auto sm:px-2'
 
 export function ReaderChapterControls({
   title,
@@ -43,40 +43,45 @@ export function ReaderChapterControls({
 
   return (
     <>
-      <div className="flex w-full items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-1">
+      <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-1">
           <ChapterNavButton
+            label="上一章"
             albumId={albumId}
             chapter={hasChapterNavigation ? previousChapter : null}
           >
-            <ChevronLeftIcon className="size-3.5" />
-            上一章
+            <ChevronLeftIcon className="size-5 sm:size-3.5" />
+            <span className="hidden sm:inline">上一章</span>
           </ChapterNavButton>
 
           <ChapterNavButton
+            label="下一章"
             albumId={albumId}
             chapter={hasChapterNavigation ? nextChapter : null}
           >
-            下一章
-            <ChevronRightIcon className="size-3.5" />
+            <span className="hidden sm:inline">下一章</span>
+            <ChevronRightIcon className="size-5 sm:size-3.5" />
           </ChapterNavButton>
 
           <Button
             type="button"
             variant="ghost"
             size="xs"
+            aria-label="章节目录"
             disabled={!hasChapterList}
             className={CHAPTER_BUTTON_CLASS}
             onClick={() => setChapterDrawerOpen(true)}
           >
-            <ListIcon className="size-3.5" />
-            章节目录
+            <ListIcon className="size-5 sm:size-3.5" />
+            <span className="hidden sm:inline">章节目录</span>
           </Button>
 
           <ReaderSettingsMenu />
         </div>
 
-        <div className="shrink-0 text-xs text-neutral-300 tabular-nums">{pageLabel}</div>
+        <div className="shrink-0 text-sm text-neutral-300 tabular-nums sm:text-xs">
+          {pageLabel}
+        </div>
       </div>
 
       <ReaderChapterDrawer
@@ -92,17 +97,25 @@ export function ReaderChapterControls({
 }
 
 function ChapterNavButton({
+  label,
   albumId,
   chapter,
   children
 }: {
+  label: string
   albumId: string
   chapter: ReaderChapterItem | null
   children: ReactNode
 }) {
   if (!chapter) {
     return (
-      <Button variant="ghost" size="xs" disabled className={CHAPTER_BUTTON_CLASS}>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-label={label}
+        disabled
+        className={CHAPTER_BUTTON_CLASS}
+      >
         {children}
       </Button>
     )
@@ -113,6 +126,7 @@ function ChapterNavButton({
       <Link
         to="/reader/$comicId"
         params={{ comicId: chapter.id }}
+        aria-label={label}
         replace
         search={toReaderChapterSearch({ albumId })}
       >

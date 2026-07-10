@@ -29,7 +29,7 @@ export function ReaderProgressSlider({
 
   return (
     <div
-      className="relative flex h-5 w-full items-center"
+      className="relative flex h-8 w-full items-center sm:h-5"
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
     >
@@ -48,7 +48,7 @@ export function ReaderProgressSlider({
       </div>
       <Progress
         value={progress}
-        className="h-0.5 bg-white/20 [&_[data-slot=progress-indicator]]:bg-neutral-50"
+        className="h-1 bg-white/20 sm:h-0.5 [&_[data-slot=progress-indicator]]:bg-neutral-50"
       />
       <input
         type="range"
@@ -60,13 +60,13 @@ export function ReaderProgressSlider({
         value={currentIndex}
         disabled={pageCount <= 1}
         className={cn(
-          'absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 cursor-pointer appearance-none bg-transparent disabled:cursor-default disabled:opacity-60',
+          'absolute inset-x-0 top-1/2 h-8 -translate-y-1/2 cursor-pointer appearance-none bg-transparent disabled:cursor-default disabled:opacity-60 sm:h-5',
           '[&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-track]:bg-transparent',
-          '[&::-webkit-slider-runnable-track]:h-0.5 [&::-webkit-slider-runnable-track]:bg-transparent',
+          '[&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-transparent sm:[&::-webkit-slider-runnable-track]:h-0.5',
           '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full',
           isScrubbing
-            ? '[&::-moz-range-thumb]:size-2.5 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:size-2.5'
-            : '[&::-moz-range-thumb]:size-1.5 [&::-webkit-slider-thumb]:mt-[-2px] [&::-webkit-slider-thumb]:size-1.5',
+            ? '[&::-moz-range-thumb]:size-4 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:size-4 sm:[&::-moz-range-thumb]:size-2.5 sm:[&::-webkit-slider-thumb]:mt-[-4px] sm:[&::-webkit-slider-thumb]:size-2.5'
+            : '[&::-moz-range-thumb]:size-2.5 [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:size-2.5 sm:[&::-moz-range-thumb]:size-1.5 sm:[&::-webkit-slider-thumb]:mt-[-2px] sm:[&::-webkit-slider-thumb]:size-1.5',
           showKnob
             ? '[&::-moz-range-thumb]:bg-neutral-50 [&::-webkit-slider-thumb]:bg-neutral-50 [&::-webkit-slider-thumb]:shadow'
             : '[&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:bg-transparent [&::-webkit-slider-thumb]:shadow-none'
