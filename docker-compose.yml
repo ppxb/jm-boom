@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  jm-boom:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=sqlite:/app/data/app.db
+    restart: unless-stopped

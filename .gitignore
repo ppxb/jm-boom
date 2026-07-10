@@ -7,7 +7,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
+# Build output
 dist
 dist-ssr
 *.local
@@ -26,3 +26,17 @@ dist-ssr
 .tanstack
 .agents
 .codex/
+
+# Server
+/server/target
+/server/data
+
+# Web
+/web/node_modules
+/web/dist
+
+# Data
+data/
+
+# Archive
+archive-src-tauri/
