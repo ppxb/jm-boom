@@ -2,6 +2,7 @@ import { RotateCcwIcon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 
+import { AppPage } from '@/components/app-page'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -26,36 +27,34 @@ export function SettingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-5xl space-y-8 px-4 pt-6 pb-36 sm:px-6 sm:pb-28 lg:px-8">
-        <PageHeader title="设置" description="调整服务接口和内容显示偏好">
-          <Button variant="outline" size="sm" onClick={resetSettings} className="text-xs">
-            <RotateCcwIcon className="size-4" />
-            恢复默认
-          </Button>
-        </PageHeader>
+    <AppPage contentClassName="max-w-5xl gap-8" showBackTop={false}>
+      <PageHeader title="设置" description="调整服务接口和内容显示偏好">
+        <Button variant="outline" size="sm" onClick={resetSettings} className="text-xs">
+          <RotateCcwIcon className="size-4" />
+          恢复默认
+        </Button>
+      </PageHeader>
 
-        <Card>
-          <CardContent className="space-y-8">
-            <AppearanceSection theme={theme} onThemeChange={setTheme} />
+      <Card>
+        <CardContent className="space-y-8">
+          <AppearanceSection theme={theme} onThemeChange={setTheme} />
 
-            <Separator />
+          <Separator />
 
-            <ApiEndpointSection
-              state={endpointState.data}
-              isLoading={endpointState.isLoading}
-              isRefreshing={refreshEndpoints.isPending}
-              isChanging={changeEndpoint.isPending}
-              onEndpointChange={endpoint => changeEndpoint.mutate(endpoint)}
-              onRefresh={() => refreshEndpoints.mutate()}
-            />
+          <ApiEndpointSection
+            state={endpointState.data}
+            isLoading={endpointState.isLoading}
+            isRefreshing={refreshEndpoints.isPending}
+            isChanging={changeEndpoint.isPending}
+            onEndpointChange={endpoint => changeEndpoint.mutate(endpoint)}
+            onRefresh={() => refreshEndpoints.mutate()}
+          />
 
-            <Separator />
+          <Separator />
 
-            <PrivacySection hideCovers={hideCovers} onHideCoversChange={setHideCovers} />
-          </CardContent>
-        </Card>
-      </div>
-    </main>
+          <PrivacySection hideCovers={hideCovers} onHideCoversChange={setHideCovers} />
+        </CardContent>
+      </Card>
+    </AppPage>
   )
 }
