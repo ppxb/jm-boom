@@ -196,19 +196,9 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         downloadBusy={downloadMutation.isPending}
       />
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="min-w-0">
-          <ChaptersSection
-            albumId={albumId}
-            comicId={comic.id}
-            chapters={comic.series}
-          />
-        </div>
+      <ChaptersSection albumId={albumId} comicId={comic.id} chapters={comic.series} />
 
-        <aside className="h-fit lg:sticky lg:top-8">
-          <RelatedPanel items={comic.relatedList} />
-        </aside>
-      </div>
+      <RelatedPanel items={comic.relatedList} />
 
       <CommentsDrawer
         open={isCommentsOpen}

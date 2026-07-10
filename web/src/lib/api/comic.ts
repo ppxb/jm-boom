@@ -95,7 +95,7 @@ export async function getComicDetail(comicId: string): Promise<ComicDetailResult
       totalViews: result.total_views,
       likes: result.likes,
       commentTotal: result.comment_total,
-      tags: result.tags,
+      tags: result.tags.map(tag => tag.trim()).filter(tag => tag.length > 0),
       actors: result.actors,
       works: result.works,
       liked: result.liked,

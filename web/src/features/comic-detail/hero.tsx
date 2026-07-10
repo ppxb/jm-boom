@@ -103,7 +103,7 @@ export function ComicHero({
         </div>
 
         <div className="space-y-3">
-          <PillGroup title="标签" items={comic.tags} />
+          <PillGroup title="标签" items={comic.tags} mobileProminent />
           <PillGroup title="角色" items={comic.actors} variant="secondary" />
           <PillGroup title="作品" items={comic.works} variant="secondary" />
         </div>
@@ -178,21 +178,44 @@ function StatsRow({ comic, onCommentsClick }: { comic: ComicDetail; onCommentsCl
 function PillGroup({
   title,
   items,
-  variant = 'outline'
+  variant = 'outline',
+  mobileProminent = false
 }: {
   title: string
   items: string[]
   variant?: 'outline' | 'secondary'
+  mobileProminent?: boolean
 }) {
   if (items.length === 0) {
     return null
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="w-10 text-xs text-muted-foreground">{title}</span>
+    <div
+      className={
+        mobileProminent
+          ? 'flex flex-wrap items-center gap-2.5 sm:gap-2'
+          : 'flex flex-wrap items-center gap-2'
+      }
+    >
+      <span
+        className={
+          mobileProminent
+            ? 'w-12 text-sm text-muted-foreground sm:w-10 sm:text-xs'
+            : 'w-10 text-xs text-muted-foreground'
+        }
+      >
+        {title}
+      </span>
       {items.map(item => (
-        <Badge key={`${title}-${item}`} variant={variant} asChild>
+        <Badge
+          key={`${title}-${item}`}
+          variant={variant}
+          asChild
+          className={
+            mobileProminent ? 'h-7 px-3 text-sm sm:h-5 sm:px-2 sm:text-xs' : undefined
+          }
+        >
           <Link
             to="/explore/search"
             search={{

@@ -1,3 +1,5 @@
+import { ComicRail, ComicRailItem } from '@/components/comic'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { UI } from '@/lib/constants'
 
@@ -35,12 +37,8 @@ export function ComicDetailSkeleton() {
           </div>
         </div>
       </section>
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-8">
-          <ChapterSkeletonList />
-        </div>
-        <Skeleton className="h-80" />
-      </div>
+      <ChapterSkeletonList />
+      <RelatedSkeletonRail />
     </div>
   )
 }
@@ -76,6 +74,30 @@ function ChapterSkeletonList() {
           <Skeleton key={index} className="h-18" />
         ))}
       </div>
+    </section>
+  )
+}
+
+function RelatedSkeletonRail() {
+  return (
+    <section className="space-y-6">
+      <div className="space-y-2">
+        <Skeleton className="h-6 w-24" />
+        <Skeleton className="h-4 w-20" />
+      </div>
+      <ComicRail>
+        {Array.from({ length: 4 }).map((_, index) => (
+          <ComicRailItem key={index}>
+            <Card size="sm" className="gap-0 overflow-hidden py-0">
+              <Skeleton className="aspect-square w-full rounded-none" />
+              <CardContent className="space-y-1.5 p-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+              </CardContent>
+            </Card>
+          </ComicRailItem>
+        ))}
+      </ComicRail>
     </section>
   )
 }

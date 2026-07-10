@@ -8,12 +8,13 @@ export function PageBackButton() {
 
   return (
     <Button
+      type="button"
       variant="ghost"
-      size="sm"
-      className="self-start"
+      size="default"
+      className="h-11 self-start gap-2 px-3 text-base"
       onClick={() => router.history.back()}
     >
-      <ArrowLeftIcon className="size-4" />
+      <ArrowLeftIcon className="size-5" />
       返回
     </Button>
   )

@@ -1,13 +1,12 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowRightIcon } from 'lucide-react'
 
-import { ComicCard } from '@/components/comic'
+import { ComicCard, ComicRail, ComicRailItem } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
 import type { HomeFeedSection } from '@/lib/api/home'
 import { currentChinaWeekday } from '@/lib/utils'
 import { defaultRankingCategory } from '@/lib/filters'
-import { HomeFeedRail, HomeFeedRailItem } from './home-feed-rail'
 import { homeSectionId } from './home-utils'
 
 export function HomeFeedSections({ sections }: { sections: HomeFeedSection[] }) {
@@ -23,9 +22,9 @@ export function HomeFeedSections({ sections }: { sections: HomeFeedSection[] }) 
           {section.items.length === 0 ? (
             <EmptyState emoji="(･o･;)" title="暂无内容" />
           ) : (
-            <HomeFeedRail>
+            <ComicRail>
               {section.items.map(item => (
-                <HomeFeedRailItem key={item.id}>
+                <ComicRailItem key={item.id}>
                   <ComicCard
                     comic={item}
                     ratio="square"
@@ -40,9 +39,9 @@ export function HomeFeedSections({ sections }: { sections: HomeFeedSection[] }) 
                       </p>
                     }
                   />
-                </HomeFeedRailItem>
+                </ComicRailItem>
               ))}
-            </HomeFeedRail>
+            </ComicRail>
           )}
         </section>
       ))}
