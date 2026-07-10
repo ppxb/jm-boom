@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 
-import { useSettingsStore } from '@/stores/settings-store'
 import type { ReaderWindowPage } from './types'
 import { useReaderManifestQuery } from './use-reader-manifest-query'
 import { useReaderNavigation } from './use-reader-navigation'
@@ -8,10 +7,7 @@ import { useAdjacentReaderPageQueries, useReaderPageQuery } from './use-reader-p
 import { useReaderPrefetch } from './use-reader-prefetch'
 
 export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) {
-  const endpoint = useSettingsStore(state => state.api)
-  const readerCacheLimitMb = useSettingsStore(state => state.readerCacheLimitMb)
-  const cacheLimitBytes = readerCacheLimitMb * 1024 * 1024
-  const manifest = useReaderManifestQuery(comicId, endpoint)
+  const manifest = useReaderManifestQuery(comicId)
   const pageCount = manifest.data?.pageCount ?? 0
   const {
     effectiveCurrentIndex,
@@ -23,15 +19,12 @@ export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) 
     setObservedPage
   } = useReaderNavigation({
     comicId,
-    endpoint,
     initialIndex,
     pageCount,
     pageStep
   })
   const { page, pageSrc, isPageReady, pageQueryKey, requestPage } = useReaderPageQuery({
     comicId,
-    endpoint,
-    cacheLimitBytes,
     pageIndex: effectiveCurrentIndex,
     enabled: manifest.isSuccess && pageCount > 0
   })
@@ -55,9 +48,7 @@ export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) 
     return pages
   }, [adjacentPages, isPageReady, page.data, pageSrc])
   useReaderPrefetch({
-    cacheLimitBytes,
     comicId,
-    endpoint,
     currentIndex: effectiveCurrentIndex,
     pageCount,
     pageStep,

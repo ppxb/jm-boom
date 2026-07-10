@@ -6,10 +6,11 @@ mod error;
 mod models;
 mod setting;
 
-pub use auth::JmAuth;
+pub use auth::SettingAuth;
 pub use client::JmClient;
 pub use error::{JmError, JmResult};
 pub use models::*;
+pub(crate) use setting::invalidate_img_host;
 
 // API constants
 pub(crate) const API_VERSION: &str = "2.0.20";

@@ -1,9 +1,8 @@
-import { FolderOpenIcon, LoaderCircleIcon } from 'lucide-react'
+import { LoaderCircleIcon } from 'lucide-react'
 
 import { BackTopButton } from '@/components/back-top-button'
 import { EmptyState } from '@/components/empty-state'
 import { PageHeader } from '@/components/page-header'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DownloadTaskCard } from './download-task-card'
@@ -20,25 +19,13 @@ export function DownloadsPage() {
     cancelTask,
     pauseTask,
     resumeTask,
-    removeTask,
-    openTaskDir,
-    openRootDir
+    removeTask
   } = useDownloadTasks()
 
   return (
     <main className="relative min-h-screen bg-background p-[32px_32px_16px_96px] text-foreground">
       <div className="mx-auto max-w-6xl space-y-6">
-        <PageHeader title="下载" description="查看下载进度、剩余时间和已完成文件目录">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={openRootDir.isPending}
-            onClick={() => openRootDir.mutate()}
-          >
-            <FolderOpenIcon className="size-4" />
-            下载目录
-          </Button>
-        </PageHeader>
+        <PageHeader title="离线缓存" description="将章节图片缓存到服务端，供阅读器重复使用" />
 
         <Tabs value={filter} onValueChange={value => setFilter(value as DownloadFilter)}>
           <TabsList>
@@ -78,12 +65,10 @@ export function DownloadsPage() {
                 isPausing={pauseTask.isPending}
                 isResuming={resumeTask.isPending}
                 isRemoving={removeTask.isPending}
-                isOpening={openTaskDir.isPending}
                 onCancel={() => cancelTask.mutate(task.taskId)}
                 onPause={() => pauseTask.mutate(task.taskId)}
                 onResume={() => resumeTask.mutate(task.taskId)}
                 onRemove={() => removeTask.mutate(task.taskId)}
-                onOpen={() => openTaskDir.mutate(task.taskId)}
               />
             ))}
           </div>

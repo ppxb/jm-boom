@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react'
 import { getComicReadManifest, getComicReadPage } from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
-import { useSettingsStore } from '@/stores/settings-store'
 import type { ReaderChapterItem } from './types'
 
 const NEXT_CHAPTER_PREFETCH_REMAINING_PAGES = 6
@@ -22,9 +21,6 @@ export function useNextChapterPrefetch({
   nextChapter: ReaderChapterItem | null
   pageStep: number
 }) {
-  const endpoint = useSettingsStore(state => state.api)
-  const readerCacheLimitMb = useSettingsStore(state => state.readerCacheLimitMb)
-  const cacheLimitBytes = readerCacheLimitMb * 1024 * 1024
   const queryClient = useQueryClient()
   const prefetchedChapterRef = useRef('')
 
@@ -35,7 +31,7 @@ export function useNextChapterPrefetch({
       return
     }
 
-    const prefetchKey = [endpoint, cacheLimitBytes, nextReadId, pageStep].join('|')
+    const prefetchKey = [nextReadId, pageStep].join('|')
 
     if (prefetchedChapterRef.current === prefetchKey) {
       return
@@ -46,8 +42,8 @@ export function useNextChapterPrefetch({
 
     void queryClient
       .prefetchQuery({
-        queryKey: queryKeys.readerManifest(endpoint, nextReadId),
-        queryFn: () => getComicReadManifest({ readId: nextReadId, endpoint }),
+        queryKey: queryKeys.readerManifest(nextReadId),
+        queryFn: () => getComicReadManifest({ readId: nextReadId }),
         staleTime: CACHE.READER_STALE_TIME,
         gcTime: CACHE.READER_GC_TIME,
         retry: false
@@ -58,7 +54,7 @@ export function useNextChapterPrefetch({
         }
 
         const manifest = queryClient.getQueryData<Awaited<ReturnType<typeof getComicReadManifest>>>(
-          queryKeys.readerManifest(endpoint, nextReadId)
+          queryKeys.readerManifest(nextReadId)
         )
         const initialPageCount = Math.min(
           manifest?.pageCount ?? 0,
@@ -72,14 +68,12 @@ export function useNextChapterPrefetch({
         return Promise.allSettled(
           Array.from({ length: initialPageCount }, (_, index) =>
             queryClient.prefetchQuery({
-              queryKey: queryKeys.readerPage(endpoint, nextReadId, cacheLimitBytes, index),
+              queryKey: queryKeys.readerPage(nextReadId, index),
               queryFn: () =>
                 getComicReadPage({
                   readId: nextReadId,
                   index,
-                  endpoint,
-                  requestOrigin: 'prefetch',
-                  cacheLimitBytes
+                  requestOrigin: 'prefetch'
                 }),
               staleTime: CACHE.READER_STALE_TIME,
               gcTime: CACHE.READER_GC_TIME,
@@ -97,15 +91,7 @@ export function useNextChapterPrefetch({
     return () => {
       isActive = false
     }
-  }, [
-    cacheLimitBytes,
-    currentIndex,
-    endpoint,
-    nextChapter,
-    pageCount,
-    pageStep,
-    queryClient
-  ])
+  }, [currentIndex, nextChapter, pageCount, pageStep, queryClient])
 }
 
 function shouldPrefetchNextChapter(currentIndex: number, pageCount: number) {

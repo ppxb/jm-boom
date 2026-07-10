@@ -11,23 +11,22 @@ function findTodayRecord(records: Array<{ day: number; signed: boolean }>) {
 
 type UseMeSignInParams = {
   user: UserProfile | null
-  endpoint: string | null
 }
 
 function signInSuccessMessage(message: string) {
   return /J\s*coin\s*:\s*\d+.*EXP\s*:\s*\d+/i.test(message) ? '签到成功' : message || '签到成功'
 }
 
-export function useMeSignIn({ user, endpoint }: UseMeSignInParams) {
+export function useMeSignIn({ user }: UseMeSignInParams) {
   const userId = user?.id
   const signInQuery = useQuery({
-    queryKey: queryKeys.signInData(endpoint, userId),
+    queryKey: queryKeys.signInData(userId),
     queryFn: async () => {
       if (!user) {
         throw new Error('请先登录')
       }
 
-      return getSignInData({ userId: user.id, endpoint })
+      return getSignInData({ userId: user.id })
     },
     enabled: userId != null,
     staleTime: 2 * 60 * 1000,
@@ -42,7 +41,7 @@ export function useMeSignIn({ user, endpoint }: UseMeSignInParams) {
         throw new Error('签到信息尚未准备好')
       }
 
-      return signIn({ userId: user.id, dailyId, endpoint })
+      return signIn({ userId: user.id, dailyId })
     },
     onSuccess: result => {
       toast.success(signInSuccessMessage(result.message))

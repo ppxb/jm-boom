@@ -1,25 +1,33 @@
-use super::{auth::JmAuth, crypto, error::JmError, JmResult};
+use super::{crypto, error::JmError, JmResult, SettingAuth};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::sync::RwLock;
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::{Mutex, RwLock};
 
-/// Cached img_host with expiration
+const IMG_HOST_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+
 #[derive(Clone)]
 struct CachedImgHost {
     host: String,
-    expires_at: SystemTime,
+    expires_at: Instant,
 }
 
-static IMG_HOST_CACHE: Lazy<RwLock<Option<CachedImgHost>>> = Lazy::new(|| RwLock::new(None));
-
-const CACHE_TTL: Duration = Duration::from_secs(3600); // 1 hour
+static IMG_HOST_CACHE: Lazy<RwLock<HashMap<String, CachedImgHost>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+static IMG_HOST_FETCH_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Deserialize)]
 struct SettingResponse {
     #[serde(default)]
     code: i32,
     data: Option<serde_json::Value>,
+    #[serde(default, rename = "errorMsg")]
+    error_msg: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,121 +37,120 @@ struct SettingData {
 }
 
 impl super::client::JmClient {
-    /// Get image host from remote settings (with cache)
     pub async fn get_img_host(&self, endpoint: &str) -> JmResult<String> {
-        // Try cache first
-        if let Some(cached) = try_get_cached_host() {
-            tracing::debug!("Using cached img_host: {}", cached);
-            return Ok(cached);
+        if let Some(host) = cached_img_host(endpoint).await {
+            return Ok(host);
         }
 
-        // Cache miss, fetch from API
-        tracing::info!("Fetching img_host from API");
+        let fetch_lock = endpoint_fetch_lock(endpoint).await;
+        let _guard = fetch_lock.lock().await;
+
+        if let Some(host) = cached_img_host(endpoint).await {
+            return Ok(host);
+        }
+
         let host = self.fetch_img_host(endpoint).await?;
-
-        // Update cache
-        update_cache(&host);
-
+        IMG_HOST_CACHE.write().await.insert(
+            endpoint.to_string(),
+            CachedImgHost {
+                host: host.clone(),
+                expires_at: Instant::now() + IMG_HOST_CACHE_TTL,
+            },
+        );
+        tracing::debug!(endpoint, img_host = %host, "cached image host");
         Ok(host)
     }
 
-    /// Fetch img_host from remote API
     async fn fetch_img_host(&self, endpoint: &str) -> JmResult<String> {
-        let auth = JmAuth::new();
+        let auth = SettingAuth::current();
         let url = format!("{endpoint}/setting");
-
         let response = self
             .client
             .get(&url)
+            .header("accept", "application/json")
             .header("token", &auth.token)
             .header("tokenparam", &auth.tokenparam)
-            .query(&[("app_img_shunt", "1"), ("t", &auth.ts)])
+            .query(&[("app_img_shunt", "1"), ("t", auth.ts.as_str())])
             .send()
             .await
-            .map_err(|e| JmError::Network(e.to_string()))?;
+            .map_err(|error| JmError::Network(error.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(JmError::Http(format!("HTTP {}", response.status())));
+            return Err(JmError::Http(format!("HTTP {}: {url}", response.status())));
         }
 
         let body = response
             .text()
             .await
-            .map_err(|e| JmError::Network(e.to_string()))?;
-
+            .map_err(|error| JmError::Network(error.to_string()))?;
         let envelope: SettingResponse = serde_json::from_str(&body)
-            .map_err(|e| JmError::Decode(format!("Invalid setting response: {e}")))?;
+            .map_err(|error| JmError::Decode(format!("Invalid setting response: {error}")))?;
 
         if envelope.code != 200 {
-            return Err(JmError::Api(format!("API code {}", envelope.code)));
+            return Err(JmError::Api(
+                envelope
+                    .error_msg
+                    .unwrap_or_else(|| format!("API code {}", envelope.code)),
+            ));
         }
 
-        let data_value = envelope
-            .data
-            .ok_or_else(|| JmError::Decode("Missing data".into()))?;
+        let value = envelope.data.ok_or(JmError::MissingData)?;
+        let setting = match value {
+            serde_json::Value::String(encrypted) => {
+                let decrypted = crypto::decrypt_data(&encrypted, &auth.ts)?;
+                serde_json::from_str::<SettingData>(&decrypted)
+                    .map_err(|error| JmError::Decode(format!("Invalid setting data: {error}")))?
+            }
+            value => serde_json::from_value::<SettingData>(value)
+                .map_err(|error| JmError::Decode(format!("Invalid setting data: {error}")))?,
+        };
 
-        let data_str = data_value
-            .as_str()
-            .ok_or_else(|| JmError::Decode("Data is not string".into()))?;
-
-        let decrypted = crypto::decrypt_data(data_str, &auth.ts)?;
-
-        let setting: SettingData = serde_json::from_str(&decrypted)
-            .map_err(|e| JmError::Decode(format!("Invalid setting data: {e}")))?;
-
-        Ok(setting.img_host.trim_end_matches('/').to_string())
+        let host = setting.img_host.trim().trim_end_matches('/');
+        if host.is_empty() {
+            return Err(JmError::MissingData);
+        }
+        Ok(host.to_string())
     }
 
-    /// Download image from JM
     pub async fn download_image(&self, url: &str) -> JmResult<Vec<u8>> {
         let response = self
             .client
             .get(url)
-            .header("referer", "https://www.jmapinode1.cc/")
+            .header("referer", "https://18comic.vip/")
             .send()
             .await
-            .map_err(|e| JmError::Network(e.to_string()))?;
+            .map_err(|error| JmError::Network(error.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(JmError::Http(format!("HTTP {}", response.status())));
+            return Err(JmError::Http(format!("HTTP {}: {url}", response.status())));
         }
 
         response
             .bytes()
             .await
-            .map(|b| b.to_vec())
-            .map_err(|e| JmError::Network(e.to_string()))
+            .map(|bytes| bytes.to_vec())
+            .map_err(|error| JmError::Network(error.to_string()))
     }
 }
 
-/// Try to get cached img_host if not expired
-fn try_get_cached_host() -> Option<String> {
-    let cache = IMG_HOST_CACHE.read().ok()?;
-    let cached = cache.as_ref()?;
-
-    if SystemTime::now() < cached.expires_at {
-        Some(cached.host.clone())
-    } else {
-        None
-    }
+pub async fn invalidate_img_host(endpoint: &str) {
+    IMG_HOST_CACHE.write().await.remove(endpoint);
 }
 
-/// Update cache with new img_host
-fn update_cache(host: &str) {
-    if let Ok(mut cache) = IMG_HOST_CACHE.write() {
-        *cache = Some(CachedImgHost {
-            host: host.to_string(),
-            expires_at: SystemTime::now() + CACHE_TTL,
-        });
-        tracing::info!("Cached img_host for {} seconds", CACHE_TTL.as_secs());
+async fn cached_img_host(endpoint: &str) -> Option<String> {
+    let cached = IMG_HOST_CACHE.read().await.get(endpoint).cloned()?;
+    if Instant::now() < cached.expires_at {
+        return Some(cached.host);
     }
+
+    IMG_HOST_CACHE.write().await.remove(endpoint);
+    None
 }
 
-/// Clear the img_host cache (for testing or manual refresh)
-#[allow(dead_code)]
-pub fn clear_img_host_cache() {
-    if let Ok(mut cache) = IMG_HOST_CACHE.write() {
-        *cache = None;
-        tracing::info!("Cleared img_host cache");
-    }
+async fn endpoint_fetch_lock(endpoint: &str) -> Arc<Mutex<()>> {
+    let mut locks = IMG_HOST_FETCH_LOCKS.lock().await;
+    locks
+        .entry(endpoint.to_string())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
 }

@@ -34,11 +34,9 @@ export type HomeSectionListParams = {
   category?: string | null
   week?: string | null
   order?: string | null
-  endpoint?: string | null
 }
 
 export type HomeSectionListResult = {
-  endpoint: string
   mode: HomeSectionListMode
   page: number
   pageSize: number
@@ -49,7 +47,6 @@ export type HomeSectionListResult = {
 }
 
 export type HomeFeedResult = {
-  endpoint: string
   sections: HomeFeedSection[]
 }
 
@@ -66,7 +63,6 @@ export type WeekType = {
 }
 
 export type WeekFiltersResult = {
-  endpoint: string
   categories: WeekCategory[]
   types: WeekType[]
   defaultCategoryId?: string | null
@@ -77,106 +73,52 @@ export type WeekItemsParams = {
   page?: number
   categoryId: string
   typeId: string
-  endpoint?: string | null
 }
 
 export type WeekItemsResult = {
-  endpoint: string
   page: number
   total: number
   items: FeedComic[]
 }
 
-export async function getHomeFeed(endpoint: string | null = null): Promise<HomeFeedResult> {
-  const sections = await apiClient.get<
-    Array<{
-      id: string
-      title: string
-      slug: string
-      type: string
-      filter_val: string
-      content: Array<{
-        id: string
-        name: string
-        author: string
-        description: string
-        image: string
-        tags: string[]
-      }>
-    }>
-  >('/api/home/feed')
-
-  return {
-    endpoint: endpoint || '',
-    sections: sections.map(section => ({
-      id: section.id,
-      title: section.title,
-      slug: section.slug,
-      type: section.type,
-      filterValue: section.filter_val,
-      listMode: null, // TODO: determine list mode
-      rankTag: '',
-      items: section.content.map(comic => ({
-        id: comic.id,
-        title: comic.name,
-        author: comic.author,
-        description: comic.description,
-        image: comic.image,
-        tags: comic.tags,
-        updatedAt: null
-      }))
-    }))
-  }
+export async function getHomeFeed(): Promise<HomeFeedResult> {
+  return apiClient.get('/api/home/feed')
 }
 
-export async function getWeekFilters(endpoint: string | null = null): Promise<WeekFiltersResult> {
-  // TODO: 实现后端每周放送筛选 API
-  return {
-    endpoint: endpoint || '',
-    categories: [],
-    types: [],
-    defaultCategoryId: null,
-    defaultTypeId: null
-  }
+export async function getWeekFilters(): Promise<WeekFiltersResult> {
+  return apiClient.get('/api/home/weekly/filters')
 }
 
 export async function getWeekItems({
   page = 1,
-  categoryId: _categoryId,
-  typeId: _typeId,
-  endpoint = null
+  categoryId,
+  typeId
 }: WeekItemsParams): Promise<WeekItemsResult> {
-  // TODO: 实现后端每周放送列表 API
-  return {
-    endpoint: endpoint || '',
-    page,
-    total: 0,
-    items: []
-  }
+  return apiClient.get('/api/home/weekly/items', { page, categoryId, typeId })
 }
 
 export async function getHomeSectionList({
   mode,
   page = 1,
-  sectionId: _sectionId = null,
+  sectionId = null,
   sectionTitle = null,
-  slug: _slug = null,
-  type: _type = null,
-  filterValue: _filterValue = null,
-  category: _category = null,
-  week: _week = null,
-  order: _order = null,
-  endpoint = null
+  slug = null,
+  type = null,
+  filterValue = null,
+  category = null,
+  week = null,
+  order = null
 }: HomeSectionListParams): Promise<HomeSectionListResult> {
-  // TODO: 实现后端分类列表 API
-  return {
-    endpoint: endpoint || '',
+  return apiClient.get('/api/home/sections', {
     mode,
     page,
-    pageSize: 80,
-    total: 0,
-    hasMore: false,
-    title: sectionTitle || '',
-    items: []
-  }
+    sectionId,
+    sectionTitle,
+    slug,
+    type,
+    filterValue,
+    category,
+    week,
+    order
+  })
 }

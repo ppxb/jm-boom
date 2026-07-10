@@ -2,7 +2,6 @@ import {
   BanIcon,
   CheckCircle2Icon,
   ClockIcon,
-  FolderOpenIcon,
   LoaderCircleIcon,
   PauseIcon,
   PlayIcon,
@@ -25,24 +24,20 @@ export function DownloadTaskCard({
   isPausing,
   isResuming,
   isRemoving,
-  isOpening,
   onCancel,
   onPause,
   onResume,
-  onRemove,
-  onOpen
+  onRemove
 }: {
   task: DownloadTask
   isCancelling: boolean
   isPausing: boolean
   isResuming: boolean
   isRemoving: boolean
-  isOpening: boolean
   onCancel: () => void
   onPause: () => void
   onResume: () => void
   onRemove: () => void
-  onOpen: () => void
 }) {
   const progress = task.totalPages > 0 ? task.completedPages / task.totalPages : 0
   const progressPercent = Math.min(100, Math.round(progress * 100))
@@ -61,18 +56,12 @@ export function DownloadTaskCard({
             <div className="flex min-w-0 items-center gap-2">
               <StatusIcon status={task.status} />
               <OverflowTooltip asChild content={task.comicTitle}>
-                <h2 className="min-w-0 flex-1 truncate text-base font-medium">
-                  {task.comicTitle}
-                </h2>
+                <h2 className="min-w-0 flex-1 truncate text-base font-medium">{task.comicTitle}</h2>
               </OverflowTooltip>
             </div>
             <div className="mt-1 text-xs text-muted-foreground">{formatChapterSummary(task)}</div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="outline" size="sm" disabled={isOpening} onClick={onOpen}>
-              <FolderOpenIcon className="size-4" />
-              目录
-            </Button>
             {canPause ? (
               <Button variant="outline" size="sm" disabled={isPausing} onClick={onPause}>
                 <PauseIcon className="size-4" />

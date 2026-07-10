@@ -318,14 +318,22 @@ where
         where
             E: de::Error,
         {
-            value.parse().unwrap_or(0).try_into().map_err(de::Error::custom)
+            value
+                .parse()
+                .unwrap_or(0)
+                .try_into()
+                .map_err(de::Error::custom)
         }
 
         fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
         where
             E: de::Error,
         {
-            value.parse().unwrap_or(0).try_into().map_err(de::Error::custom)
+            value
+                .parse()
+                .unwrap_or(0)
+                .try_into()
+                .map_err(de::Error::custom)
         }
     }
 

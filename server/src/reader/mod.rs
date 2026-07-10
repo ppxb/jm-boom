@@ -1,7 +1,3 @@
-mod descramble;
-mod preloader;
-mod webp_encoder;
+mod decoder;
 
-pub use descramble::descramble_image;
-pub use preloader::ChapterPreloader;
-pub use webp_encoder::encode_webp;
+pub use decoder::{decode_scrambled_image, encode_webp, needs_decoding};

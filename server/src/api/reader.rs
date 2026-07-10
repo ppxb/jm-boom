@@ -1,25 +1,14 @@
+use crate::endpoint::request_with_failover;
+use crate::jm::invalidate_img_host;
+use crate::reader::{decode_scrambled_image, encode_webp, needs_decoding};
 use crate::AppState;
-use crate::jm::JmClient;
-use crate::reader::{descramble_image, encode_webp};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize)]
-pub struct ManifestQuery {
-    #[serde(default)]
-    endpoint: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct PageQuery {
-    #[serde(default)]
-    endpoint: Option<String>,
-}
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct ManifestResponse {
@@ -34,24 +23,26 @@ pub struct PageInfo {
     pub url: String,
 }
 
-const DEFAULT_ENDPOINT: &str = "https://www.cdnhjk.net";
-
 /// GET /api/reader/:chapter_id/manifest
 pub async fn get_manifest(
-    State(_app): State<AppState>,
+    State(app): State<AppState>,
     Path(chapter_id): Path<String>,
-    Query(params): Query<ManifestQuery>,
 ) -> Result<Json<ManifestResponse>, ApiError> {
-    let client = JmClient::new()?;
-    let endpoint = params.endpoint.as_deref().unwrap_or(DEFAULT_ENDPOINT);
-    let chapter = client.get_chapter(endpoint, &chapter_id).await?;
+    validate_chapter_id(&chapter_id)?;
+    let request_chapter_id = chapter_id.clone();
+    let chapter = app
+        .jm_request(move |client, endpoint| {
+            let chapter_id = request_chapter_id.clone();
+            Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
+        })
+        .await?;
 
     let pages = chapter
         .images
         .iter()
         .enumerate()
         .map(|(index, image)| {
-            let name = extract_filename(image);
+            let name = page_name(image);
             PageInfo {
                 index: index as u32,
                 name,
@@ -68,60 +59,130 @@ pub async fn get_manifest(
 
 /// GET /api/reader/:chapter_id/pages/:page
 pub async fn get_page(
-    State(_app): State<AppState>,
+    State(app): State<AppState>,
     Path((chapter_id, page)): Path<(String, u32)>,
-    Query(params): Query<PageQuery>,
 ) -> Result<Response, ApiError> {
-    let client = JmClient::new()?;
-    let endpoint = params.endpoint.as_deref().unwrap_or(DEFAULT_ENDPOINT);
+    let comic_id = validate_chapter_id(&chapter_id)?;
+    let cache_key = format!("{chapter_id}:{page}");
+
+    if let Some(cached) = app.cache.get(&cache_key).await.map_err(ApiError::Cache)? {
+        return Ok(image_response("image/webp", cached));
+    }
 
     // Get chapter manifest
-    let chapter = client.get_chapter(endpoint, &chapter_id).await?;
+    let request_chapter_id = chapter_id.clone();
+    let chapter = app
+        .jm_request(move |client, endpoint| {
+            let chapter_id = request_chapter_id.clone();
+            Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
+        })
+        .await?;
 
     let image_path = chapter
         .images
         .get(page as usize)
         .ok_or_else(|| ApiError::NotFound("Page index out of range".into()))?;
 
-    // Get img_host
-    let img_host = client.get_img_host(endpoint).await?;
+    let file_name = page_name(image_path);
+    let is_gif = file_name.to_ascii_lowercase().ends_with(".gif");
 
-    // Build full image URL
-    let image_url = format!("{img_host}/media/photos/{chapter_id}/{image_path}");
+    if is_gif {
+        if let Some(cached) = app
+            .cache
+            .get_gif(&cache_key)
+            .await
+            .map_err(ApiError::Cache)?
+        {
+            return Ok(image_response("image/gif", cached));
+        }
+    }
 
-    // Download image
-    let image_data = client.download_image(&image_url).await?;
+    let image_data = download_page_image(&app, &chapter_id, image_path).await?;
 
-    // Descramble image
-    let descrambled = descramble_image(&image_data, &chapter_id)
-        .map_err(|e| ApiError::ImageProcessing(e.to_string()))?;
+    if is_gif {
+        app.cache
+            .put_gif(&cache_key, &image_data)
+            .await
+            .map_err(ApiError::Cache)?;
+        return Ok(image_response("image/gif", image_data));
+    }
 
-    // Encode as WebP
-    let webp_data =
-        encode_webp(&descrambled).map_err(|e| ApiError::ImageProcessing(e.to_string()))?;
+    let original = image::load_from_memory(&image_data)
+        .map_err(|error| ApiError::ImageProcessing(error.to_string()))?;
+    let rgb = if needs_decoding(comic_id, &file_name, false) {
+        decode_scrambled_image(original, comic_id, &file_name)
+    } else {
+        original.to_rgb8()
+    };
+    let webp_data = encode_webp(&rgb);
+    app.cache
+        .put(&cache_key, &webp_data)
+        .await
+        .map_err(ApiError::Cache)?;
 
-    Ok((
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "image/webp")],
-        webp_data,
-    )
-        .into_response())
+    Ok(image_response("image/webp", webp_data))
 }
 
-fn extract_filename(url: &str) -> String {
+fn validate_chapter_id(chapter_id: &str) -> Result<u32, ApiError> {
+    chapter_id
+        .parse::<u32>()
+        .map_err(|_| ApiError::BadRequest("Chapter id must be numeric".into()))
+}
+
+async fn download_page_image(
+    app: &AppState,
+    chapter_id: &str,
+    image_path: &str,
+) -> crate::jm::JmResult<Vec<u8>> {
+    let (endpoint, img_host) =
+        request_with_failover(&app.jm, &app.endpoints, |client, endpoint| {
+            Box::pin(client.get_img_host(endpoint))
+        })
+        .await?;
+    let image_url = format!("{img_host}/media/photos/{chapter_id}/{image_path}");
+
+    match app.jm.download_image(&image_url).await {
+        Ok(data) => Ok(data),
+        Err(_) => {
+            invalidate_img_host(&endpoint).await;
+            let (_, refreshed_host) =
+                request_with_failover(&app.jm, &app.endpoints, |client, endpoint| {
+                    Box::pin(client.get_img_host(endpoint))
+                })
+                .await?;
+            let refreshed_url = format!("{refreshed_host}/media/photos/{chapter_id}/{image_path}");
+            app.jm.download_image(&refreshed_url).await
+        }
+    }
+}
+
+fn page_name(url: &str) -> String {
     url.split('/')
         .last()
         .and_then(|s| s.split('?').next())
-        .and_then(|s| s.rsplit_once('.').map(|(name, _)| name))
         .unwrap_or("page")
         .to_string()
+}
+
+fn image_response(content_type: &'static str, body: Vec<u8>) -> Response {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 // Error handling
 #[derive(Debug)]
 pub enum ApiError {
     Jm(crate::jm::JmError),
+    BadRequest(String),
     ImageProcessing(String),
+    Cache(anyhow::Error),
     NotFound(String),
 }
 
@@ -135,7 +196,9 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             ApiError::Jm(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             ApiError::ImageProcessing(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            ApiError::Cache(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
         };
 

@@ -2,7 +2,11 @@ use super::{auth::JmAuth, crypto, error::JmError, models::*, JmResult};
 use once_cell::sync::OnceCell;
 use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
-use std::{sync::Mutex, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::sync::RwLock;
 
 static HTTP_CLIENT: OnceCell<Mutex<Option<Client>>> = OnceCell::new();
 
@@ -11,6 +15,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230
 /// JM API client
 pub struct JmClient {
     pub(crate) client: Client,
+    jwt_token: Arc<RwLock<Option<String>>>,
 }
 
 impl JmClient {
@@ -18,6 +23,7 @@ impl JmClient {
     pub fn new() -> JmResult<Self> {
         Ok(Self {
             client: get_or_create_client()?,
+            jwt_token: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -31,16 +37,50 @@ impl JmClient {
         let auth = JmAuth::new();
         let url = format!("{endpoint}/{path}");
 
-        let response = self
+        let mut request = self
             .client
             .get(&url)
             .apply_jm_headers(&url, &auth)?
-            .query(query)
+            .query(query);
+        if let Some(jwt) = self.jwt_token.read().await.as_ref() {
+            request = request.header("Authorization", format!("Bearer {jwt}"));
+        }
+        let response = request
             .send()
             .await
             .map_err(|e| JmError::Network(e.to_string()))?;
 
         decode_response(response, &url, &auth).await
+    }
+
+    pub async fn post_form<T: DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        path: &str,
+        fields: &[(String, String)],
+        authenticated: bool,
+    ) -> JmResult<T> {
+        let auth = JmAuth::new();
+        let url = format!("{endpoint}/{path}");
+        let mut request = self
+            .client
+            .post(&url)
+            .apply_jm_headers(&url, &auth)?
+            .form(fields);
+        if authenticated {
+            if let Some(jwt) = self.jwt_token.read().await.as_ref() {
+                request = request.header("Authorization", format!("Bearer {jwt}"));
+            }
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| JmError::Network(error.to_string()))?;
+        decode_response(response, &url, &auth).await
+    }
+
+    pub async fn set_jwt_token(&self, token: Option<String>) {
+        *self.jwt_token.write().await = token;
     }
 
     /// Search comics
@@ -49,6 +89,7 @@ impl JmClient {
         endpoint: &str,
         keyword: &str,
         page: u32,
+        order: &str,
     ) -> JmResult<SearchResult> {
         let payload: SearchPayload = self
             .get(
@@ -57,7 +98,7 @@ impl JmClient {
                 &[
                     ("search_query", keyword.to_string()),
                     ("page", page.to_string()),
-                    ("o", "mr".to_string()), // default order: most recent
+                    ("o", order.to_string()),
                 ],
             )
             .await?;
@@ -70,11 +111,7 @@ impl JmClient {
     }
 
     /// Get comic detail
-    pub async fn get_comic_detail(
-        &self,
-        endpoint: &str,
-        comic_id: &str,
-    ) -> JmResult<ComicDetail> {
+    pub async fn get_comic_detail(&self, endpoint: &str, comic_id: &str) -> JmResult<ComicDetail> {
         let payload: ComicDetailPayload = self
             .get(endpoint, "album", &[("id", comic_id.to_string())])
             .await?;
@@ -205,10 +242,7 @@ async fn decode_response<T: DeserializeOwned>(
     auth: &JmAuth,
 ) -> JmResult<T> {
     if !response.status().is_success() {
-        return Err(JmError::Http(format!(
-            "HTTP {}: {url}",
-            response.status()
-        )));
+        return Err(JmError::Http(format!("HTTP {}: {url}", response.status())));
     }
 
     let body = response

@@ -19,7 +19,6 @@ import {
 } from '@/components/ui/select'
 import { getFavoriteComics } from '@/lib/api/comic'
 import { queryKeys } from '@/lib/query-keys'
-import { useSettingsStore } from '@/stores/settings-store'
 import { useUserStore } from '@/stores/user-store'
 
 export const Route = createFileRoute('/_app/favorites')({
@@ -34,17 +33,15 @@ export const Route = createFileRoute('/_app/favorites')({
 const ALL_FAVORITES_FOLDER = '__all__'
 
 function FavoritesPage() {
-  const endpoint = useSettingsStore(state => state.api)
   const [page, setPage] = useState(1)
   const [folderId, setFolderId] = useState(ALL_FAVORITES_FOLDER)
   const activeFolderId = folderId === ALL_FAVORITES_FOLDER ? '' : folderId
   const favorites = useQuery({
-    queryKey: queryKeys.favorites(endpoint, activeFolderId, page),
+    queryKey: queryKeys.favorites(activeFolderId, page),
     queryFn: () =>
       getFavoriteComics({
         page,
-        folderId: activeFolderId,
-        endpoint
+        folderId: activeFolderId
       }),
     staleTime: 0,
     gcTime: 0,
@@ -97,7 +94,12 @@ function FavoritesPage() {
               emoji="Ò︵Ó"
               title="数据加载失败"
               actions={
-                <Button type="button" variant="outline" size="sm" onClick={() => favorites.refetch()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => favorites.refetch()}
+                >
                   重试
                 </Button>
               }

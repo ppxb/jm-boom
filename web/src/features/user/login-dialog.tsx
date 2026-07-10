@@ -1,10 +1,8 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { LoaderCircleIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -14,8 +12,6 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { queryKeys } from '@/lib/query-keys'
-import { useSettingsStore } from '@/stores/settings-store'
 import { useUserStore } from '@/stores/user-store'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 
@@ -45,19 +41,15 @@ function formatLoginError(error: unknown) {
 }
 
 export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogProps) {
-  const queryClient = useQueryClient()
   const login = useUserStore(state => state.login)
   const isLoggingIn = useUserStore(state => state.isLoggingIn)
-  const endpoint = useSettingsStore(state => state.api)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberLogin, setRememberLogin] = useState(false)
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
       setUsername('')
       setPassword('')
-      setRememberLogin(false)
     }
 
     onOpenChange(nextOpen)
@@ -72,15 +64,7 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
     }
 
     try {
-      await login({ username: nextUsername, password: nextPassword, endpoint, rememberLogin })
-      if (rememberLogin) {
-        queryClient.setQueryData(queryKeys.savedLoginConfig(), {
-          endpoint,
-          username: nextUsername,
-          autoLogin: true,
-          hasPassword: true
-        })
-      }
+      await login({ username: nextUsername, password: nextPassword })
       toast.success('登录成功')
       handleOpenChange(false)
       onLoginSuccess?.()
@@ -121,13 +105,6 @@ export function LoginDialog({ open, onOpenChange, onLoginSuccess }: LoginDialogP
               type="password"
             />
           </Field>
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox
-              checked={rememberLogin}
-              onCheckedChange={checked => setRememberLogin(checked === true)}
-            />
-            自动登录
-          </label>
         </FieldGroup>
         <DialogFooter>
           <Button

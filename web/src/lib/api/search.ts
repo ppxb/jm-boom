@@ -59,14 +59,12 @@ export type SearchComicParams = {
   keyword: string
   page?: number
   extern?: StringMap | null
-  endpoint?: string | null
 }
 
 export async function searchComic({
   keyword,
   page = 1,
-  extern = null,
-  endpoint: _endpoint = null
+  extern = null
 }: SearchComicParams): Promise<SearchResultContract> {
   const normalizedKeyword = keyword.trim()
 
@@ -92,7 +90,8 @@ export async function searchComic({
     redirect_aid?: string | null
   }>('/api/search', {
     keyword: normalizedKeyword,
-    page
+    page,
+    sortBy: Number(extern?.sortBy ?? 1)
   })
 
   // 转换为前端格式
@@ -182,4 +181,3 @@ function emptySearchResult(page: number, extern: StringMap | null): SearchResult
     items
   }
 }
-

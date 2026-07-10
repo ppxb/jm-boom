@@ -1,4 +1,4 @@
-// import { apiClient } from './client'
+import { apiClient } from './client'
 
 export type DownloadChapterRequest = {
   chapterId: string
@@ -9,7 +9,6 @@ export type DownloadChapterRequest = {
 export type EnqueueDownloadRequest = {
   albumId: string
   comicTitle: string
-  endpoint?: string | null
   chapters: DownloadChapterRequest[]
 }
 
@@ -25,7 +24,6 @@ export type DownloadTask = {
   taskId: string
   albumId: string
   comicTitle: string
-  endpoint: string
   chapters: DownloadChapterRequest[]
   status: DownloadTaskStatus
   currentChapterTitle: string
@@ -33,7 +31,6 @@ export type DownloadTask = {
   completedPages: number
   etaSeconds: number | null
   speedBytesPerSecond: number
-  outputDir: string
   error: string | null
   createdAt: number
   startedAt: number | null
@@ -42,44 +39,31 @@ export type DownloadTask = {
 }
 
 export type DownloadTaskListResult = {
-  rootDir: string
   tasks: DownloadTask[]
 }
 
 export async function enqueueComicDownload(
-  _request: EnqueueDownloadRequest
+  request: EnqueueDownloadRequest
 ): Promise<DownloadTaskListResult> {
-  // HTTP 模式不支持下载管理
-  throw new Error('Download management not supported in HTTP mode')
+  return apiClient.post('/api/downloads', request)
 }
 
 export async function listDownloadTasks(): Promise<DownloadTaskListResult> {
-  return {
-    rootDir: '',
-    tasks: []
-  }
+  return apiClient.get('/api/downloads')
 }
 
-export async function cancelDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
-  throw new Error('Download management not supported in HTTP mode')
+export async function cancelDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
+  return apiClient.post(`/api/downloads/${taskId}/cancel`)
 }
 
-export async function pauseDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
-  throw new Error('Download management not supported in HTTP mode')
+export async function pauseDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
+  return apiClient.post(`/api/downloads/${taskId}/pause`)
 }
 
-export async function resumeDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
-  throw new Error('Download management not supported in HTTP mode')
+export async function resumeDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
+  return apiClient.post(`/api/downloads/${taskId}/resume`)
 }
 
-export async function removeDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
-  throw new Error('Download management not supported in HTTP mode')
-}
-
-export async function openDownloadTaskDir(_taskId: string): Promise<void> {
-  throw new Error('Download management not supported in HTTP mode')
-}
-
-export async function openDownloadRootDir(): Promise<void> {
-  throw new Error('Download management not supported in HTTP mode')
+export async function removeDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
+  return apiClient.delete(`/api/downloads/${taskId}`)
 }

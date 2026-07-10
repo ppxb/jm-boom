@@ -15,31 +15,25 @@ export type ReaderPageRequester = (
 
 export function useReaderPageQuery({
   comicId,
-  endpoint,
-  cacheLimitBytes,
   pageIndex,
   enabled
 }: {
   comicId: string
-  endpoint: string
-  cacheLimitBytes: number
   pageIndex: number
   enabled: boolean
 }) {
   const pageQueryKey = useCallback<ReaderPageQueryKeyFactory>(
-    (index: number) => queryKeys.readerPage(endpoint, comicId, cacheLimitBytes, index),
-    [cacheLimitBytes, comicId, endpoint]
+    (index: number) => queryKeys.readerPage(comicId, index),
+    [comicId]
   )
   const requestPage = useCallback<ReaderPageRequester>(
     (index: number, requestOrigin: ReaderPageRequestOrigin) =>
       getComicReadPage({
         readId: comicId,
         index,
-        endpoint,
-        requestOrigin,
-        cacheLimitBytes
+        requestOrigin
       }),
-    [cacheLimitBytes, comicId, endpoint]
+    [comicId]
   )
   const page = useQuery({
     queryKey: pageQueryKey(pageIndex),
@@ -142,10 +136,7 @@ function readerEagerWindowIndexes(currentIndex: number, pageCount: number, pageS
   const normalizedPageStep = Math.max(1, Math.floor(pageStep))
 
   if (normalizedPageStep === 1) {
-    return [
-      currentIndex - 1,
-      currentIndex + 1
-    ].filter(index => index >= 0 && index < pageCount)
+    return [currentIndex - 1, currentIndex + 1].filter(index => index >= 0 && index < pageCount)
   }
 
   const indexes: number[] = []

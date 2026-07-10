@@ -1,9 +1,9 @@
 mod api;
 mod cache;
-mod config;
+mod download;
+mod endpoint;
 mod jm;
 mod reader;
-mod storage;
 
 use axum::{
     extract::DefaultBodyLimit,
@@ -11,11 +11,8 @@ use axum::{
     Router,
 };
 use std::net::SocketAddr;
-use tower_http::{
-    cors::CorsLayer,
-    compression::CompressionLayer,
-    trace::TraceLayer,
-};
+use std::{future::Future, pin::Pin};
+use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -38,13 +35,10 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         // API 路由
         .nest("/api", api::routes())
-
         // 健康检查
         .route("/health", axum::routing::get(health_check))
-
         // 注入状态
         .with_state(state)
-
         // 中间件
         .layer(
             CorsLayer::new()
@@ -75,7 +69,10 @@ async fn health_check() -> &'static str {
 pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub cache: std::sync::Arc<cache::ImageCache>,
-    pub preloader: std::sync::Arc<reader::ChapterPreloader>,
+    pub endpoints: std::sync::Arc<endpoint::EndpointManager>,
+    pub jm: std::sync::Arc<jm::JmClient>,
+    pub session: std::sync::Arc<tokio::sync::RwLock<Option<api::auth::UserProfile>>>,
+    pub downloads: std::sync::Arc<download::DownloadManager>,
 }
 
 impl AppState {
@@ -101,13 +98,54 @@ impl AppState {
         // 初始化缓存
         let cache = std::sync::Arc::new(cache::ImageCache::new(db.clone()).await?);
 
-        // 初始化预加载器
-        let preloader = std::sync::Arc::new(reader::ChapterPreloader::new(cache.clone()));
+        let endpoints = std::sync::Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
+        let jm = std::sync::Arc::new(jm::JmClient::new()?);
+        let session = std::sync::Arc::new(tokio::sync::RwLock::new(None));
+        let downloads = std::sync::Arc::new(
+            download::DownloadManager::new(
+                db.clone(),
+                jm.clone(),
+                endpoints.clone(),
+                cache.clone(),
+            )
+            .await?,
+        );
+
+        let endpoint_manager = endpoints.clone();
+        tokio::spawn(async move {
+            let state = endpoint_manager.refresh().await;
+            tracing::info!(endpoint = %state.current_endpoint, "endpoint probe completed");
+        });
+        let download_manager = downloads.clone();
+        tokio::spawn(async move {
+            download_manager.resume_pending().await;
+        });
 
         Ok(Self {
             db,
             cache,
-            preloader,
+            endpoints,
+            jm,
+            session,
+            downloads,
         })
+    }
+
+    pub async fn jm_request<T, F>(&self, operation: F) -> jm::JmResult<T>
+    where
+        F: for<'a> Fn(
+            &'a jm::JmClient,
+            &'a str,
+        ) -> Pin<Box<dyn Future<Output = jm::JmResult<T>> + Send + 'a>>,
+    {
+        endpoint::request_with_failover(&self.jm, &self.endpoints, operation)
+            .await
+            .map(|(_, value)| value)
+    }
+
+    pub async fn img_host(&self) -> Option<String> {
+        self.jm_request(|client, endpoint| Box::pin(client.get_img_host(endpoint)))
+            .await
+            .ok()
     }
 }

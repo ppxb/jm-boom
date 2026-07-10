@@ -4,7 +4,6 @@ import { useMemo } from 'react'
 import { getComicDetail } from '@/lib/api/comic'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
-import { useSettingsStore } from '@/stores/settings-store'
 import { resolveReaderChapterInfo } from './chapter-utils'
 import type { ReaderSearch } from './types'
 
@@ -15,13 +14,12 @@ export function useReaderChapterInfo({
   comicId: string
   search: ReaderSearch
 }) {
-  const endpoint = useSettingsStore(state => state.api)
   const albumId = safeAlbumId(search.albumId)
   const searchTitle = safeTrim(search.title)
   const searchChapter = safeTrim(search.chapter)
   const albumDetail = useQuery({
-    queryKey: queryKeys.comicDetail(endpoint, albumId),
-    queryFn: () => getComicDetail(albumId, endpoint),
+    queryKey: queryKeys.comicDetail(albumId),
+    queryFn: () => getComicDetail(albumId),
     enabled: albumId.length > 0,
     staleTime: CACHE.READER_STALE_TIME,
     gcTime: CACHE.READER_GC_TIME,
@@ -29,12 +27,12 @@ export function useReaderChapterInfo({
     refetchOnMount: false,
     refetchOnWindowFocus: false
   })
-  const chapters = albumDetail.data?.comic.series ?? []
+  const chapters = albumDetail.data?.comic.series
   const chapterInfo = useMemo(
     () =>
       resolveReaderChapterInfo({
         currentReadId: comicId,
-        chapters,
+        chapters: chapters ?? [],
         fallback: searchChapter
       }),
     [chapters, comicId, searchChapter]

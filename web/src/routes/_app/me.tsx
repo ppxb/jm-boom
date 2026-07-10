@@ -8,7 +8,6 @@ import { PageHeader } from '@/components/page-header'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useMeSignIn } from '@/features/me/use-me-sign-in'
-import { useSettingsStore } from '@/stores/settings-store'
 import { useUserStore } from '@/stores/user-store'
 
 export const Route = createFileRoute('/_app/me')({
@@ -23,9 +22,8 @@ export const Route = createFileRoute('/_app/me')({
 function MePage() {
   const navigate = useNavigate()
   const user = useUserStore(state => state.user)
-  const endpoint = useSettingsStore(state => state.api)
   const logout = useUserStore(state => state.logout)
-  const signInState = useMeSignIn({ user, endpoint })
+  const signInState = useMeSignIn({ user })
   const autoSignInKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -40,7 +38,7 @@ function MePage() {
       return
     }
 
-    const autoSignInKey = `${endpoint ?? ''}:${user.id}:${new Date().toDateString()}`
+    const autoSignInKey = `${user.id}:${new Date().toDateString()}`
 
     if (autoSignInKeyRef.current === autoSignInKey) {
       return
@@ -48,7 +46,7 @@ function MePage() {
 
     autoSignInKeyRef.current = autoSignInKey
     signInState.submitSignIn()
-  }, [endpoint, signInState, user])
+  }, [signInState, user])
 
   if (!user) {
     return null

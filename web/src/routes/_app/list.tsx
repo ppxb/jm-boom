@@ -13,7 +13,6 @@ import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import { rankingCategoryApiValue } from '@/lib/filters'
 import { parsePositivePage, parseStringSearch } from '@/lib/utils'
-import { useSettingsStore } from '@/stores/settings-store'
 import { SectionFilters } from '@/features/section-list/section-filters'
 import {
   isHomeSectionListMode,
@@ -61,12 +60,11 @@ export const Route = createFileRoute('/_app/list')({
 })
 
 function HomeSectionListPage() {
-  const endpoint = useSettingsStore(state => state.api)
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
 
   const query = useQuery({
-    queryKey: queryKeys.homeSectionList(endpoint, search),
+    queryKey: queryKeys.homeSectionList(search),
     queryFn: () =>
       getHomeSectionList({
         mode: search.mode,
@@ -83,8 +81,7 @@ function HomeSectionListPage() {
               ? search.category
               : null,
         week: search.mode === 'weekly' ? search.week : null,
-        order: search.mode === 'ranking' ? search.order : null,
-        endpoint
+        order: search.mode === 'ranking' ? search.order : null
       }),
     staleTime: CACHE.LIST_STALE_TIME,
     gcTime: CACHE.LIST_GC_TIME,
@@ -145,10 +142,7 @@ function HomeSectionListPage() {
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
         <PageBackButton />
-        <PageHeader
-          title={title}
-          description={sectionModeDescription(search.mode)}
-        />
+        <PageHeader title={title} description={sectionModeDescription(search.mode)} />
 
         <SectionFilters
           mode={search.mode}

@@ -6,8 +6,6 @@ import type { ReaderPageQueryKeyFactory, ReaderPageRequester } from './use-reade
 
 export function useReaderPrefetch({
   comicId,
-  endpoint,
-  cacheLimitBytes,
   currentIndex,
   pageCount,
   pageStep,
@@ -16,8 +14,6 @@ export function useReaderPrefetch({
   requestPage
 }: {
   comicId: string
-  endpoint: string
-  cacheLimitBytes: number
   currentIndex: number
   pageCount: number
   pageStep: number
@@ -44,13 +40,7 @@ export function useReaderPrefetch({
       return
     }
 
-    const prefetchKey = [
-      endpoint,
-      cacheLimitBytes,
-      comicId,
-      currentIndex,
-      prefetchIndexes.join(',')
-    ].join('|')
+    const prefetchKey = [comicId, currentIndex, prefetchIndexes.join(',')].join('|')
 
     if (prefetchKeyRef.current === prefetchKey) {
       return
@@ -84,18 +74,7 @@ export function useReaderPrefetch({
     return () => {
       isActive = false
     }
-  }, [
-    cacheLimitBytes,
-    comicId,
-    currentIndex,
-    enabled,
-    endpoint,
-    pageCount,
-    pageStep,
-    pageQueryKey,
-    queryClient,
-    requestPage
-  ])
+  }, [comicId, currentIndex, enabled, pageCount, pageStep, pageQueryKey, queryClient, requestPage])
 }
 
 function readerPrefetchIndexes(

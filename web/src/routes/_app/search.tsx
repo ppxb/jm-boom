@@ -28,7 +28,6 @@ import { searchComic, type ComicListItem } from '@/lib/api/search'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import { parsePositivePage } from '@/lib/utils'
-import { useSettingsStore } from '@/stores/settings-store'
 
 type SearchPageSearch = {
   keyword: string
@@ -55,7 +54,6 @@ const SEARCH_SORT_OPTIONS = [
 ] as const
 
 function SearchPage() {
-  const endpoint = useSettingsStore(state => state.api)
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
   const keyword = search.keyword.trim()
@@ -66,13 +64,12 @@ function SearchPage() {
   }, [search.keyword])
 
   const query = useQuery({
-    queryKey: queryKeys.search(endpoint, keyword, search.page, search.sortBy),
+    queryKey: queryKeys.search(keyword, search.page, search.sortBy),
     queryFn: () =>
       searchComic({
         keyword,
         page: search.page,
-        extern: { sortBy: search.sortBy },
-        endpoint
+        extern: { sortBy: search.sortBy }
       }),
     enabled: keyword.length > 0,
     staleTime: CACHE.LIST_STALE_TIME,
@@ -124,10 +121,7 @@ function SearchPage() {
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
         <PageBackButton />
-        <PageHeader
-          title="搜索"
-          description="按关键词查找漫画作品"
-        />
+        <PageHeader title="搜索" description="按关键词查找漫画作品" />
 
         <div className="mb-4 flex items-center justify-between gap-3">
           <form className="w-full max-w-xl" onSubmit={submitSearch}>

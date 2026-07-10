@@ -15,57 +15,65 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import type { ApiEndpointProbe } from '@/lib/api/setting'
+import type { ApiEndpointProbe, EndpointState } from '@/lib/api/setting'
 import { cn } from '@/lib/utils'
 import { formatEndpoint } from './use-endpoint-options'
 import { SettingRow, SettingsSection } from './shared'
 
+const AUTO_ENDPOINT_VALUE = '__auto__'
+
 export function ApiEndpointSection({
-  endpoint,
-  endpointOptions,
-  isDiscovering,
-  isRefreshingEndpoints,
+  state,
+  isLoading,
+  isRefreshing,
+  isChanging,
   onEndpointChange,
   onRefresh
 }: {
-  endpoint: string
-  endpointOptions: ApiEndpointProbe[]
-  isDiscovering: boolean
-  isRefreshingEndpoints: boolean
-  onEndpointChange: (endpoint: string) => void
+  state: EndpointState | undefined
+  isLoading: boolean
+  isRefreshing: boolean
+  isChanging: boolean
+  onEndpointChange: (endpoint: string | null) => void
   onRefresh: () => void
 }) {
+  const value =
+    state?.mode === 'manual' && state.selectedEndpoint
+      ? state.selectedEndpoint
+      : AUTO_ENDPOINT_VALUE
+  const activeProbe = state?.endpoints.find(item => item.endpoint === state.currentEndpoint)
+
   return (
     <SettingsSection icon={<NetworkIcon className="size-4" />} title="网络">
-      <SettingRow title="API 接口" description="测速后自动优选延迟最低的可用接口">
+      <SettingRow title="上游接口" description="由服务端统一测速、选择并在故障时切换接口">
         <div className="flex items-center gap-2">
-          <Select value={endpoint} onValueChange={onEndpointChange}>
+          <Select
+            value={value}
+            disabled={isLoading || isChanging}
+            onValueChange={next => onEndpointChange(next === AUTO_ENDPOINT_VALUE ? null : next)}
+          >
             <SelectTrigger>
               <SelectValue>
-                <EndpointDisplay
-                  endpoint={endpoint}
-                  probe={endpointOptions.find(option => option.endpoint === endpoint)}
-                  isDiscovering={isDiscovering}
-                  isRefreshingEndpoints={isRefreshingEndpoints}
-                  compact
-                />
+                {value === AUTO_ENDPOINT_VALUE ? (
+                  <span className="flex items-center gap-2">
+                    <span>自动优选</span>
+                    {state?.currentEndpoint ? (
+                      <span className="text-xs text-muted-foreground">
+                        {formatEndpoint(state.currentEndpoint)}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : (
+                  <EndpointDisplay endpoint={value} probe={activeProbe} />
+                )}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                {endpointOptions.map(option => (
-                  <SelectItem
-                    key={option.endpoint}
-                    value={option.endpoint}
-                    textValue={formatEndpoint(option.endpoint)}
-                    className="py-2.5"
-                  >
-                    <EndpointDisplay
-                      endpoint={option.endpoint}
-                      probe={option}
-                      isDiscovering={isDiscovering}
-                      isRefreshingEndpoints={isRefreshingEndpoints}
-                    />
+                <SelectItem value={AUTO_ENDPOINT_VALUE}>自动优选</SelectItem>
+                {state?.endpoints.map(option => (
+                  <SelectItem key={option.endpoint} value={option.endpoint}>
+                    <EndpointDisplay endpoint={option.endpoint} probe={option} />
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -75,12 +83,11 @@ export function ApiEndpointSection({
             type="button"
             variant="outline"
             size="icon"
-            disabled={isDiscovering || isRefreshingEndpoints}
+            disabled={isLoading || isRefreshing}
             onClick={onRefresh}
+            aria-label="重新测速"
           >
-            <RefreshCwIcon
-              className={cn('size-4', (isDiscovering || isRefreshingEndpoints) && 'animate-spin')}
-            />
+            <RefreshCwIcon className={cn('size-4', isRefreshing && 'animate-spin')} />
           </Button>
         </div>
       </SettingRow>
@@ -88,79 +95,28 @@ export function ApiEndpointSection({
   )
 }
 
-function EndpointDisplay({
-  endpoint,
-  probe,
-  isDiscovering,
-  isRefreshingEndpoints,
-  compact = false
-}: {
-  endpoint: string
-  probe: ApiEndpointProbe | undefined
-  isDiscovering: boolean
-  isRefreshingEndpoints?: boolean
-  compact?: boolean
-}) {
+function EndpointDisplay({ endpoint, probe }: { endpoint: string; probe?: ApiEndpointProbe }) {
   return (
     <span className="flex w-full min-w-0 items-center justify-between gap-2">
       <span className="truncate">{formatEndpoint(endpoint)}</span>
-      <EndpointHealthBadge
-        probe={probe}
-        isDiscovering={isDiscovering}
-        isRefreshingEndpoints={isRefreshingEndpoints}
-        compact={compact}
-      />
-    </span>
-  )
-}
-
-function EndpointHealthBadge({
-  probe,
-  isDiscovering,
-  isRefreshingEndpoints = false,
-  compact = false
-}: {
-  probe: ApiEndpointProbe | undefined
-  isDiscovering: boolean
-  isRefreshingEndpoints?: boolean
-  compact?: boolean
-}) {
-  if (isDiscovering || isRefreshingEndpoints) {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        <LoaderCircleIcon className="size-3 animate-spin" />
-        {compact ? null : '探测中'}
-      </span>
-    )
-  }
-
-  if (probe && !probe.available && probe.error) {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-destructive">
-        <XCircleIcon className="size-3" />
-        {compact ? '失败' : '不可用'}
-      </span>
-    )
-  }
-
-  if (!probe || probe.latencyMs == null) {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        <XCircleIcon className="size-3" />
-        {compact ? '未测' : '未测试'}
-      </span>
-    )
-  }
-
-  return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center gap-1 text-xs',
-        latencyTone(probe.latencyMs)
+      {probe?.available && probe.latencyMs != null ? (
+        <span
+          className={cn('inline-flex items-center gap-1 text-xs', latencyTone(probe.latencyMs))}
+        >
+          <CheckCircle2Icon className="size-3" />
+          {probe.latencyMs} ms
+        </span>
+      ) : probe?.error ? (
+        <span className="inline-flex items-center gap-1 text-xs text-destructive">
+          <XCircleIcon className="size-3" />
+          不可用
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <LoaderCircleIcon className="size-3" />
+          未测试
+        </span>
       )}
-    >
-      <CheckCircle2Icon className="size-3" />
-      {probe.latencyMs} ms
     </span>
   )
 }

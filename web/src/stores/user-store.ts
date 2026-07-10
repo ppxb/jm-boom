@@ -9,22 +9,15 @@ import {
 
 type UserStore = {
   user: UserProfile | null
-  endpoint: string | null
   isInitializing: boolean
   isLoggingIn: boolean
   initialize: () => Promise<void>
-  login: (params: {
-    username: string
-    password: string
-    endpoint?: string | null
-    rememberLogin?: boolean
-  }) => Promise<UserProfile>
+  login: (params: { username: string; password: string }) => Promise<UserProfile>
   logout: () => Promise<void>
 }
 
 export const useUserStore = create<UserStore>()(set => ({
   user: null,
-  endpoint: null,
   isInitializing: false,
   isLoggingIn: false,
   initialize: async () => {
@@ -34,23 +27,21 @@ export const useUserStore = create<UserStore>()(set => ({
       const result = await getCurrentSession()
       set({
         user: result?.user ?? null,
-        endpoint: result?.endpoint ?? null,
         isInitializing: false
       })
     } catch (error) {
-      set({ user: null, endpoint: null, isInitializing: false })
+      set({ user: null, isInitializing: false })
       throw error
     }
   },
-  login: async ({ username, password, endpoint = null, rememberLogin = false }) => {
+  login: async ({ username, password }) => {
     set({ isLoggingIn: true })
 
     try {
-      const result = await loginRequest({ username, password, endpoint, rememberLogin })
+      const result = await loginRequest({ username, password })
 
       set({
         user: result.user,
-        endpoint: result.endpoint,
         isLoggingIn: false
       })
 
@@ -62,6 +53,6 @@ export const useUserStore = create<UserStore>()(set => ({
   },
   logout: async () => {
     await clearSession()
-    set({ user: null, endpoint: null })
+    set({ user: null })
   }
 }))

@@ -5,8 +5,6 @@ import { toast } from 'sonner'
 import {
   cancelDownloadTask,
   listDownloadTasks,
-  openDownloadRootDir,
-  openDownloadTaskDir,
   pauseDownloadTask,
   removeDownloadTask,
   resumeDownloadTask,
@@ -38,14 +36,6 @@ export function useDownloadTasks() {
   const pauseTask = useTaskMutation(pauseDownloadTask, '已暂停下载任务')
   const resumeTask = useTaskMutation(resumeDownloadTask, '已加入下载队列')
   const removeTask = useTaskMutation(removeDownloadTask, '已删除下载任务和文件')
-  const openTaskDir = useMutation({
-    mutationFn: openDownloadTaskDir,
-    onError: showError
-  })
-  const openRootDir = useMutation({
-    mutationFn: openDownloadRootDir,
-    onError: showError
-  })
   const taskList = tasks.data?.tasks ?? EMPTY_DOWNLOAD_TASKS
   const filterCounts = useMemo(() => getFilterCounts(taskList), [taskList])
   const filteredTasks = useMemo(
@@ -63,9 +53,7 @@ export function useDownloadTasks() {
     cancelTask,
     pauseTask,
     resumeTask,
-    removeTask,
-    openTaskDir,
-    openRootDir
+    removeTask
   }
 }
 

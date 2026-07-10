@@ -27,7 +27,6 @@ import { RelatedPanel } from './related'
 import { ComicDetailSkeleton } from './shared'
 import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
-import { useSettingsStore } from '@/stores/settings-store'
 import {
   ComicDownloadDrawer,
   toDownloadChapterOptions,
@@ -36,10 +35,9 @@ import {
 import { enqueueComicDownload } from '@/lib/api/download'
 
 export function ComicDetailPage({ comicId }: { comicId: string }) {
-  const endpoint = useSettingsStore(state => state.api)
   const detail = useQuery({
-    queryKey: queryKeys.comicDetail(endpoint, comicId),
-    queryFn: () => getComicDetail(comicId, endpoint),
+    queryKey: queryKeys.comicDetail(comicId),
+    queryFn: () => getComicDetail(comicId),
     staleTime: CACHE.DETAIL_STALE_TIME,
     gcTime: CACHE.DETAIL_GC_TIME,
     refetchOnMount: false,
@@ -75,7 +73,6 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
 }
 
 function ComicDetailView({ comic }: { comic: ComicDetail }) {
-  const endpoint = useSettingsStore(state => state.api)
   const queryClient = useQueryClient()
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
@@ -108,8 +105,8 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
 
     void queryClient
       .prefetchQuery({
-        queryKey: queryKeys.readerManifest(endpoint, readId),
-        queryFn: () => getComicReadManifest({ readId, endpoint }),
+        queryKey: queryKeys.readerManifest(readId),
+        queryFn: () => getComicReadManifest({ readId }),
         staleTime: CACHE.READER_STALE_TIME,
         gcTime: CACHE.READER_GC_TIME
       })
@@ -122,18 +119,17 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     return () => {
       isActive = false
     }
-  }, [endpoint, queryClient, startReadingTarget.readId])
+  }, [queryClient, startReadingTarget.readId])
 
   const favoriteMutation = useMutation({
     mutationFn: async () =>
       toggleComicFavorite({
         comicId: comic.id,
-        currentFavorite: comic.isFavorite,
-        endpoint
+        currentFavorite: comic.isFavorite
       }),
     onSuccess: result => {
       queryClient.setQueryData<ComicDetailResult | undefined>(
-        queryKeys.comicDetail(endpoint, comic.id),
+        queryKeys.comicDetail(comic.id),
         current => {
           if (current == null) {
             return current
@@ -159,7 +155,6 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
       enqueueComicDownload({
         albumId,
         comicTitle: comic.title,
-        endpoint,
         chapters
       }),
     onSuccess: result => {
@@ -172,8 +167,8 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     }
   })
   const commentsQuery = useInfiniteQuery({
-    queryKey: queryKeys.comicComments(endpoint, comic.id),
-    queryFn: ({ pageParam }) => getComicComments({ comicId: comic.id, page: pageParam, endpoint }),
+    queryKey: queryKeys.comicComments(comic.id),
+    queryFn: ({ pageParam }) => getComicComments({ comicId: comic.id, page: pageParam }),
     initialPageParam: 1,
     enabled: isCommentsOpen,
     staleTime: CACHE.COMMENTS_STALE_TIME,

@@ -27,7 +27,6 @@ import {
   RANKING_ORDER_OPTIONS
 } from '@/lib/filters'
 import { parsePositivePage, parseStringSearch } from '@/lib/utils'
-import { useSettingsStore } from '@/stores/settings-store'
 
 type RankingSearch = {
   page: number
@@ -45,21 +44,19 @@ export const Route = createFileRoute('/_app/ranking')({
 })
 
 function RankingPage() {
-  const endpoint = useSettingsStore(state => state.api)
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
   const categories = rankingCategoryOptions()
 
   const query = useQuery({
-    queryKey: queryKeys.ranking(endpoint, search.page, search.category, search.order),
+    queryKey: queryKeys.ranking(search.page, search.category, search.order),
     queryFn: () =>
       getHomeSectionList({
         mode: 'ranking',
         page: search.page,
         sectionTitle: '排行榜',
         category: rankingCategoryApiValue(search.category),
-        order: search.order,
-        endpoint
+        order: search.order
       }),
     staleTime: CACHE.LIST_STALE_TIME,
     gcTime: CACHE.LIST_GC_TIME,

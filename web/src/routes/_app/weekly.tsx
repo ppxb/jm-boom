@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { CalendarDaysIcon } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import { BackTopButton } from '@/components/back-top-button'
 import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
@@ -22,7 +22,6 @@ import { getWeekFilters, getWeekItems } from '@/lib/api/home'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import { parseStringSearch } from '@/lib/utils'
-import { useSettingsStore } from '@/stores/settings-store'
 
 type WeeklySearch = {
   categoryId: string
@@ -38,20 +37,19 @@ export const Route = createFileRoute('/_app/weekly')({
 })
 
 function WeeklyPage() {
-  const endpoint = useSettingsStore(state => state.api)
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
 
   const filters = useQuery({
-    queryKey: queryKeys.weekFilters(endpoint),
-    queryFn: () => getWeekFilters(endpoint),
+    queryKey: queryKeys.weekFilters(),
+    queryFn: getWeekFilters,
     staleTime: CACHE.FILTERS_STALE_TIME,
     gcTime: CACHE.FILTERS_GC_TIME,
     refetchOnMount: false,
     refetchOnWindowFocus: false
   })
-  const categories = filters.data?.categories ?? []
-  const types = filters.data?.types ?? []
+  const categories = useMemo(() => filters.data?.categories ?? [], [filters.data?.categories])
+  const types = useMemo(() => filters.data?.types ?? [], [filters.data?.types])
 
   useEffect(() => {
     if (filters.data == null) {
@@ -84,12 +82,11 @@ function WeeklyPage() {
   const canLoadItems = selectedCategoryId.length > 0 && selectedTypeId.length > 0
 
   const items = useQuery({
-    queryKey: queryKeys.weekItems(endpoint, selectedCategoryId, selectedTypeId),
+    queryKey: queryKeys.weekItems(selectedCategoryId, selectedTypeId),
     queryFn: () =>
       getWeekItems({
         categoryId: selectedCategoryId,
-        typeId: selectedTypeId,
-        endpoint
+        typeId: selectedTypeId
       }),
     enabled: canLoadItems,
     staleTime: CACHE.LIST_STALE_TIME,
@@ -180,7 +177,12 @@ function WeeklyPage() {
                   emoji="Ò︵Ó"
                   title="数据加载失败"
                   actions={
-                    <Button type="button" variant="outline" size="sm" onClick={() => items.refetch()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => items.refetch()}
+                    >
                       重试
                     </Button>
                   }

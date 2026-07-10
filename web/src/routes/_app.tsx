@@ -15,8 +15,6 @@ import { toast } from 'sonner'
 
 import { FloatingNav, type FloatingNavItem } from '@/components/floating-nav'
 import { LoginDialog } from '@/features/user/login-dialog'
-import { configureNetworkProxy } from '@/lib/api/setting'
-import { useSettingsStore } from '@/stores/settings-store'
 import { useUserStore } from '@/stores/user-store'
 
 export const Route = createFileRoute('/_app')({
@@ -39,10 +37,6 @@ function AppRoute() {
   const navigate = useNavigate()
   const user = useUserStore(state => state.user)
   const initializeUser = useUserStore(state => state.initialize)
-  const proxyMode = useSettingsStore(state => state.proxyMode)
-  const proxyHost = useSettingsStore(state => state.proxyHost)
-  const proxyPort = useSettingsStore(state => state.proxyPort)
-  const hasConfiguredProxyRef = useRef(false)
   const hasInitializedUserRef = useRef(false)
 
   const [isLoginOpen, setIsLoginOpen] = useState(false)
@@ -57,40 +51,18 @@ function AppRoute() {
     .find(item => (item.to === '/' ? pathname === '/' : pathname.startsWith(item.to)))?.id
 
   useEffect(() => {
-    function initializeUserOnce() {
-      if (hasInitializedUserRef.current) {
-        return
-      }
-
-      hasInitializedUserRef.current = true
-      initializeUser().catch(error => {
-        console.error('Failed to restore user session', error)
-        toast.error('自动登录失败', {
-          description: error instanceof Error ? error.message : String(error)
-        })
-      })
-    }
-
-    async function syncNetworkProxy() {
-      try {
-        await configureNetworkProxy({ mode: proxyMode, host: proxyHost, port: proxyPort })
-      } catch (error) {
-        console.error('Failed to configure network proxy', error)
-      } finally {
-        initializeUserOnce()
-      }
-    }
-
-    if (!hasConfiguredProxyRef.current) {
-      hasConfiguredProxyRef.current = true
-      syncNetworkProxy()
+    if (hasInitializedUserRef.current) {
       return
     }
 
-    const timeoutId = window.setTimeout(syncNetworkProxy, 500)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [initializeUser, proxyHost, proxyMode, proxyPort])
+    hasInitializedUserRef.current = true
+    initializeUser().catch(error => {
+      console.error('Failed to restore user session', error)
+      toast.error('自动登录失败', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+    })
+  }, [initializeUser])
 
   return (
     <div className="relative min-h-screen">

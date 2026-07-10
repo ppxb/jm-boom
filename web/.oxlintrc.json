@@ -8,5 +8,5 @@
   "env": {
     "builtin": true
   },
-  "ignorePatterns": ["node_modules", "src-tauri", "**/routeTree.gen.ts"]
+  "ignorePatterns": ["node_modules", "**/routeTree.gen.ts"]
 }

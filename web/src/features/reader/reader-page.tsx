@@ -65,7 +65,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   } = useReaderPages(comicId, Number.isNaN(initialPageIndex) ? 0 : initialPageIndex, pageStep)
   const availableNextChapter = useMemo(
     () => nextChapter ?? resolveSearchNextChapter(search, comicId),
-    [comicId, nextChapter, search.nextChapter, search.nextId]
+    [comicId, nextChapter, search]
   )
 
   useReaderHistorySync({

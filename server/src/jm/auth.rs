@@ -27,10 +27,35 @@ impl Default for JmAuth {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SettingAuth {
+    pub ts: String,
+    pub token: String,
+    pub tokenparam: String,
+}
+
+impl SettingAuth {
+    pub fn current() -> Self {
+        let ts = current_seconds_timestamp();
+        Self {
+            token: md5_hex(&format!("{ts}{API_SECRET}")),
+            tokenparam: format!("{ts},{API_VERSION}"),
+            ts,
+        }
+    }
+}
+
 fn current_millis_timestamp() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn current_seconds_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_string())
 }
 

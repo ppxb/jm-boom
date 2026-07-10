@@ -4,11 +4,7 @@ const JM_SCRAMBLE_ID: u32 = 220_980;
 const SCRAMBLED_WEBP_QUALITY: f32 = 75.0;
 
 /// Decode scrambled JM image
-pub fn decode_scrambled_image(
-    original: DynamicImage,
-    comic_id: u32,
-    page_name: &str,
-) -> RgbImage {
+pub fn decode_scrambled_image(original: DynamicImage, comic_id: u32, page_name: &str) -> RgbImage {
     let rgb = original.to_rgb8();
     let seed = segmentation_count(comic_id, page_name);
 

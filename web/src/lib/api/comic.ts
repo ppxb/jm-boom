@@ -36,12 +36,10 @@ export type ComicDetail = {
 }
 
 export type ComicDetailResult = {
-  endpoint: string
   comic: ComicDetail
 }
 
 export type FavoriteToggleResult = {
-  endpoint: string
   favorited: boolean
 }
 
@@ -51,7 +49,6 @@ export type FavoriteFolder = {
 }
 
 export type FavoriteListResult = {
-  endpoint: string
   page: number
   total: number
   hasMore: boolean
@@ -76,16 +73,12 @@ export type ComicComment = {
 }
 
 export type ComicCommentsResult = {
-  endpoint: string
   page: number
   total: number
   comments: ComicComment[]
 }
 
-export async function getComicDetail(
-  comicId: string,
-  endpoint: string | null = null
-): Promise<ComicDetailResult> {
+export async function getComicDetail(comicId: string): Promise<ComicDetailResult> {
   const result = await apiClient.get<{
     id: string
     name: string
@@ -114,7 +107,6 @@ export async function getComicDetail(
   }>(`/api/comics/${comicId}`)
 
   return {
-    endpoint: endpoint || '',
     comic: {
       id: result.id,
       title: result.name,
@@ -148,54 +140,33 @@ export async function getComicDetail(
 }
 
 export async function getComicComments({
-  comicId: _comicId,
-  page = 1,
-  endpoint = null
+  comicId,
+  page = 1
 }: {
   comicId: string
   page?: number
-  endpoint?: string | null
 }): Promise<ComicCommentsResult> {
-  // TODO: 后端未实现评论 API
-  return {
-    endpoint: endpoint || '',
-    page,
-    total: 0,
-    comments: []
-  }
+  return apiClient.get(`/api/comics/${comicId}/comments`, { page })
 }
 
 export async function toggleComicFavorite({
-  comicId: _comicId,
-  currentFavorite: _currentFavorite,
-  endpoint: _endpoint = null
+  comicId,
+  currentFavorite
 }: {
   comicId: string
   currentFavorite: boolean
-  endpoint?: string | null
 }): Promise<FavoriteToggleResult> {
-  // TODO: 后端未实现收藏 API
-  throw new Error('Favorite toggle not implemented in HTTP mode')
+  return apiClient.post(`/api/comics/${comicId}/favorite`, { currentFavorite })
 }
 
 export async function getFavoriteComics({
   page = 1,
-  folderId: _folderId = '',
-  order: _order = 'mr',
-  endpoint = null
+  folderId = '',
+  order = 'mr'
 }: {
   page?: number
   folderId?: string
   order?: string
-  endpoint?: string | null
 } = {}): Promise<FavoriteListResult> {
-  // TODO: 后端未实现收藏列表 API
-  return {
-    endpoint: endpoint || '',
-    page,
-    total: 0,
-    hasMore: false,
-    folders: [],
-    items: []
-  }
+  return apiClient.get('/api/favorites', { page, folderId, order })
 }
