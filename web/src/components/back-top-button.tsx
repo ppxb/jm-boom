@@ -16,8 +16,8 @@ export function BackTopButton() {
     <Button
       type="button"
       variant="outline"
-      size="icon"
-      className="fixed right-4 bottom-30 z-40 bg-background/80 backdrop-blur sm:right-6 sm:bottom-22"
+      size="icon-lg"
+      className="fixed right-6 bottom-32 z-40 bg-background/80 backdrop-blur"
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
     >
       <ChevronUpIcon className="size-4" />

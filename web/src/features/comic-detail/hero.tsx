@@ -196,9 +196,7 @@ function PillGroup({
           <Link
             to="/explore/search"
             search={{
-              keyword: item,
-              page: 1,
-              sortBy: 1
+              q: item
             }}
           >
             {item}
@@ -230,9 +228,7 @@ function SearchLinks({
           <Link
             to="/explore/search"
             search={{
-              keyword: item,
-              page: 1,
-              sortBy: 1
+              q: item
             }}
             className="max-w-md truncate underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >

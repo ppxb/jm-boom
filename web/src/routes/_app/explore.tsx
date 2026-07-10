@@ -38,17 +38,13 @@ function ExploreLayout() {
       <header className="space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold sm:text-3xl">探索</h1>
-            <p className="mt-2 text-sm text-muted-foreground">发现值得阅读的作品</p>
+            <h1 className="text-4xl font-bold">探索</h1>
+            <p className="mt-2 text-muted-foreground">发现值得阅读的作品</p>
           </div>
 
           {!isSearchPage ? (
             <Button asChild variant="outline" size="icon-lg">
-              <Link
-                to="/explore/search"
-                search={{ keyword: '', page: 1, sortBy: 1 }}
-                aria-label="搜索漫画"
-              >
+              <Link to="/explore/search">
                 <SearchIcon className="size-5" />
               </Link>
             </Button>

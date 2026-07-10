@@ -25,22 +25,17 @@ import {
 import { searchComic, type ComicListItem } from '@/lib/api/search'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
-import { parsePositivePage } from '@/lib/utils'
 
 type SearchPageSearch = {
-  keyword: string
-  page: number
-  sortBy: SearchSortBy
+  q?: string
+  page?: number
+  sort?: SearchSortBy
 }
 
 type SearchSortBy = 1 | 2 | 3 | 4
 
 export const Route = createFileRoute('/_app/explore/search')({
-  validateSearch: (search: Record<string, unknown>): SearchPageSearch => ({
-    keyword: typeof search.keyword === 'string' ? search.keyword : '',
-    page: parsePositivePage(search.page),
-    sortBy: parseSortBy(search.sortBy)
-  }),
+  validateSearch: validateSearchParams,
   component: SearchPage
 })
 
@@ -54,20 +49,22 @@ const SEARCH_SORT_OPTIONS = [
 function SearchPage() {
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
-  const keyword = search.keyword.trim()
-  const [draftKeyword, setDraftKeyword] = useState(search.keyword)
+  const keyword = search.q ?? ''
+  const page = search.page ?? 1
+  const sortBy = search.sort ?? 1
+  const [draftKeyword, setDraftKeyword] = useState(keyword)
 
   useEffect(() => {
-    setDraftKeyword(search.keyword)
-  }, [search.keyword])
+    setDraftKeyword(keyword)
+  }, [keyword])
 
   const query = useQuery({
-    queryKey: queryKeys.search(keyword, search.page, search.sortBy),
+    queryKey: queryKeys.search(keyword, page, sortBy),
     queryFn: () =>
       searchComic({
         keyword,
-        page: search.page,
-        extern: { sortBy: search.sortBy }
+        page,
+        extern: { sortBy }
       }),
     enabled: keyword.length > 0,
     staleTime: CACHE.LIST_STALE_TIME,
@@ -83,23 +80,17 @@ function SearchPage() {
     const nextKeyword = draftKeyword.trim()
 
     void navigate({
-      search: {
-        keyword: nextKeyword,
-        page: 1,
-        sortBy: search.sortBy
-      }
+      search: createSearchParams({ q: nextKeyword, sort: sortBy })
     })
   }
 
   function updateSortBy(value: string) {
+    const nextSort = parseSortBy(value)
+
     void navigate({
       replace: true,
       resetScroll: false,
-      search: {
-        keyword: search.keyword,
-        page: 1,
-        sortBy: parseSortBy(value)
-      }
+      search: createSearchParams({ q: keyword, sort: nextSort })
     })
   }
 
@@ -107,11 +98,7 @@ function SearchPage() {
     void navigate({
       replace: true,
       resetScroll: false,
-      search: {
-        keyword: search.keyword,
-        page,
-        sortBy: search.sortBy
-      }
+      search: createSearchParams({ q: keyword, page, sort: sortBy })
     })
   }
 
@@ -139,7 +126,7 @@ function SearchPage() {
           </InputGroup>
         </form>
 
-        <Select value={String(search.sortBy)} onValueChange={updateSortBy}>
+        <Select value={String(sortBy)} onValueChange={updateSortBy} disabled={keyword.length === 0}>
           <SelectTrigger className="w-full sm:w-auto">
             <ListFilterIcon className="size-4 text-muted-foreground" />
             <SelectValue placeholder="选择排序" />
@@ -161,7 +148,7 @@ function SearchPage() {
         isError={query.isError}
         isLoading={query.isLoading}
         items={items}
-        page={search.page}
+        page={page}
         hasMore={!paging?.hasReachedMax}
         disabled={query.isFetching}
         onRetry={() => query.refetch()}
@@ -253,8 +240,44 @@ function searchItemAuthor(item: ComicListItem) {
   return author || String(item.raw.author ?? '')
 }
 
+function validateSearchParams(search: Record<string, unknown>): SearchPageSearch {
+  return createSearchParams({
+    q: typeof search.q === 'string' ? search.q : '',
+    page: parseOptionalPage(search.page),
+    sort: parseSortBy(search.sort)
+  })
+}
+
+function createSearchParams({
+  q,
+  page = 1,
+  sort = 1
+}: {
+  q: string
+  page?: number
+  sort?: SearchSortBy
+}): SearchPageSearch {
+  const keyword = q.trim()
+
+  if (keyword.length === 0) {
+    return {}
+  }
+
+  return {
+    q: keyword,
+    ...(page > 1 ? { page } : {}),
+    ...(sort !== 1 ? { sort } : {})
+  }
+}
+
+function parseOptionalPage(value: unknown) {
+  const page = Number(value)
+
+  return Number.isSafeInteger(page) && page > 1 ? page : undefined
+}
+
 function parseSortBy(value: unknown): SearchSortBy {
-  const sortBy = Number.parseInt(String(value ?? ''), 10)
+  const sortBy = Number(value)
 
   return sortBy === 2 || sortBy === 3 || sortBy === 4 ? sortBy : 1
 }
