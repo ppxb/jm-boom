@@ -1,16 +1,16 @@
-mod auth;
 mod chapter;
 mod client;
 mod crypto;
 mod error;
 mod models;
 mod setting;
+mod signature;
 
-pub use auth::SettingAuth;
 pub use client::JmClient;
 pub use error::{JmError, JmResult};
 pub use models::*;
 pub(crate) use setting::invalidate_img_host;
+pub(crate) use signature::SettingRequestSignature;
 
 // API constants
 pub(crate) const API_VERSION: &str = "2.0.20";

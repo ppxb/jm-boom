@@ -86,8 +86,6 @@ export async function searchComic({
       tags: string[]
       likes: number
       views: number
-      is_favorite: boolean
-      liked: boolean
     }>
     redirect_aid?: string | null
   }>('/api/search', {

@@ -1,4 +1,4 @@
-use super::{crypto, error::JmError, JmResult, SettingAuth, API_SECRET};
+use super::{crypto, error::JmError, JmResult, SettingRequestSignature, API_SECRET};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::{
@@ -67,15 +67,15 @@ impl super::client::JmClient {
     }
 
     async fn fetch_img_host(&self, endpoint: &str) -> JmResult<String> {
-        let auth = SettingAuth::current();
+        let signature = SettingRequestSignature::current();
         let url = format!("{endpoint}/setting");
         let response = self
             .client
             .get(&url)
             .header("accept", "application/json")
-            .header("token", &auth.token)
-            .header("tokenparam", &auth.tokenparam)
-            .query(&[("app_img_shunt", "1"), ("t", auth.ts.as_str())])
+            .header("token", &signature.token)
+            .header("tokenparam", &signature.tokenparam)
+            .query(&[("app_img_shunt", "1"), ("t", signature.ts.as_str())])
             .send()
             .await
             .map_err(|error| JmError::Network(error.to_string()))?;
@@ -102,7 +102,7 @@ impl super::client::JmClient {
         let value = envelope.data.ok_or(JmError::MissingData)?;
         let setting = match value {
             serde_json::Value::String(encrypted) => {
-                let decrypted = decrypt_setting_data(&encrypted, &auth.ts)?;
+                let decrypted = decrypt_setting_data(&encrypted, &signature.ts)?;
                 serde_json::from_str::<SettingData>(&decrypted)
                     .map_err(|error| JmError::Decode(format!("Invalid setting data: {error}")))?
             }

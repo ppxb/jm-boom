@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { getComicDetail } from '@/lib/api/comic'
+import { SINGLE_CHAPTER_TITLE } from '@/lib/comic'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import { resolveReaderChapterInfo } from './chapter-utils'
@@ -14,7 +15,7 @@ export function useReaderChapterInfo({
   comicId: string
   search: ReaderSearch
 }) {
-  const albumId = safeAlbumId(search.albumId)
+  const albumId = safeAlbumId(search.albumId) || comicId
   const albumDetail = useQuery({
     queryKey: queryKeys.comicDetail(albumId),
     queryFn: () => getComicDetail(albumId),
@@ -37,13 +38,16 @@ export function useReaderChapterInfo({
   const title = safeTrim(albumDetail.data?.comic.title)
   const author = albumDetail.data?.comic.author.join(' / ') ?? ''
   const coverUrl = albumDetail.data?.comic.image ?? ''
+  const chapterTitle =
+    chapterInfo.chapterTitle ||
+    (albumDetail.data?.comic.series.length === 0 ? SINGLE_CHAPTER_TITLE : '')
 
   return {
     albumId,
     title,
     author,
     coverUrl,
-    chapter: chapterInfo.chapterTitle,
+    chapter: chapterTitle,
     chapters: chapterInfo.chapters,
     previousChapter: chapterInfo.previousChapter,
     nextChapter: chapterInfo.nextChapter

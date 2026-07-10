@@ -1,12 +1,8 @@
-use super::{auth::JmAuth, crypto, error::JmError, models::*, JmResult};
+use super::{crypto, error::JmError, models::*, signature::JmRequestSignature, JmResult};
 use once_cell::sync::OnceCell;
 use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-use tokio::sync::RwLock;
+use std::{sync::Mutex, time::Duration};
 
 static HTTP_CLIENT: OnceCell<Mutex<Option<Client>>> = OnceCell::new();
 
@@ -15,7 +11,6 @@ const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230
 /// JM API client
 pub struct JmClient {
     pub(crate) client: Client,
-    jwt_token: Arc<RwLock<Option<String>>>,
 }
 
 impl JmClient {
@@ -23,7 +18,6 @@ impl JmClient {
     pub fn new() -> JmResult<Self> {
         Ok(Self {
             client: get_or_create_client()?,
-            jwt_token: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -34,57 +28,19 @@ impl JmClient {
         path: &str,
         query: &[(&str, String)],
     ) -> JmResult<T> {
-        let auth = JmAuth::new();
+        let signature = JmRequestSignature::new();
         let url = format!("{endpoint}/{path}");
 
-        let mut request = self
+        let response = self
             .client
             .get(&url)
-            .apply_jm_headers(&url, &auth)?
-            .query(query);
-        if let Some(jwt) = self.jwt_token.read().await.as_ref() {
-            request = request.header("Authorization", format!("Bearer {jwt}"));
-        }
-        let response = request
+            .apply_request_signature(&url, &signature)?
+            .query(query)
             .send()
             .await
             .map_err(|e| JmError::Network(e.to_string()))?;
 
-        decode_response(response, &url, &auth).await
-    }
-
-    pub async fn post_form<T: DeserializeOwned>(
-        &self,
-        endpoint: &str,
-        path: &str,
-        fields: &[(String, String)],
-        authenticated: bool,
-    ) -> JmResult<T> {
-        let auth = JmAuth::new();
-        let url = format!("{endpoint}/{path}");
-        let mut request = self
-            .client
-            .post(&url)
-            .apply_jm_headers(&url, &auth)?
-            .form(fields);
-        if authenticated {
-            if let Some(jwt) = self.jwt_token.read().await.as_ref() {
-                request = request.header("Authorization", format!("Bearer {jwt}"));
-            }
-        }
-        let response = request
-            .send()
-            .await
-            .map_err(|error| JmError::Network(error.to_string()))?;
-        decode_response(response, &url, &auth).await
-    }
-
-    pub async fn set_jwt_token(&self, token: Option<String>) {
-        *self.jwt_token.write().await = token;
-    }
-
-    pub(crate) async fn jwt_token(&self) -> Option<String> {
-        self.jwt_token.read().await.clone()
+        decode_response(response, &url, &signature).await
     }
 
     /// Search comics
@@ -132,8 +88,6 @@ impl JmClient {
             total_views: payload.total_views,
             likes: payload.likes,
             comment_total: payload.comment_total,
-            is_favorite: payload.is_favorite,
-            liked: payload.liked,
             related_list: payload
                 .related_list
                 .into_iter()
@@ -226,15 +180,23 @@ fn get_or_create_client() -> JmResult<Client> {
 }
 
 trait RequestBuilderExt {
-    fn apply_jm_headers(self, url: &str, auth: &JmAuth) -> JmResult<RequestBuilder>;
+    fn apply_request_signature(
+        self,
+        url: &str,
+        signature: &JmRequestSignature,
+    ) -> JmResult<RequestBuilder>;
 }
 
 impl RequestBuilderExt for RequestBuilder {
-    fn apply_jm_headers(self, url: &str, auth: &JmAuth) -> JmResult<RequestBuilder> {
+    fn apply_request_signature(
+        self,
+        url: &str,
+        signature: &JmRequestSignature,
+    ) -> JmResult<RequestBuilder> {
         let mut builder = self
             .header("accept", "application/json")
-            .header("token", &auth.token)
-            .header("tokenparam", &auth.tokenparam)
+            .header("token", &signature.token)
+            .header("tokenparam", &signature.tokenparam)
             .header("user-agent", USER_AGENT);
 
         if let Some(host) = extract_host(url) {
@@ -264,7 +226,7 @@ struct ApiResponse<T> {
 async fn decode_response<T: DeserializeOwned>(
     response: reqwest::Response,
     url: &str,
-    auth: &JmAuth,
+    signature: &JmRequestSignature,
 ) -> JmResult<T> {
     if !response.status().is_success() {
         return Err(JmError::Http(format!("HTTP {}: {url}", response.status())));
@@ -295,7 +257,7 @@ async fn decode_response<T: DeserializeOwned>(
 
     match data {
         serde_json::Value::String(encrypted) => {
-            let decrypted = crypto::decrypt_data(&encrypted, &auth.ts)?;
+            let decrypted = crypto::decrypt_data(&encrypted, &signature.ts)?;
             serde_json::from_str(&decrypted).map_err(|e| JmError::Payload(e.to_string()))
         }
         value => serde_json::from_value(value).map_err(|e| JmError::Payload(e.to_string())),

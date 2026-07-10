@@ -1,5 +1,5 @@
 use crate::{
-    api::home::{cover_url, FeedComic},
+    api::home::cover_url,
     jm::{ComicDetail, JmResult},
     AppState,
 };
@@ -46,44 +46,6 @@ pub struct CommentsQuery {
     page: u32,
 }
 
-#[derive(Deserialize)]
-pub struct FavoriteQuery {
-    #[serde(default = "default_page")]
-    page: u32,
-    #[serde(default, rename = "folderId")]
-    folder_id: String,
-    #[serde(default = "default_order")]
-    order: String,
-}
-
-#[derive(Deserialize)]
-pub struct FavoriteToggleInput {
-    #[serde(rename = "currentFavorite")]
-    current_favorite: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FavoriteToggleResult {
-    favorited: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FavoriteListResult {
-    page: u32,
-    total: u32,
-    has_more: bool,
-    folders: Vec<FavoriteFolder>,
-    items: Vec<FeedComic>,
-}
-
-#[derive(Serialize)]
-pub struct FavoriteFolder {
-    id: String,
-    name: String,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComicCommentsResult {
@@ -108,93 +70,6 @@ pub struct ComicComment {
     parent_id: String,
     spoiler: bool,
     replies: Vec<ComicComment>,
-}
-
-pub async fn toggle_favorite(
-    State(app): State<AppState>,
-    Path(comic_id): Path<String>,
-    Json(payload): Json<FavoriteToggleInput>,
-) -> JmResult<Json<FavoriteToggleResult>> {
-    let current_favorite = payload.current_favorite;
-    app.jm_request(move |client, endpoint| {
-        let comic_id = comic_id.clone();
-        Box::pin(async move {
-            client
-                .post_form::<serde_json::Value>(
-                    endpoint,
-                    "favorite",
-                    &[("aid".to_string(), comic_id)],
-                    true,
-                )
-                .await
-        })
-    })
-    .await?;
-    Ok(Json(FavoriteToggleResult {
-        favorited: !current_favorite,
-    }))
-}
-
-pub async fn get_favorites(
-    State(app): State<AppState>,
-    Query(query): Query<FavoriteQuery>,
-) -> JmResult<Json<FavoriteListResult>> {
-    let page = query.page.max(1);
-    let folder_id = query.folder_id;
-    let order = query.order;
-    let payload: FavoriteListPayload = app
-        .jm_request(move |client, endpoint| {
-            let folder_id = folder_id.clone();
-            let order = order.clone();
-            Box::pin(async move {
-                client
-                    .get(
-                        endpoint,
-                        "favorite",
-                        &[
-                            ("page", page.to_string()),
-                            ("folder_id", folder_id),
-                            ("o", order),
-                        ],
-                    )
-                    .await
-            })
-        })
-        .await?;
-    let img_host = app.img_host().await;
-    let items = payload
-        .list
-        .into_iter()
-        .filter(|item| !item.id.is_empty())
-        .map(|item| FeedComic {
-            image: cover_url(img_host.as_deref(), &item.id, &item.image),
-            id: item.id,
-            title: item.name,
-            author: item.author,
-            description: item.description,
-            tags: Vec::new(),
-            updated_at: item.updated_at,
-        })
-        .collect::<Vec<_>>();
-    Ok(Json(FavoriteListResult {
-        page,
-        total: payload.total,
-        has_more: if payload.total > 0 {
-            page * 20 < payload.total
-        } else {
-            items.len() >= 20
-        },
-        folders: payload
-            .folder_list
-            .into_iter()
-            .filter(|folder| !folder.id.is_empty())
-            .map(|folder| FavoriteFolder {
-                id: folder.id,
-                name: folder.name,
-            })
-            .collect(),
-        items,
-    }))
 }
 
 pub async fn get_comments(
@@ -231,55 +106,6 @@ pub async fn get_comments(
             .map(|comment| map_comment(comment, img_host.as_deref()))
             .collect(),
     }))
-}
-
-#[derive(Deserialize)]
-struct FavoriteListPayload {
-    #[serde(default, deserialize_with = "u32_from_value")]
-    total: u32,
-    #[serde(default)]
-    list: Vec<FavoriteComicPayload>,
-    #[serde(default)]
-    folder_list: Vec<FavoriteFolderPayload>,
-}
-
-#[derive(Deserialize)]
-struct FavoriteComicPayload {
-    #[serde(
-        default,
-        alias = "AID",
-        alias = "aid",
-        deserialize_with = "string_from_value"
-    )]
-    id: String,
-    #[serde(default, deserialize_with = "string_from_value")]
-    name: String,
-    #[serde(default, deserialize_with = "string_from_value")]
-    author: String,
-    #[serde(default, deserialize_with = "string_from_value")]
-    description: String,
-    #[serde(default, deserialize_with = "string_from_value")]
-    image: String,
-    #[serde(
-        default,
-        rename = "update_at",
-        deserialize_with = "optional_i64_from_value"
-    )]
-    updated_at: Option<i64>,
-}
-
-#[derive(Deserialize)]
-struct FavoriteFolderPayload {
-    #[serde(
-        default,
-        rename = "FID",
-        alias = "id",
-        alias = "folder_id",
-        deserialize_with = "string_from_value"
-    )]
-    id: String,
-    #[serde(default, deserialize_with = "string_from_value")]
-    name: String,
 }
 
 #[derive(Deserialize)]
@@ -363,9 +189,6 @@ fn map_comment(payload: CommentPayload, img_host: Option<&str>) -> ComicComment 
 fn default_page() -> u32 {
     1
 }
-fn default_order() -> String {
-    "mr".to_string()
-}
 
 fn value_from<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
 where
@@ -406,14 +229,6 @@ where
         .map(|value| value as u32)
         .or_else(|| value.as_str()?.parse().ok())
         .unwrap_or_default())
-}
-
-fn optional_i64_from_value<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = value_from(deserializer)?;
-    Ok(value.as_i64().or_else(|| value.as_str()?.parse().ok()))
 }
 
 fn bool_from_value<'de, D>(deserializer: D) -> Result<bool, D::Error>

@@ -71,7 +71,6 @@ pub struct AppState {
     pub cache: std::sync::Arc<cache::ImageCache>,
     pub endpoints: std::sync::Arc<endpoint::EndpointManager>,
     pub jm: std::sync::Arc<jm::JmClient>,
-    pub session: std::sync::Arc<tokio::sync::RwLock<Option<api::auth::UserProfile>>>,
     pub downloads: std::sync::Arc<download::DownloadManager>,
 }
 
@@ -100,7 +99,6 @@ impl AppState {
 
         let endpoints = std::sync::Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
         let jm = std::sync::Arc::new(jm::JmClient::new()?);
-        let session = std::sync::Arc::new(tokio::sync::RwLock::new(None));
         let downloads = std::sync::Arc::new(
             download::DownloadManager::new(
                 db.clone(),
@@ -126,7 +124,6 @@ impl AppState {
             cache,
             endpoints,
             jm,
-            session,
             downloads,
         })
     }

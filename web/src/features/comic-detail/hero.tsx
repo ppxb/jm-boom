@@ -102,7 +102,7 @@ export function ComicHero({
         <div className="space-y-3">
           <PillGroup title="标签" items={comic.tags} mobileProminent />
           <PillGroup title="角色" items={comic.actors} variant="secondary" />
-          <PillGroup title="作品" items={comic.works} variant="secondary" />
+          <PillGroup title="作品" items={comic.works} variant="secondary" mobileProminent />
         </div>
       </div>
     </section>

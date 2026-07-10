@@ -57,8 +57,6 @@ pub async fn search_comics(
                     tags: detail.tags,
                     likes: detail.likes,
                     views: detail.total_views,
-                    is_favorite: detail.is_favorite,
-                    liked: detail.liked,
                 }],
                 redirect_aid: None,
             }));

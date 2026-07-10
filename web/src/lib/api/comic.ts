@@ -24,7 +24,6 @@ export type ComicDetail = {
   tags: string[]
   actors: string[]
   works: string[]
-  liked: boolean
   relatedList: RelatedComic[]
   series: ComicChapter[]
   seriesId: string
@@ -71,7 +70,6 @@ export async function getComicDetail(comicId: string): Promise<ComicDetailResult
     total_views: number
     likes: number
     comment_total: number
-    liked: boolean
     related_list: Array<{
       id: string
       name: string
@@ -90,15 +88,14 @@ export async function getComicDetail(comicId: string): Promise<ComicDetailResult
     comic: {
       id: result.id,
       title: result.name,
-      author: result.author,
+      author: normalizeTextList(result.author),
       description: result.description,
       totalViews: result.total_views,
       likes: result.likes,
       commentTotal: result.comment_total,
-      tags: result.tags.map(tag => tag.trim()).filter(tag => tag.length > 0),
-      actors: result.actors,
-      works: result.works,
-      liked: result.liked,
+      tags: normalizeTextList(result.tags),
+      actors: normalizeTextList(result.actors),
+      works: normalizeTextList(result.works),
       relatedList: result.related_list.map(r => ({
         id: r.id,
         title: r.name,
@@ -126,4 +123,8 @@ export async function getComicComments({
   page?: number
 }): Promise<ComicCommentsResult> {
   return apiClient.get(`/api/comics/${comicId}/comments`, { page })
+}
+
+function normalizeTextList(items: string[]) {
+  return items.map(item => item.trim()).filter(item => item.length > 0)
 }

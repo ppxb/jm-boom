@@ -1,4 +1,4 @@
-use crate::jm::{JmClient, JmResult, SettingAuth};
+use crate::jm::{JmClient, JmResult, SettingRequestSignature};
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyInit};
 use aes::Aes256;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -258,14 +258,14 @@ impl EndpointManager {
     }
 
     async fn probe_endpoint(&self, endpoint: String) -> EndpointProbe {
-        let auth = SettingAuth::current();
+        let signature = SettingRequestSignature::current();
         let started = Instant::now();
         let result = self
             .client
             .get(format!("{endpoint}/setting"))
-            .header("token", auth.token)
-            .header("tokenparam", auth.tokenparam)
-            .query(&[("app_img_shunt", "1"), ("t", auth.ts.as_str())])
+            .header("token", signature.token)
+            .header("tokenparam", signature.tokenparam)
+            .query(&[("app_img_shunt", "1"), ("t", signature.ts.as_str())])
             .send()
             .await
             .and_then(reqwest::Response::error_for_status);

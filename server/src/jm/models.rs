@@ -17,10 +17,6 @@ pub struct Comic {
     pub likes: u32,
     #[serde(default)]
     pub views: u32,
-    #[serde(default)]
-    pub is_favorite: bool,
-    #[serde(default)]
-    pub liked: bool,
 }
 
 /// Search result
@@ -52,8 +48,6 @@ pub struct ComicDetail {
     pub total_views: u32,
     pub likes: u32,
     pub comment_total: u32,
-    pub is_favorite: bool,
-    pub liked: bool,
     #[serde(default)]
     pub related_list: Vec<RelatedComic>,
     #[serde(default)]
@@ -124,10 +118,6 @@ pub(crate) struct ComicPayload {
     pub likes: u32,
     #[serde(default, deserialize_with = "u32_from_any", rename = "total_views")]
     pub views: u32,
-    #[serde(default, deserialize_with = "bool_from_any")]
-    pub is_favorite: bool,
-    #[serde(default, deserialize_with = "bool_from_any")]
-    pub liked: bool,
 }
 
 // Helper to deserialize with default fallback
@@ -154,19 +144,6 @@ where
         .map(string_from_value)
         .filter(|value| !value.is_empty())
         .collect())
-}
-
-fn bool_from_any<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::Bool(value) => value,
-        serde_json::Value::Number(value) => value.as_i64().unwrap_or_default() != 0,
-        serde_json::Value::String(value) => matches!(value.as_str(), "1" | "true" | "yes"),
-        _ => false,
-    })
 }
 
 fn string_from_value(value: serde_json::Value) -> String {
@@ -292,10 +269,6 @@ pub(crate) struct ComicDetailPayload {
     #[serde(default, deserialize_with = "u32_from_any")]
     pub comment_total: u32,
     #[serde(default)]
-    pub is_favorite: bool,
-    #[serde(default)]
-    pub liked: bool,
-    #[serde(default)]
     pub related_list: Vec<RelatedComicPayload>,
     #[serde(default)]
     pub series: Vec<ChapterPayload>,
@@ -335,8 +308,6 @@ impl From<ComicPayload> for Comic {
             tags: p.tags,
             likes: p.likes,
             views: p.views,
-            is_favorite: p.is_favorite,
-            liked: p.liked,
         }
     }
 }

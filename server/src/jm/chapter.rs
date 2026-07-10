@@ -1,4 +1,7 @@
-use super::{auth::JmAuth, client::JmClient, crypto, error::JmError, models::Chapter, JmResult};
+use super::{
+    client::JmClient, crypto, error::JmError, models::Chapter, signature::JmRequestSignature,
+    JmResult,
+};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::{
@@ -85,25 +88,21 @@ impl JmClient {
     }
 
     async fn fetch_chapter(&self, endpoint: &str, chapter_id: &str) -> JmResult<Chapter> {
-        let auth = JmAuth::new();
+        let signature = JmRequestSignature::new();
         let url = format!("{endpoint}/chapter");
         let host = extract_host(&url);
 
-        let mut request = self
+        let response = self
             .client
             .get(&url)
             .header("accept", "application/json")
-            .header("token", &auth.token)
-            .header("tokenparam", &auth.tokenparam)
+            .header("token", &signature.token)
+            .header("tokenparam", &signature.tokenparam)
             .header("Host", host)
             .header(
                 "user-agent",
                 "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230305.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 Mobile Safari/537.36",
-            );
-        if let Some(jwt) = self.jwt_token().await {
-            request = request.header("Authorization", format!("Bearer {jwt}"));
-        }
-        let response = request
+            )
             .query(&[("skip", ""), ("id", chapter_id)])
             .send()
             .await
@@ -119,7 +118,7 @@ impl JmClient {
             .map_err(|e| JmError::Network(e.to_string()))?;
 
         // Try decrypt first (plugin payload)
-        if let Ok(chapter) = decrypt_chapter_payload(&body, &auth.ts, chapter_id) {
+        if let Ok(chapter) = decrypt_chapter_payload(&body, &signature.ts, chapter_id) {
             return ensure_chapter_images(chapter);
         }
 
