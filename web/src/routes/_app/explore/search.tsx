@@ -53,10 +53,15 @@ function SearchPage() {
   const page = search.page ?? 1
   const sortBy = search.sort ?? 1
   const [draftKeyword, setDraftKeyword] = useState(keyword)
+  const [selectedSortBy, setSelectedSortBy] = useState<SearchSortBy>(sortBy)
 
   useEffect(() => {
     setDraftKeyword(keyword)
   }, [keyword])
+
+  useEffect(() => {
+    setSelectedSortBy(sortBy)
+  }, [sortBy])
 
   const query = useQuery({
     queryKey: queryKeys.search(keyword, page, sortBy),
@@ -80,12 +85,17 @@ function SearchPage() {
     const nextKeyword = draftKeyword.trim()
 
     void navigate({
-      search: createSearchParams({ q: nextKeyword, sort: sortBy })
+      search: createSearchParams({ q: nextKeyword, sort: selectedSortBy })
     })
   }
 
   function updateSortBy(value: string) {
     const nextSort = parseSortBy(value)
+    setSelectedSortBy(nextSort)
+
+    if (keyword.length === 0) {
+      return
+    }
 
     void navigate({
       replace: true,
@@ -106,9 +116,9 @@ function SearchPage() {
     <section className="space-y-6">
       <PageBackButton />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <form className="w-full sm:max-w-xl" onSubmit={submitSearch}>
-          <InputGroup className="h-10">
+      <div className="flex w-full max-w-xl items-center gap-2">
+        <form className="min-w-0 flex-1" onSubmit={submitSearch}>
+          <InputGroup>
             <InputGroupAddon>
               <SearchIcon className="size-4" />
             </InputGroupAddon>
@@ -126,10 +136,13 @@ function SearchPage() {
           </InputGroup>
         </form>
 
-        <Select value={String(sortBy)} onValueChange={updateSortBy} disabled={keyword.length === 0}>
-          <SelectTrigger className="w-full sm:w-auto">
+        <Select value={String(selectedSortBy)} onValueChange={updateSortBy}>
+          <SelectTrigger
+            className="w-9 shrink-0 justify-center px-0 sm:w-auto sm:justify-between sm:px-3 [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
+            aria-label="选择排序"
+          >
             <ListFilterIcon className="size-4 text-muted-foreground" />
-            <SelectValue placeholder="选择排序" />
+            <SelectValue className="sr-only sm:not-sr-only" placeholder="选择排序" />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
