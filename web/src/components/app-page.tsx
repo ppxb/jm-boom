@@ -18,7 +18,7 @@ export function AppPage({
 }: AppPageProps) {
   return (
     <main
-      className={cn('relative flex min-h-dvh flex-col bg-background px-8 pt-8 pb-24', className)}
+      className={cn('relative flex min-h-dvh flex-col bg-background px-4 pt-6 pb-24', className)}
     >
       <div className={cn('mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6', contentClassName)}>
         {children}

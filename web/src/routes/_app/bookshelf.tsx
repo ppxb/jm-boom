@@ -150,7 +150,7 @@ function BookshelfPage() {
                         params: { comicId: item.chapterId },
                         search: {
                           albumId: item.albumId,
-                          pageIndex: String(item.pageIndex)
+                          page: item.pageIndex + 1
                         }
                       }
                     : undefined

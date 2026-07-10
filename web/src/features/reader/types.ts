@@ -1,6 +1,6 @@
 export type ReaderSearch = {
   albumId: string
-  pageIndex: string
+  page?: number
 }
 
 export type ReaderChapterItem = {

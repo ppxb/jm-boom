@@ -5,8 +5,5 @@ export function toReaderChapterSearch({
 }: {
   albumId: string
 }): ReaderSearch {
-  return {
-    albumId,
-    pageIndex: '0'
-  }
+  return { albumId }
 }

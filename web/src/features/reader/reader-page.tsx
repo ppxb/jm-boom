@@ -37,7 +37,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     toggle: toggleToolbar,
     hide: hideToolbar
   } = useReaderToolbarVisibility(!readerAutoReadEnabled)
-  const initialPageIndex = Number.parseInt(search.pageIndex ?? '', 10)
+  const initialPageIndex = search.page ? search.page - 1 : 0
   const { albumId, title, author, coverUrl, chapter, chapters, previousChapter, nextChapter } =
     useReaderChapterInfo({
       comicId,
@@ -62,7 +62,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     pageQueryKey,
     requestPage,
     retry
-  } = useReaderPages(comicId, Number.isNaN(initialPageIndex) ? 0 : initialPageIndex, pageStep)
+  } = useReaderPages(comicId, initialPageIndex, pageStep)
   const availableNextChapter = nextChapter
 
   useReaderHistorySync({

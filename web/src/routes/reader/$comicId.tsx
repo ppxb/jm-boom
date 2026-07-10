@@ -6,7 +6,7 @@ import type { ReaderSearch } from '@/features/reader/types'
 export const Route = createFileRoute('/reader/$comicId')({
   validateSearch: (search: Record<string, unknown>): ReaderSearch => ({
     albumId: typeof search.albumId === 'string' ? search.albumId : '',
-    pageIndex: typeof search.pageIndex === 'string' ? search.pageIndex : ''
+    page: parseOptionalPage(search.page)
   }),
   component: ReaderRoute
 })
@@ -16,4 +16,10 @@ function ReaderRoute() {
   const search = Route.useSearch()
 
   return <ReaderPage comicId={comicId} search={search} />
+}
+
+function parseOptionalPage(value: unknown) {
+  const page = Number(value)
+
+  return Number.isSafeInteger(page) && page > 0 ? page : undefined
 }

@@ -78,8 +78,7 @@ export function ComicHero({
               to="/reader/$comicId"
               params={{ comicId: startReadingId }}
               search={{
-                albumId,
-                pageIndex: '0'
+                albumId
               }}
             >
               <BookOpenIcon className="size-4" />

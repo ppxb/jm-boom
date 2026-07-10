@@ -63,8 +63,7 @@ export function ChaptersSection({
           to="/reader/$comicId"
           params={{ comicId }}
           search={{
-            albumId,
-            pageIndex: '0'
+            albumId
           }}
           className="block"
         >
@@ -91,8 +90,7 @@ export function ChaptersSection({
                   to="/reader/$comicId"
                   params={{ comicId: chapter.id }}
                   search={{
-                    albumId,
-                    pageIndex: '0'
+                    albumId
                   }}
                   className="block"
                 >
