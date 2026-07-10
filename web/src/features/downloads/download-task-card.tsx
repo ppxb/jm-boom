@@ -51,7 +51,7 @@ export function DownloadTaskCard({
   return (
     <Card>
       <CardContent className="space-y-4 p-5">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-start">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <StatusIcon status={task.status} />
@@ -61,7 +61,7 @@ export function DownloadTaskCard({
             </div>
             <div className="mt-1 text-xs text-muted-foreground">{formatChapterSummary(task)}</div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
             {canPause ? (
               <Button variant="outline" size="sm" disabled={isPausing} onClick={onPause}>
                 <PauseIcon className="size-4" />
@@ -105,7 +105,7 @@ export function DownloadTaskCard({
 
         <div className="space-y-2">
           <Progress value={progressPercent} className="h-1.5" />
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <span>{formatProgressLabel(task, progressPercent)}</span>
             <span>{formatTaskMeta(task)}</span>
           </div>

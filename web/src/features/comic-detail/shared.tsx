@@ -17,8 +17,8 @@ export function SectionHeading({ title, description }: { title: string; descript
 export function ComicDetailSkeleton() {
   return (
     <div className="space-y-10">
-      <section className="grid grid-cols-[240px_minmax(0,1fr)] gap-8">
-        <Skeleton className="aspect-3/4" />
+      <section className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
+        <Skeleton className="mx-auto aspect-3/4 w-full max-w-60 md:max-w-none" />
         <div className="space-y-5 py-1">
           <Skeleton className="h-5 w-56" />
           <div className="space-y-3">
@@ -35,7 +35,7 @@ export function ComicDetailSkeleton() {
           </div>
         </div>
       </section>
-      <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-8">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-8">
           <ChapterSkeletonList />
         </div>

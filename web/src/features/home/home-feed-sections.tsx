@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowRightIcon } from 'lucide-react'
 
-import { ComicGrid } from '@/components/comic'
+import { ComicCard } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
 import type { HomeFeedSection } from '@/lib/api/home'
@@ -18,7 +18,29 @@ export function HomeFeedSections({ sections }: { sections: HomeFeedSection[] }) 
           {section.items.length === 0 ? (
             <EmptyState emoji="(･o･;)" title="暂无内容" />
           ) : (
-            <ComicGrid items={section.items} />
+            <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-4 lg:gap-6">
+              {section.items.map(item => (
+                <div
+                  key={item.id}
+                  className="w-[42vw] min-w-36 max-w-48 shrink-0 snap-start sm:w-auto sm:min-w-0 sm:max-w-none"
+                >
+                  <ComicCard
+                    comic={item}
+                    ratio="square"
+                    showIdBadge
+                    linkProps={{
+                      to: '/comic/$comicId',
+                      params: { comicId: item.id }
+                    }}
+                    metadata={
+                      <p className="line-clamp-1 text-xs text-muted-foreground">
+                        {item.author || 'N/A'}
+                      </p>
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </section>
       ))}
@@ -38,7 +60,7 @@ function SectionHeader({ section }: { section: HomeFeedSection }) {
       {mode ? (
         <Button asChild variant="outline" size="sm">
           <Link
-            to="/list"
+            to="/explore/list"
             search={{
               mode,
               page: 1,

@@ -85,9 +85,9 @@ function NotFoundComponent() {
                 <ArrowLeftIcon className="size-4" />
                 返回
               </Button>
-              <Button className="flex-1" onClick={() => router.navigate({ to: '/' })}>
+              <Button className="flex-1" onClick={() => router.navigate({ to: '/bookshelf' })}>
                 <HomeIcon className="size-4" />
-                回到首页
+                回到书架
               </Button>
             </div>
           </CardContent>

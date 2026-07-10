@@ -38,7 +38,7 @@ export function SectionFilters({
 }: SectionFiltersProps) {
   if (mode === 'weekly') {
     return (
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
         <FilterSelect
           value={week}
           options={WEEK_OPTIONS}
@@ -59,7 +59,7 @@ export function SectionFilters({
     const categoryOptions = rankingCategoryOptions(rankTag)
 
     return (
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
         <FilterSelect
           value={order}
           options={RANKING_ORDER_OPTIONS}
@@ -91,7 +91,7 @@ interface FilterSelectProps {
 function FilterSelect({ value, options, placeholder, onValueChange }: FilterSelectProps) {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger>
+      <SelectTrigger className="w-full sm:w-auto">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

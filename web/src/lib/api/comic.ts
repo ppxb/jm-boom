@@ -1,5 +1,4 @@
 import { apiClient } from './client'
-import type { FeedComic } from './home'
 
 export type RelatedComic = {
   id: string
@@ -25,7 +24,6 @@ export type ComicDetail = {
   tags: string[]
   actors: string[]
   works: string[]
-  isFavorite: boolean
   liked: boolean
   relatedList: RelatedComic[]
   series: ComicChapter[]
@@ -37,23 +35,6 @@ export type ComicDetail = {
 
 export type ComicDetailResult = {
   comic: ComicDetail
-}
-
-export type FavoriteToggleResult = {
-  favorited: boolean
-}
-
-export type FavoriteFolder = {
-  id: string
-  name: string
-}
-
-export type FavoriteListResult = {
-  page: number
-  total: number
-  hasMore: boolean
-  folders: FavoriteFolder[]
-  items: FeedComic[]
 }
 
 export type ComicComment = {
@@ -90,7 +71,6 @@ export async function getComicDetail(comicId: string): Promise<ComicDetailResult
     total_views: number
     likes: number
     comment_total: number
-    is_favorite: boolean
     liked: boolean
     related_list: Array<{
       id: string
@@ -118,7 +98,6 @@ export async function getComicDetail(comicId: string): Promise<ComicDetailResult
       tags: result.tags,
       actors: result.actors,
       works: result.works,
-      isFavorite: result.is_favorite,
       liked: result.liked,
       relatedList: result.related_list.map(r => ({
         id: r.id,
@@ -147,26 +126,4 @@ export async function getComicComments({
   page?: number
 }): Promise<ComicCommentsResult> {
   return apiClient.get(`/api/comics/${comicId}/comments`, { page })
-}
-
-export async function toggleComicFavorite({
-  comicId,
-  currentFavorite
-}: {
-  comicId: string
-  currentFavorite: boolean
-}): Promise<FavoriteToggleResult> {
-  return apiClient.post(`/api/comics/${comicId}/favorite`, { currentFavorite })
-}
-
-export async function getFavoriteComics({
-  page = 1,
-  folderId = '',
-  order = 'mr'
-}: {
-  page?: number
-  folderId?: string
-  order?: string
-} = {}): Promise<FavoriteListResult> {
-  return apiClient.get('/api/favorites', { page, folderId, order })
 }

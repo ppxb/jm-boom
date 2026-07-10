@@ -13,11 +13,11 @@ import { useHistorySelection } from '@/features/history/use-history-selection'
 import { formatDate } from '@/lib/format'
 import { useReadingHistoryStore } from '@/stores/reading-history-store'
 
-export const Route = createFileRoute('/_app/history')({
-  component: HistoryPage
+export const Route = createFileRoute('/_app/bookshelf')({
+  component: BookshelfPage
 })
 
-function HistoryPage() {
+function BookshelfPage() {
   const items = useReadingHistoryStore(state => state.items)
   const removeMany = useReadingHistoryStore(state => state.removeMany)
   const clear = useReadingHistoryStore(state => state.clear)
@@ -47,9 +47,9 @@ function HistoryPage() {
   }
 
   return (
-    <main className="relative min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
-        <PageHeader title="历史观看" description="本地保存的历史观看记录">
+    <main className="relative min-h-screen bg-background px-4 pt-6 pb-28 text-foreground sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-6xl space-y-6">
+        <PageHeader title="书架" description="继续阅读本地保存的作品">
           {selection.isSelecting ? (
             <>
               <Button
@@ -125,9 +125,9 @@ function HistoryPage() {
         </PageHeader>
 
         {sortedItems.length === 0 ? (
-          <EmptyState emoji="(˙ᯅ˙)" title="暂无历史观看记录" />
+          <EmptyState emoji="(˙ᯅ˙)" title="书架还是空的" />
         ) : (
-          <div className="grid grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
             {sortedItems.map(item => {
               const progress = (item.pageIndex + 1) / item.pageCount
               return (

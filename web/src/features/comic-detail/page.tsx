@@ -7,9 +7,7 @@ import { PageBackButton } from '@/components/page-back-button'
 import {
   getComicComments,
   getComicDetail,
-  toggleComicFavorite,
-  type ComicDetail,
-  type ComicDetailResult
+  type ComicDetail
 } from '@/lib/api/comic'
 import {
   SINGLE_CHAPTER_TITLE,
@@ -33,6 +31,7 @@ import {
   type DownloadChapterOption
 } from './download-drawer'
 import { enqueueComicDownload } from '@/lib/api/download'
+import { useLocalFavoritesStore } from '@/stores/local-favorites-store'
 
 export function ComicDetailPage({ comicId }: { comicId: string }) {
   const detail = useQuery({
@@ -45,7 +44,7 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
   })
 
   return (
-    <main className="min-h-screen bg-background p-[32px_32px_16px_96px] text-foreground">
+    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <PageBackButton />
 
@@ -74,6 +73,10 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
 
 function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const queryClient = useQueryClient()
+  const isFavorite = useLocalFavoritesStore(state =>
+    state.items.some(item => item.id === comic.id)
+  )
+  const toggleFavorite = useLocalFavoritesStore(state => state.toggle)
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
   const albumId = resolveComicAlbumId(comic)
@@ -121,35 +124,17 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     }
   }, [queryClient, startReadingId])
 
-  const favoriteMutation = useMutation({
-    mutationFn: async () =>
-      toggleComicFavorite({
-        comicId: comic.id,
-        currentFavorite: comic.isFavorite
-      }),
-    onSuccess: result => {
-      queryClient.setQueryData<ComicDetailResult | undefined>(
-        queryKeys.comicDetail(comic.id),
-        current => {
-          if (current == null) {
-            return current
-          }
-
-          return {
-            ...current,
-            comic: {
-              ...current.comic,
-              isFavorite: result.favorited
-            }
-          }
-        }
-      )
-      toast.success(result.favorited ? '已添加收藏' : '已取消收藏')
-    },
-    onError: error => {
-      toast.error(error instanceof Error ? error.message : '收藏操作失败')
-    }
-  })
+  function handleFavoriteToggle() {
+    const favorited = toggleFavorite({
+      id: comic.id,
+      title: comic.title,
+      author: comic.author.join(' / '),
+      description: comic.description,
+      image: comic.image,
+      tags: comic.tags
+    })
+    toast.success(favorited ? '已添加到本地收藏' : '已取消本地收藏')
+  }
   const downloadMutation = useMutation({
     mutationFn: (chapters: DownloadChapterOption[]) =>
       enqueueComicDownload({
@@ -204,14 +189,14 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     <div className="space-y-10">
       <ComicHero
         comic={comic}
+        isFavorite={isFavorite}
         onCommentsClick={() => setIsCommentsOpen(true)}
         onDownloadClick={handleDownloadClick}
-        onFavoriteClick={() => favoriteMutation.mutate()}
+        onFavoriteClick={handleFavoriteToggle}
         downloadBusy={downloadMutation.isPending}
-        favoriteBusy={favoriteMutation.isPending}
       />
 
-      <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-8">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0">
           <ChaptersSection
             albumId={albumId}
@@ -220,7 +205,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
           />
         </div>
 
-        <aside className="sticky top-8 h-fit">
+        <aside className="h-fit lg:sticky lg:top-8">
           <RelatedPanel items={comic.relatedList} />
         </aside>
       </div>

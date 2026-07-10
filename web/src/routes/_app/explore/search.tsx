@@ -3,10 +3,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ListFilterIcon, SearchIcon } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 
-import { BackTopButton } from '@/components/back-top-button'
 import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
-import { PageHeader } from '@/components/page-header'
 import { ListPagination } from '@/components/list-pagination'
 import { PageBackButton } from '@/components/page-back-button'
 import { Button } from '@/components/ui/button'
@@ -37,7 +35,7 @@ type SearchPageSearch = {
 
 type SearchSortBy = 1 | 2 | 3 | 4
 
-export const Route = createFileRoute('/_app/search')({
+export const Route = createFileRoute('/_app/explore/search')({
   validateSearch: (search: Record<string, unknown>): SearchPageSearch => ({
     keyword: typeof search.keyword === 'string' ? search.keyword : '',
     page: parsePositivePage(search.page),
@@ -118,62 +116,58 @@ function SearchPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
-        <PageBackButton />
-        <PageHeader title="搜索" description="按关键词查找漫画作品" />
+    <section className="space-y-6">
+      <PageBackButton />
 
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <form className="w-full max-w-xl" onSubmit={submitSearch}>
-            <InputGroup className="h-10">
-              <InputGroupAddon>
-                <SearchIcon className="size-4" />
-              </InputGroupAddon>
-              <InputGroupInput
-                value={draftKeyword}
-                onChange={event => setDraftKeyword(event.target.value)}
-                placeholder="搜索关键词或 JM 号"
-                aria-label="搜索关键词"
-              />
-              <InputGroupAddon align="inline-end">
-                <InputGroupButton type="submit" variant="secondary" size="sm">
-                  搜索
-                </InputGroupButton>
-              </InputGroupAddon>
-            </InputGroup>
-          </form>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <form className="w-full sm:max-w-xl" onSubmit={submitSearch}>
+          <InputGroup className="h-10">
+            <InputGroupAddon>
+              <SearchIcon className="size-4" />
+            </InputGroupAddon>
+            <InputGroupInput
+              value={draftKeyword}
+              onChange={event => setDraftKeyword(event.target.value)}
+              placeholder="搜索关键词或 JM 号"
+              aria-label="搜索关键词"
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton type="submit" variant="secondary" size="sm">
+                搜索
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        </form>
 
-          <Select value={String(search.sortBy)} onValueChange={updateSortBy}>
-            <SelectTrigger>
-              <ListFilterIcon className="size-4 text-muted-foreground" />
-              <SelectValue placeholder="选择排序" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {SEARCH_SORT_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <SearchContent
-          keyword={keyword}
-          isError={query.isError}
-          isLoading={query.isLoading}
-          items={items}
-          page={search.page}
-          hasMore={!paging?.hasReachedMax}
-          disabled={query.isFetching}
-          onRetry={() => query.refetch()}
-          onPageChange={updatePage}
-        />
+        <Select value={String(search.sortBy)} onValueChange={updateSortBy}>
+          <SelectTrigger className="w-full sm:w-auto">
+            <ListFilterIcon className="size-4 text-muted-foreground" />
+            <SelectValue placeholder="选择排序" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {SEARCH_SORT_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </div>
-      <BackTopButton />
-    </main>
+
+      <SearchContent
+        keyword={keyword}
+        isError={query.isError}
+        isLoading={query.isLoading}
+        items={items}
+        page={search.page}
+        hasMore={!paging?.hasReachedMax}
+        disabled={query.isFetching}
+        onRetry={() => query.refetch()}
+        onPageChange={updatePage}
+      />
+    </section>
   )
 }
 

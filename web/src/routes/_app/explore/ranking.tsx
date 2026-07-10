@@ -2,12 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { BarChart3Icon, ListFilterIcon } from 'lucide-react'
 
-import { BackTopButton } from '@/components/back-top-button'
 import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
-import { PageHeader } from '@/components/page-header'
 import { ListPagination } from '@/components/list-pagination'
-import { PageBackButton } from '@/components/page-back-button'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -34,7 +31,7 @@ type RankingSearch = {
   order: string
 }
 
-export const Route = createFileRoute('/_app/ranking')({
+export const Route = createFileRoute('/_app/explore/ranking')({
   validateSearch: (search: Record<string, unknown>): RankingSearch => ({
     page: parsePositivePage(search.page),
     category: parseRankingCategory(search.category),
@@ -101,73 +98,67 @@ function RankingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
-        <PageBackButton />
-        <PageHeader title="排行榜" description="按分类和热度浏览作品" />
+    <section className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <Select value={search.order} onValueChange={updateOrder}>
+          <SelectTrigger className="w-full sm:w-auto">
+            <ListFilterIcon className="size-4 text-muted-foreground" />
+            <SelectValue placeholder="选择排序" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {RANKING_ORDER_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
 
-        <div className="mb-4 flex items-center justify-end gap-3">
-          <Select value={search.order} onValueChange={updateOrder}>
-            <SelectTrigger>
-              <ListFilterIcon className="size-4 text-muted-foreground" />
-              <SelectValue placeholder="选择排序" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {RANKING_ORDER_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select value={search.category} onValueChange={updateCategory}>
-            <SelectTrigger>
-              <BarChart3Icon className="size-4 text-muted-foreground" />
-              <SelectValue placeholder="选择分类" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {categories.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {query.isError ? (
-          <EmptyState
-            emoji="Ò︵Ó"
-            title="数据加载失败"
-            actions={
-              <Button type="button" variant="outline" size="sm" onClick={() => query.refetch()}>
-                重试
-              </Button>
-            }
-          />
-        ) : query.isLoading ? (
-          <ComicGridSkeleton count={12} />
-        ) : items.length === 0 ? (
-          <EmptyState emoji="(･o･;)" title="暂无排行内容" />
-        ) : (
-          <>
-            <ComicGrid items={items} />
-            <ListPagination
-              page={search.page}
-              hasMore={query.data?.hasMore ?? false}
-              disabled={query.isFetching}
-              onPageChange={updatePage}
-            />
-          </>
-        )}
+        <Select value={search.category} onValueChange={updateCategory}>
+          <SelectTrigger className="w-full sm:w-auto">
+            <BarChart3Icon className="size-4 text-muted-foreground" />
+            <SelectValue placeholder="选择分类" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {categories.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </div>
-      <BackTopButton />
-    </main>
+
+      {query.isError ? (
+        <EmptyState
+          emoji="Ò︵Ó"
+          title="数据加载失败"
+          actions={
+            <Button type="button" variant="outline" size="sm" onClick={() => query.refetch()}>
+              重试
+            </Button>
+          }
+        />
+      ) : query.isLoading ? (
+        <ComicGridSkeleton count={12} />
+      ) : items.length === 0 ? (
+        <EmptyState emoji="(･o･;)" title="暂无排行内容" />
+      ) : (
+        <>
+          <ComicGrid items={items} />
+          <ListPagination
+            page={search.page}
+            hasMore={query.data?.hasMore ?? false}
+            disabled={query.isFetching}
+            onPageChange={updatePage}
+          />
+        </>
+      )}
+    </section>
   )
 }
 

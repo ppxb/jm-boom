@@ -26,31 +26,38 @@ import { ComicCover } from './shared'
 
 export function ComicHero({
   comic,
+  isFavorite,
   onCommentsClick,
   onDownloadClick,
   onFavoriteClick,
-  downloadBusy = false,
-  favoriteBusy = false
+  downloadBusy = false
 }: {
   comic: ComicDetail
+  isFavorite: boolean
   onCommentsClick: () => void
   onDownloadClick: () => void
   onFavoriteClick: () => void
   downloadBusy?: boolean
-  favoriteBusy?: boolean
 }) {
   const albumId = resolveComicAlbumId(comic)
   const startReadingId = resolveComicStartReadingId(comic)
 
   return (
-    <section className="grid grid-cols-[240px_minmax(0,1fr)] gap-8">
-      <ComicCover id={comic.id} title={comic.title} image={comic.image} className="w-full" />
+    <section className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
+      <ComicCover
+        id={comic.id}
+        title={comic.title}
+        image={comic.image}
+        className="mx-auto w-full max-w-60 md:max-w-none"
+      />
 
       <div className="min-w-0 space-y-5 py-1">
         <Badge variant="default">JM {comic.id}</Badge>
 
         <div className="space-y-2">
-          <h1 className="text-4xl leading-tight font-bold tracking-normal">{comic.title}</h1>
+          <h1 className="text-2xl leading-tight font-bold tracking-normal sm:text-3xl lg:text-4xl">
+            {comic.title}
+          </h1>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <UserRoundIcon className="size-4" />
             <SearchLinks items={comic.author} fallback="N/A" className="min-w-0" />
@@ -80,16 +87,15 @@ export function ComicHero({
             </Link>
           </Button>
           <Button
-            variant={comic.isFavorite ? 'secondary' : 'outline'}
+            variant={isFavorite ? 'secondary' : 'outline'}
             onClick={onFavoriteClick}
-            disabled={favoriteBusy}
           >
-            {comic.isFavorite ? (
+            {isFavorite ? (
               <BookmarkCheckIcon className="size-4" />
             ) : (
               <BookmarkIcon className="size-4" />
             )}
-            {comic.isFavorite ? '已收藏' : '收藏'}
+            {isFavorite ? '已收藏' : '收藏'}
           </Button>
           <Button variant="outline" disabled={downloadBusy} onClick={onDownloadClick}>
             <DownloadIcon className="size-4" />
@@ -133,7 +139,7 @@ function StatsRow({ comic, onCommentsClick }: { comic: ComicDetail; onCommentsCl
   ]
 
   return (
-    <div className="flex items-stretch rounded-md bg-card/60 text-center text-sm">
+    <div className="grid grid-cols-2 rounded-md bg-card/60 text-center text-sm sm:grid-cols-4">
       {stats.map((stat, index) => {
         const content = (
           <>
@@ -146,7 +152,7 @@ function StatsRow({ comic, onCommentsClick }: { comic: ComicDetail; onCommentsCl
         )
 
         return (
-          <div key={stat.id} className="flex min-w-0 flex-1 items-stretch">
+          <div key={stat.id} className="flex min-w-0 items-stretch">
             {stat.onClick ? (
               <button
                 type="button"
@@ -160,7 +166,9 @@ function StatsRow({ comic, onCommentsClick }: { comic: ComicDetail; onCommentsCl
                 {content}
               </div>
             )}
-            {index < stats.length - 1 ? <Separator orientation="vertical" /> : null}
+            {index < stats.length - 1 ? (
+              <Separator orientation="vertical" className="hidden sm:block" />
+            ) : null}
           </div>
         )
       })}
@@ -187,7 +195,7 @@ function PillGroup({
       {items.map(item => (
         <Badge key={`${title}-${item}`} variant={variant} asChild>
           <Link
-            to="/search"
+            to="/explore/search"
             search={{
               keyword: item,
               page: 1,
@@ -221,7 +229,7 @@ function SearchLinks({
         <span key={item} className="inline-flex min-w-0 items-center gap-x-1">
           {index > 0 ? <span className="text-muted-foreground/70">/</span> : null}
           <Link
-            to="/search"
+            to="/explore/search"
             search={{
               keyword: item,
               page: 1,

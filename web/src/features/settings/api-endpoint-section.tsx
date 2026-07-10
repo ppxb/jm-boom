@@ -46,19 +46,19 @@ export function ApiEndpointSection({
   return (
     <SettingsSection icon={<NetworkIcon className="size-4" />} title="网络">
       <SettingRow title="上游接口" description="由服务端统一测速、选择并在故障时切换接口">
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <Select
             value={value}
             disabled={isLoading || isChanging}
             onValueChange={next => onEndpointChange(next === AUTO_ENDPOINT_VALUE ? null : next)}
           >
-            <SelectTrigger>
+            <SelectTrigger className="min-w-0 flex-1 sm:w-72">
               <SelectValue>
                 {value === AUTO_ENDPOINT_VALUE ? (
                   <span className="flex items-center gap-2">
                     <span>自动优选</span>
                     {state?.currentEndpoint ? (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="hidden text-xs text-muted-foreground sm:inline">
                         {formatEndpoint(state.currentEndpoint)}
                       </span>
                     ) : null}

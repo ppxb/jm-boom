@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 
-import { BackTopButton } from '@/components/back-top-button'
 import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
 import { PageHeader } from '@/components/page-header'
@@ -37,7 +36,7 @@ type HomeSectionListSearch = {
   order: string
 }
 
-export const Route = createFileRoute('/_app/list')({
+export const Route = createFileRoute('/_app/explore/list')({
   validateSearch: (search: Record<string, unknown>): HomeSectionListSearch => {
     const mode = isHomeSectionListMode(search.mode) ? search.mode : 'promote'
     const rankTag = parseStringSearch(search.rankTag)
@@ -139,49 +138,46 @@ function HomeSectionListPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-6xl space-y-6 p-[32px_32px_16px_96px]">
-        <PageBackButton />
-        <PageHeader title={title} description={sectionModeDescription(search.mode)} />
+    <section className="space-y-6">
+      <PageBackButton />
+      <PageHeader title={title} description={sectionModeDescription(search.mode)} />
 
-        <SectionFilters
-          mode={search.mode}
-          rankTag={search.rankTag}
-          category={search.category}
-          week={search.week}
-          order={search.order}
-          onCategoryChange={updateCategory}
-          onWeekChange={updateWeek}
-          onOrderChange={updateOrder}
+      <SectionFilters
+        mode={search.mode}
+        rankTag={search.rankTag}
+        category={search.category}
+        week={search.week}
+        order={search.order}
+        onCategoryChange={updateCategory}
+        onWeekChange={updateWeek}
+        onOrderChange={updateOrder}
+      />
+
+      {query.isError ? (
+        <EmptyState
+          emoji="Ò︵Ó"
+          title="数据加载失败"
+          actions={
+            <Button type="button" variant="outline" size="sm" onClick={() => query.refetch()}>
+              重试
+            </Button>
+          }
         />
-
-        {query.isError ? (
-          <EmptyState
-            emoji="Ò︵Ó"
-            title="数据加载失败"
-            actions={
-              <Button type="button" variant="outline" size="sm" onClick={() => query.refetch()}>
-                重试
-              </Button>
-            }
+      ) : query.isLoading ? (
+        <ComicGridSkeleton count={12} />
+      ) : items.length === 0 ? (
+        <EmptyState emoji="(･o･;)" title="暂无内容" />
+      ) : (
+        <>
+          <ComicGrid items={items} />
+          <ListPagination
+            page={search.page}
+            hasMore={query.data?.hasMore ?? false}
+            disabled={query.isFetching}
+            onPageChange={updatePage}
           />
-        ) : query.isLoading ? (
-          <ComicGridSkeleton count={12} />
-        ) : items.length === 0 ? (
-          <EmptyState emoji="(･o･;)" title="暂无内容" />
-        ) : (
-          <>
-            <ComicGrid items={items} />
-            <ListPagination
-              page={search.page}
-              hasMore={query.data?.hasMore ?? false}
-              disabled={query.isFetching}
-              onPageChange={updatePage}
-            />
-          </>
-        )}
-      </div>
-      <BackTopButton />
-    </main>
+        </>
+      )}
+    </section>
   )
 }

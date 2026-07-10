@@ -23,12 +23,12 @@ export function DownloadsPage() {
   } = useDownloadTasks()
 
   return (
-    <main className="relative min-h-screen bg-background p-[32px_32px_16px_96px] text-foreground">
+    <main className="relative min-h-screen bg-background px-4 pt-6 pb-28 text-foreground sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <PageHeader title="离线缓存" description="将章节图片缓存到服务端，供阅读器重复使用" />
 
         <Tabs value={filter} onValueChange={value => setFilter(value as DownloadFilter)}>
-          <TabsList>
+          <TabsList className="max-w-full overflow-x-auto">
             {DOWNLOAD_FILTERS.map(item => (
               <TabsTrigger key={item.value} value={item.value} className="min-w-20">
                 {item.label}

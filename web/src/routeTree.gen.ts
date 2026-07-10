@@ -12,15 +12,16 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as ReaderComicIdRouteImport } from './routes/reader/$comicId'
-import { Route as AppWeeklyRouteImport } from './routes/_app/weekly'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
-import { Route as AppSearchRouteImport } from './routes/_app/search'
-import { Route as AppRankingRouteImport } from './routes/_app/ranking'
-import { Route as AppMeRouteImport } from './routes/_app/me'
-import { Route as AppListRouteImport } from './routes/_app/list'
-import { Route as AppHistoryRouteImport } from './routes/_app/history'
 import { Route as AppFavoritesRouteImport } from './routes/_app/favorites'
+import { Route as AppExploreRouteImport } from './routes/_app/explore'
 import { Route as AppDownloadsRouteImport } from './routes/_app/downloads'
+import { Route as AppBookshelfRouteImport } from './routes/_app/bookshelf'
+import { Route as AppExploreIndexRouteImport } from './routes/_app/explore/index'
+import { Route as AppExploreWeeklyRouteImport } from './routes/_app/explore/weekly'
+import { Route as AppExploreSearchRouteImport } from './routes/_app/explore/search'
+import { Route as AppExploreRankingRouteImport } from './routes/_app/explore/ranking'
+import { Route as AppExploreListRouteImport } from './routes/_app/explore/list'
 import { Route as AppComicComicIdRouteImport } from './routes/_app/comic/$comicId'
 
 const AppRoute = AppRouteImport.update({
@@ -37,39 +38,9 @@ const ReaderComicIdRoute = ReaderComicIdRouteImport.update({
   path: '/reader/$comicId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppWeeklyRoute = AppWeeklyRouteImport.update({
-  id: '/weekly',
-  path: '/weekly',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppSearchRoute = AppSearchRouteImport.update({
-  id: '/search',
-  path: '/search',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppRankingRoute = AppRankingRouteImport.update({
-  id: '/ranking',
-  path: '/ranking',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppMeRoute = AppMeRouteImport.update({
-  id: '/me',
-  path: '/me',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppListRoute = AppListRouteImport.update({
-  id: '/list',
-  path: '/list',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppHistoryRoute = AppHistoryRouteImport.update({
-  id: '/history',
-  path: '/history',
   getParentRoute: () => AppRoute,
 } as any)
 const AppFavoritesRoute = AppFavoritesRouteImport.update({
@@ -77,10 +48,45 @@ const AppFavoritesRoute = AppFavoritesRouteImport.update({
   path: '/favorites',
   getParentRoute: () => AppRoute,
 } as any)
+const AppExploreRoute = AppExploreRouteImport.update({
+  id: '/explore',
+  path: '/explore',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDownloadsRoute = AppDownloadsRouteImport.update({
   id: '/downloads',
   path: '/downloads',
   getParentRoute: () => AppRoute,
+} as any)
+const AppBookshelfRoute = AppBookshelfRouteImport.update({
+  id: '/bookshelf',
+  path: '/bookshelf',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppExploreIndexRoute = AppExploreIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppExploreRoute,
+} as any)
+const AppExploreWeeklyRoute = AppExploreWeeklyRouteImport.update({
+  id: '/weekly',
+  path: '/weekly',
+  getParentRoute: () => AppExploreRoute,
+} as any)
+const AppExploreSearchRoute = AppExploreSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => AppExploreRoute,
+} as any)
+const AppExploreRankingRoute = AppExploreRankingRouteImport.update({
+  id: '/ranking',
+  path: '/ranking',
+  getParentRoute: () => AppExploreRoute,
+} as any)
+const AppExploreListRoute = AppExploreListRouteImport.update({
+  id: '/list',
+  path: '/list',
+  getParentRoute: () => AppExploreRoute,
 } as any)
 const AppComicComicIdRoute = AppComicComicIdRouteImport.update({
   id: '/comic/$comicId',
@@ -90,92 +96,96 @@ const AppComicComicIdRoute = AppComicComicIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/bookshelf': typeof AppBookshelfRoute
   '/downloads': typeof AppDownloadsRoute
+  '/explore': typeof AppExploreRouteWithChildren
   '/favorites': typeof AppFavoritesRoute
-  '/history': typeof AppHistoryRoute
-  '/list': typeof AppListRoute
-  '/me': typeof AppMeRoute
-  '/ranking': typeof AppRankingRoute
-  '/search': typeof AppSearchRoute
   '/settings': typeof AppSettingsRoute
-  '/weekly': typeof AppWeeklyRoute
   '/reader/$comicId': typeof ReaderComicIdRoute
   '/comic/$comicId': typeof AppComicComicIdRoute
+  '/explore/list': typeof AppExploreListRoute
+  '/explore/ranking': typeof AppExploreRankingRoute
+  '/explore/search': typeof AppExploreSearchRoute
+  '/explore/weekly': typeof AppExploreWeeklyRoute
+  '/explore/': typeof AppExploreIndexRoute
 }
 export interface FileRoutesByTo {
+  '/bookshelf': typeof AppBookshelfRoute
   '/downloads': typeof AppDownloadsRoute
   '/favorites': typeof AppFavoritesRoute
-  '/history': typeof AppHistoryRoute
-  '/list': typeof AppListRoute
-  '/me': typeof AppMeRoute
-  '/ranking': typeof AppRankingRoute
-  '/search': typeof AppSearchRoute
   '/settings': typeof AppSettingsRoute
-  '/weekly': typeof AppWeeklyRoute
   '/reader/$comicId': typeof ReaderComicIdRoute
   '/': typeof AppIndexRoute
   '/comic/$comicId': typeof AppComicComicIdRoute
+  '/explore/list': typeof AppExploreListRoute
+  '/explore/ranking': typeof AppExploreRankingRoute
+  '/explore/search': typeof AppExploreSearchRoute
+  '/explore/weekly': typeof AppExploreWeeklyRoute
+  '/explore': typeof AppExploreIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/bookshelf': typeof AppBookshelfRoute
   '/_app/downloads': typeof AppDownloadsRoute
+  '/_app/explore': typeof AppExploreRouteWithChildren
   '/_app/favorites': typeof AppFavoritesRoute
-  '/_app/history': typeof AppHistoryRoute
-  '/_app/list': typeof AppListRoute
-  '/_app/me': typeof AppMeRoute
-  '/_app/ranking': typeof AppRankingRoute
-  '/_app/search': typeof AppSearchRoute
   '/_app/settings': typeof AppSettingsRoute
-  '/_app/weekly': typeof AppWeeklyRoute
   '/reader/$comicId': typeof ReaderComicIdRoute
   '/_app/': typeof AppIndexRoute
   '/_app/comic/$comicId': typeof AppComicComicIdRoute
+  '/_app/explore/list': typeof AppExploreListRoute
+  '/_app/explore/ranking': typeof AppExploreRankingRoute
+  '/_app/explore/search': typeof AppExploreSearchRoute
+  '/_app/explore/weekly': typeof AppExploreWeeklyRoute
+  '/_app/explore/': typeof AppExploreIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/bookshelf'
     | '/downloads'
+    | '/explore'
     | '/favorites'
-    | '/history'
-    | '/list'
-    | '/me'
-    | '/ranking'
-    | '/search'
     | '/settings'
-    | '/weekly'
     | '/reader/$comicId'
     | '/comic/$comicId'
+    | '/explore/list'
+    | '/explore/ranking'
+    | '/explore/search'
+    | '/explore/weekly'
+    | '/explore/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/bookshelf'
     | '/downloads'
     | '/favorites'
-    | '/history'
-    | '/list'
-    | '/me'
-    | '/ranking'
-    | '/search'
     | '/settings'
-    | '/weekly'
     | '/reader/$comicId'
     | '/'
     | '/comic/$comicId'
+    | '/explore/list'
+    | '/explore/ranking'
+    | '/explore/search'
+    | '/explore/weekly'
+    | '/explore'
   id:
     | '__root__'
     | '/_app'
+    | '/_app/bookshelf'
     | '/_app/downloads'
+    | '/_app/explore'
     | '/_app/favorites'
-    | '/_app/history'
-    | '/_app/list'
-    | '/_app/me'
-    | '/_app/ranking'
-    | '/_app/search'
     | '/_app/settings'
-    | '/_app/weekly'
     | '/reader/$comicId'
     | '/_app/'
     | '/_app/comic/$comicId'
+    | '/_app/explore/list'
+    | '/_app/explore/ranking'
+    | '/_app/explore/search'
+    | '/_app/explore/weekly'
+    | '/_app/explore/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -206,53 +216,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReaderComicIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/weekly': {
-      id: '/_app/weekly'
-      path: '/weekly'
-      fullPath: '/weekly'
-      preLoaderRoute: typeof AppWeeklyRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/search': {
-      id: '/_app/search'
-      path: '/search'
-      fullPath: '/search'
-      preLoaderRoute: typeof AppSearchRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/ranking': {
-      id: '/_app/ranking'
-      path: '/ranking'
-      fullPath: '/ranking'
-      preLoaderRoute: typeof AppRankingRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/me': {
-      id: '/_app/me'
-      path: '/me'
-      fullPath: '/me'
-      preLoaderRoute: typeof AppMeRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/list': {
-      id: '/_app/list'
-      path: '/list'
-      fullPath: '/list'
-      preLoaderRoute: typeof AppListRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/history': {
-      id: '/_app/history'
-      path: '/history'
-      fullPath: '/history'
-      preLoaderRoute: typeof AppHistoryRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/favorites': {
@@ -262,12 +230,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFavoritesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/explore': {
+      id: '/_app/explore'
+      path: '/explore'
+      fullPath: '/explore'
+      preLoaderRoute: typeof AppExploreRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/downloads': {
       id: '/_app/downloads'
       path: '/downloads'
       fullPath: '/downloads'
       preLoaderRoute: typeof AppDownloadsRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/bookshelf': {
+      id: '/_app/bookshelf'
+      path: '/bookshelf'
+      fullPath: '/bookshelf'
+      preLoaderRoute: typeof AppBookshelfRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/explore/': {
+      id: '/_app/explore/'
+      path: '/'
+      fullPath: '/explore/'
+      preLoaderRoute: typeof AppExploreIndexRouteImport
+      parentRoute: typeof AppExploreRoute
+    }
+    '/_app/explore/weekly': {
+      id: '/_app/explore/weekly'
+      path: '/weekly'
+      fullPath: '/explore/weekly'
+      preLoaderRoute: typeof AppExploreWeeklyRouteImport
+      parentRoute: typeof AppExploreRoute
+    }
+    '/_app/explore/search': {
+      id: '/_app/explore/search'
+      path: '/search'
+      fullPath: '/explore/search'
+      preLoaderRoute: typeof AppExploreSearchRouteImport
+      parentRoute: typeof AppExploreRoute
+    }
+    '/_app/explore/ranking': {
+      id: '/_app/explore/ranking'
+      path: '/ranking'
+      fullPath: '/explore/ranking'
+      preLoaderRoute: typeof AppExploreRankingRouteImport
+      parentRoute: typeof AppExploreRoute
+    }
+    '/_app/explore/list': {
+      id: '/_app/explore/list'
+      path: '/list'
+      fullPath: '/explore/list'
+      preLoaderRoute: typeof AppExploreListRouteImport
+      parentRoute: typeof AppExploreRoute
     }
     '/_app/comic/$comicId': {
       id: '/_app/comic/$comicId'
@@ -279,30 +296,42 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppExploreRouteChildren {
+  AppExploreListRoute: typeof AppExploreListRoute
+  AppExploreRankingRoute: typeof AppExploreRankingRoute
+  AppExploreSearchRoute: typeof AppExploreSearchRoute
+  AppExploreWeeklyRoute: typeof AppExploreWeeklyRoute
+  AppExploreIndexRoute: typeof AppExploreIndexRoute
+}
+
+const AppExploreRouteChildren: AppExploreRouteChildren = {
+  AppExploreListRoute: AppExploreListRoute,
+  AppExploreRankingRoute: AppExploreRankingRoute,
+  AppExploreSearchRoute: AppExploreSearchRoute,
+  AppExploreWeeklyRoute: AppExploreWeeklyRoute,
+  AppExploreIndexRoute: AppExploreIndexRoute,
+}
+
+const AppExploreRouteWithChildren = AppExploreRoute._addFileChildren(
+  AppExploreRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppBookshelfRoute: typeof AppBookshelfRoute
   AppDownloadsRoute: typeof AppDownloadsRoute
+  AppExploreRoute: typeof AppExploreRouteWithChildren
   AppFavoritesRoute: typeof AppFavoritesRoute
-  AppHistoryRoute: typeof AppHistoryRoute
-  AppListRoute: typeof AppListRoute
-  AppMeRoute: typeof AppMeRoute
-  AppRankingRoute: typeof AppRankingRoute
-  AppSearchRoute: typeof AppSearchRoute
   AppSettingsRoute: typeof AppSettingsRoute
-  AppWeeklyRoute: typeof AppWeeklyRoute
   AppIndexRoute: typeof AppIndexRoute
   AppComicComicIdRoute: typeof AppComicComicIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppBookshelfRoute: AppBookshelfRoute,
   AppDownloadsRoute: AppDownloadsRoute,
+  AppExploreRoute: AppExploreRouteWithChildren,
   AppFavoritesRoute: AppFavoritesRoute,
-  AppHistoryRoute: AppHistoryRoute,
-  AppListRoute: AppListRoute,
-  AppMeRoute: AppMeRoute,
-  AppRankingRoute: AppRankingRoute,
-  AppSearchRoute: AppSearchRoute,
   AppSettingsRoute: AppSettingsRoute,
-  AppWeeklyRoute: AppWeeklyRoute,
   AppIndexRoute: AppIndexRoute,
   AppComicComicIdRoute: AppComicComicIdRoute,
 }

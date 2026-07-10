@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export function ComicGridSkeleton({ count = 8 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
       {Array.from({ length: count }).map((_, index) => (
         <Card key={index} size="sm" className="gap-0 overflow-hidden py-0">
           <Skeleton className="aspect-square w-full rounded-none" />
