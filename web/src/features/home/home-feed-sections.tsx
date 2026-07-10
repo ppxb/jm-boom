@@ -7,23 +7,25 @@ import { Button } from '@/components/ui/button'
 import type { HomeFeedSection } from '@/lib/api/home'
 import { currentChinaWeekday } from '@/lib/utils'
 import { defaultRankingCategory } from '@/lib/filters'
+import { HomeFeedRail, HomeFeedRailItem } from './home-feed-rail'
 import { homeSectionId } from './home-utils'
 
 export function HomeFeedSections({ sections }: { sections: HomeFeedSection[] }) {
   return (
     <>
       {sections.map(section => (
-        <section key={section.id} id={homeSectionId(section)} className="scroll-mt-8 space-y-6">
+        <section
+          key={section.id}
+          id={homeSectionId(section)}
+          className="min-w-0 scroll-mt-8 space-y-6"
+        >
           <SectionHeader section={section} />
           {section.items.length === 0 ? (
             <EmptyState emoji="(･o･;)" title="暂无内容" />
           ) : (
-            <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-4 lg:gap-6">
+            <HomeFeedRail>
               {section.items.map(item => (
-                <div
-                  key={item.id}
-                  className="w-[42vw] min-w-36 max-w-48 shrink-0 snap-start sm:w-auto sm:min-w-0 sm:max-w-none"
-                >
+                <HomeFeedRailItem key={item.id}>
                   <ComicCard
                     comic={item}
                     ratio="square"
@@ -38,9 +40,9 @@ export function HomeFeedSections({ sections }: { sections: HomeFeedSection[] }) 
                       </p>
                     }
                   />
-                </div>
+                </HomeFeedRailItem>
               ))}
-            </div>
+            </HomeFeedRail>
           )}
         </section>
       ))}
