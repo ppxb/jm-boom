@@ -1,4 +1,4 @@
-use super::{auth::JmAuth, crypto, error::JmError, JmResult};
+use super::{auth::JmAuth, crypto, error::JmError, models::*, JmResult};
 use once_cell::sync::OnceCell;
 use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
@@ -10,7 +10,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230
 
 /// JM API client
 pub struct JmClient {
-    client: Client,
+    pub(crate) client: Client,
 }
 
 impl JmClient {
@@ -42,12 +42,103 @@ impl JmClient {
 
         decode_response(response, &url, &auth).await
     }
+
+    /// Search comics
+    pub async fn search(
+        &self,
+        endpoint: &str,
+        keyword: &str,
+        page: u32,
+    ) -> JmResult<SearchResult> {
+        let payload: SearchPayload = self
+            .get(
+                endpoint,
+                "search",
+                &[
+                    ("search_query", keyword.to_string()),
+                    ("page", page.to_string()),
+                    ("o", "mr".to_string()), // default order: most recent
+                ],
+            )
+            .await?;
+
+        Ok(SearchResult {
+            total: payload.total,
+            content: payload.content.into_iter().map(Comic::from).collect(),
+            redirect_aid: payload.redirect_aid,
+        })
+    }
+
+    /// Get comic detail
+    pub async fn get_comic_detail(
+        &self,
+        endpoint: &str,
+        comic_id: &str,
+    ) -> JmResult<ComicDetail> {
+        let payload: ComicDetailPayload = self
+            .get(endpoint, "album", &[("id", comic_id.to_string())])
+            .await?;
+
+        Ok(ComicDetail {
+            id: payload.id,
+            name: payload.name,
+            description: payload.description,
+            image: payload.image,
+            author: payload.author,
+            tags: payload.tags,
+            actors: payload.actors,
+            works: payload.works,
+            total_views: payload.total_views,
+            likes: payload.likes,
+            comment_total: payload.comment_total,
+            is_favorite: payload.is_favorite,
+            liked: payload.liked,
+            related_list: payload
+                .related_list
+                .into_iter()
+                .map(RelatedComic::from)
+                .collect(),
+            series: payload.series.into_iter().map(Chapter::from).collect(),
+        })
+    }
+
+    /// Get home feed sections
+    pub async fn get_home_feed(&self, endpoint: &str) -> JmResult<Vec<HomeSection>> {
+        let sections: Vec<HomeSectionPayload> = self.get(endpoint, "promote", &[]).await?;
+
+        Ok(sections
+            .into_iter()
+            .filter(|s| !is_unsupported_section(&s.title))
+            .map(|s| HomeSection {
+                id: s.id,
+                title: s.title,
+                slug: s.slug,
+                section_type: s.section_type,
+                filter_val: s.filter_val,
+                content: s
+                    .content
+                    .into_iter()
+                    .take(20) // limit preview items
+                    .map(Comic::from)
+                    .collect(),
+            })
+            .collect())
+    }
 }
 
 impl Default for JmClient {
     fn default() -> Self {
         Self::new().expect("Failed to create JM client")
     }
+}
+
+// Helper to filter unsupported sections
+fn is_unsupported_section(title: &str) -> bool {
+    let title = title.trim();
+    matches!(
+        title,
+        "最新成人APP" | "大人気エロ同人" | "人気のエロ動画" | "オススメ動画サイト"
+    )
 }
 
 // Internal helpers

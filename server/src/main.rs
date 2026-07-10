@@ -1,5 +1,6 @@
 mod api;
 mod cache;
+mod config;
 mod jm;
 mod reader;
 mod storage;
@@ -79,10 +80,19 @@ pub struct AppState {
 
 impl AppState {
     async fn new() -> anyhow::Result<Self> {
+        // 确保数据目录存在
+        let data_dir = std::path::PathBuf::from("./data");
+        std::fs::create_dir_all(&data_dir)?;
+        tracing::info!("Data directory: {}", data_dir.display());
+
         // 初始化数据库
+        let db_path = data_dir.join("app.db");
+        let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+        tracing::info!("Database URL: {}", db_url);
+
         let db = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(10)
-            .connect("sqlite:data/app.db")
+            .connect(&db_url)
             .await?;
 
         // 运行迁移

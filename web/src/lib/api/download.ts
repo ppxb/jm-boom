@@ -1,4 +1,4 @@
-import { tauriInvoke } from './tauri'
+// import { apiClient } from './client'
 
 export type DownloadChapterRequest = {
   chapterId: string
@@ -47,35 +47,39 @@ export type DownloadTaskListResult = {
 }
 
 export async function enqueueComicDownload(
-  request: EnqueueDownloadRequest
+  _request: EnqueueDownloadRequest
 ): Promise<DownloadTaskListResult> {
-  return tauriInvoke<DownloadTaskListResult>('enqueue_comic_download', { request })
+  // HTTP 模式不支持下载管理
+  throw new Error('Download management not supported in HTTP mode')
 }
 
 export async function listDownloadTasks(): Promise<DownloadTaskListResult> {
-  return tauriInvoke<DownloadTaskListResult>('list_download_tasks')
+  return {
+    rootDir: '',
+    tasks: []
+  }
 }
 
-export async function cancelDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
-  return tauriInvoke<DownloadTaskListResult>('cancel_download_task', { taskId })
+export async function cancelDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
+  throw new Error('Download management not supported in HTTP mode')
 }
 
-export async function pauseDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
-  return tauriInvoke<DownloadTaskListResult>('pause_download_task', { taskId })
+export async function pauseDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
+  throw new Error('Download management not supported in HTTP mode')
 }
 
-export async function resumeDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
-  return tauriInvoke<DownloadTaskListResult>('resume_download_task', { taskId })
+export async function resumeDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
+  throw new Error('Download management not supported in HTTP mode')
 }
 
-export async function removeDownloadTask(taskId: string): Promise<DownloadTaskListResult> {
-  return tauriInvoke<DownloadTaskListResult>('remove_download_task', { taskId })
+export async function removeDownloadTask(_taskId: string): Promise<DownloadTaskListResult> {
+  throw new Error('Download management not supported in HTTP mode')
 }
 
-export async function openDownloadTaskDir(taskId: string): Promise<void> {
-  return tauriInvoke<void>('open_download_task_dir', { taskId })
+export async function openDownloadTaskDir(_taskId: string): Promise<void> {
+  throw new Error('Download management not supported in HTTP mode')
 }
 
 export async function openDownloadRootDir(): Promise<void> {
-  return tauriInvoke<void>('open_download_root_dir')
+  throw new Error('Download management not supported in HTTP mode')
 }

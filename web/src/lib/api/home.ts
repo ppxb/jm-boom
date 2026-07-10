@@ -1,4 +1,4 @@
-import { tauriInvoke } from './tauri'
+import { apiClient } from './client'
 
 export type FeedComic = {
   id: string
@@ -88,51 +88,95 @@ export type WeekItemsResult = {
 }
 
 export async function getHomeFeed(endpoint: string | null = null): Promise<HomeFeedResult> {
-  return tauriInvoke<HomeFeedResult>('get_home_feed', { endpoint })
+  const sections = await apiClient.get<
+    Array<{
+      id: string
+      title: string
+      slug: string
+      type: string
+      filter_val: string
+      content: Array<{
+        id: string
+        name: string
+        author: string
+        description: string
+        image: string
+        tags: string[]
+      }>
+    }>
+  >('/api/home/feed')
+
+  return {
+    endpoint: endpoint || '',
+    sections: sections.map(section => ({
+      id: section.id,
+      title: section.title,
+      slug: section.slug,
+      type: section.type,
+      filterValue: section.filter_val,
+      listMode: null, // TODO: determine list mode
+      rankTag: '',
+      items: section.content.map(comic => ({
+        id: comic.id,
+        title: comic.name,
+        author: comic.author,
+        description: comic.description,
+        image: comic.image,
+        tags: comic.tags,
+        updatedAt: null
+      }))
+    }))
+  }
 }
 
 export async function getWeekFilters(endpoint: string | null = null): Promise<WeekFiltersResult> {
-  return tauriInvoke<WeekFiltersResult>('get_week_filters', { endpoint })
+  // TODO: 实现后端每周放送筛选 API
+  return {
+    endpoint: endpoint || '',
+    categories: [],
+    types: [],
+    defaultCategoryId: null,
+    defaultTypeId: null
+  }
 }
 
 export async function getWeekItems({
   page = 1,
-  categoryId,
-  typeId,
+  categoryId: _categoryId,
+  typeId: _typeId,
   endpoint = null
 }: WeekItemsParams): Promise<WeekItemsResult> {
-  return tauriInvoke<WeekItemsResult>('get_week_items', {
+  // TODO: 实现后端每周放送列表 API
+  return {
+    endpoint: endpoint || '',
     page,
-    categoryId,
-    typeId,
-    endpoint
-  })
+    total: 0,
+    items: []
+  }
 }
 
 export async function getHomeSectionList({
   mode,
   page = 1,
-  sectionId = null,
+  sectionId: _sectionId = null,
   sectionTitle = null,
-  slug = null,
-  type = null,
-  filterValue = null,
-  category = null,
-  week = null,
-  order = null,
+  slug: _slug = null,
+  type: _type = null,
+  filterValue: _filterValue = null,
+  category: _category = null,
+  week: _week = null,
+  order: _order = null,
   endpoint = null
 }: HomeSectionListParams): Promise<HomeSectionListResult> {
-  return tauriInvoke<HomeSectionListResult>('get_home_section_list', {
+  // TODO: 实现后端分类列表 API
+  return {
+    endpoint: endpoint || '',
     mode,
     page,
-    sectionId,
-    sectionTitle,
-    slug,
-    sectionType: type,
-    filterValue,
-    category,
-    week,
-    order,
-    endpoint
-  })
+    pageSize: 80,
+    total: 0,
+    hasMore: false,
+    title: sectionTitle || '',
+    items: []
+  }
 }

@@ -24,6 +24,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 aes = "0.8"
 base64 = "0.22"
 ecb = { version = "0.1", features = ["alloc", "block-padding"] }
+cbc = { version = "0.1", features = ["alloc", "block-padding"] }
 md5 = "0.7"
 
 # 图片处理

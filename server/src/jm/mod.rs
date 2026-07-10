@@ -1,8 +1,10 @@
 mod auth;
+mod chapter;
 mod client;
 mod crypto;
 mod error;
 mod models;
+mod setting;
 
 pub use auth::JmAuth;
 pub use client::JmClient;

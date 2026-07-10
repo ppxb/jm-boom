@@ -21,6 +21,12 @@ pub enum JmError {
     #[error("Decryption failed: {0}")]
     Decrypt(String),
 
+    #[error("Decoding failed: {0}")]
+    Decode(String),
+
+    #[error("Crypto error: {0}")]
+    Crypto(String),
+
     #[error("Invalid payload: {0}")]
     Payload(String),
 

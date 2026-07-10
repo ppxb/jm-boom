@@ -1,10 +1,11 @@
 use axum::{Router, routing::{get, post}};
 use crate::AppState;
 
+mod auth;
 mod comics;
+mod home;
 mod reader;
 mod search;
-mod auth;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -14,6 +15,9 @@ pub fn routes() -> Router<AppState> {
         // 漫画详情
         .route("/comics/:id", get(comics::get_comic_detail))
         .route("/comics/:id/chapters", get(comics::get_comic_chapters))
+
+        // 主页
+        .route("/home/feed", get(home::get_home_feed))
 
         // 阅读器
         .route("/reader/:chapter_id/manifest", get(reader::get_manifest))

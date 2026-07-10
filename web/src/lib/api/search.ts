@@ -1,4 +1,4 @@
-import { tauriInvoke } from './tauri'
+import { apiClient } from './client'
 
 export type StringMap = Record<string, unknown>
 
@@ -66,7 +66,7 @@ export async function searchComic({
   keyword,
   page = 1,
   extern = null,
-  endpoint = null
+  endpoint: _endpoint = null
 }: SearchComicParams): Promise<SearchResultContract> {
   const normalizedKeyword = keyword.trim()
 
@@ -74,19 +74,86 @@ export async function searchComic({
     return emptySearchResult(page, extern)
   }
 
-  return withTimeout(
-    tauriInvoke<SearchResultContract>(
-      'search_comics',
+  // 调用 HTTP API (不再传递 endpoint，由后端管理)
+  const result = await apiClient.get<{
+    total: number
+    content: Array<{
+      id: string
+      name: string
+      author: string
+      description: string
+      image: string
+      tags: string[]
+      likes: number
+      views: number
+      is_favorite: boolean
+      liked: boolean
+    }>
+    redirect_aid?: string | null
+  }>('/api/search', {
+    keyword: normalizedKeyword,
+    page
+  })
+
+  // 转换为前端格式
+  const paging = {
+    page,
+    pages: Math.ceil(result.total / 80),
+    total: result.total,
+    hasReachedMax: page >= Math.ceil(result.total / 80)
+  }
+
+  const items: ComicListItem[] = result.content.map(comic => ({
+    source: 'jm-boom-http',
+    id: comic.id,
+    title: comic.name,
+    subtitle: '',
+    finished: false,
+    likesCount: comic.likes,
+    viewsCount: comic.views,
+    updatedAt: Date.now().toString(),
+    cover: {
+      id: comic.id,
+      url: comic.image,
+      name: comic.name,
+      path: comic.image,
+      extern: {}
+    },
+    metadata: [
       {
-        keyword: normalizedKeyword,
-        page,
-        externPayload: extern,
-        endpoint
+        type: 'author',
+        name: '作者',
+        value: [comic.author]
       },
-      'Search needs the Tauri desktop runtime. Start the app with the Tauri command.'
-    ),
-    15000
-  )
+      {
+        type: 'tags',
+        name: '标签',
+        value: comic.tags
+      }
+    ],
+    raw: {
+      description: comic.description || '',
+      author: comic.author
+    },
+    extern: {}
+  }))
+
+  return {
+    source: 'jm-boom-http',
+    extern: extern ?? { sortBy: 1 },
+    scheme: {
+      version: '1.0.0',
+      type: 'searchResult',
+      source: 'jm-boom-http',
+      list: 'comicGrid'
+    },
+    data: {
+      paging,
+      items
+    },
+    paging,
+    items
+  }
 }
 
 function emptySearchResult(page: number, extern: StringMap | null): SearchResultContract {
@@ -99,12 +166,12 @@ function emptySearchResult(page: number, extern: StringMap | null): SearchResult
   const items: ComicListItem[] = []
 
   return {
-    source: 'bf99008d-010b-4f17-ac7c-61a9b57dc3d9',
+    source: 'jm-boom-http',
     extern: extern ?? { sortBy: 1 },
     scheme: {
       version: '1.0.0',
       type: 'searchResult',
-      source: 'bf99008d-010b-4f17-ac7c-61a9b57dc3d9',
+      source: 'jm-boom-http',
       list: 'comicGrid'
     },
     data: {
@@ -116,21 +183,3 @@ function emptySearchResult(page: number, extern: StringMap | null): SearchResult
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-  return new Promise<T>((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
-      reject(new Error('Search timed out. The current API endpoints may be unreachable.'))
-    }, timeoutMs)
-
-    promise.then(
-      value => {
-        window.clearTimeout(timeoutId)
-        resolve(value)
-      },
-      error => {
-        window.clearTimeout(timeoutId)
-        reject(error)
-      }
-    )
-  })
-}

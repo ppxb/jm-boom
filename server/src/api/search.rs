@@ -1,4 +1,4 @@
-use crate::jm::{JmClient, JmResult, SearchResult};
+use crate::jm::{JmClient, JmResult};
 use axum::{extract::Query, Json};
 use serde::Deserialize;
 
@@ -14,20 +14,21 @@ fn default_page() -> u32 {
     1
 }
 
-pub async fn search_comics(Query(query): Query<SearchQuery>) -> JmResult<Json<SearchResult>> {
+pub async fn search_comics(
+    Query(query): Query<SearchQuery>,
+) -> JmResult<Json<crate::jm::SearchResult>> {
     let client = JmClient::new()?;
-    let endpoint = "https://www.cdnhjk.net"; // TODO: 从配置获取
+    let endpoint = crate::config::get_endpoint();
 
-    let result: SearchResult = client
-        .get(
-            endpoint,
-            "search",
-            &[
-                ("search_query", query.keyword),
-                ("page", query.page.to_string()),
-            ],
-        )
-        .await?;
+    let keyword = query.keyword.trim();
+    if keyword.is_empty() {
+        return Ok(Json(crate::jm::SearchResult {
+            total: 0,
+            content: vec![],
+            redirect_aid: None,
+        }));
+    }
 
+    let result = client.search(&endpoint, keyword, query.page).await?;
     Ok(Json(result))
 }

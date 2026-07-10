@@ -1,4 +1,4 @@
-import { tauriInvoke } from './tauri'
+// import { apiClient } from './client'
 
 export type UserProfile = {
   id: number
@@ -55,76 +55,77 @@ export type SignInResult = {
 }
 
 export async function login({
-  username,
-  password,
-  endpoint = null,
-  rememberLogin = false
+  username: _username,
+  password: _password,
+  endpoint: _endpoint = null,
+  rememberLogin: _rememberLogin = false
 }: {
   username: string
   password: string
   endpoint?: string | null
   rememberLogin?: boolean
 }): Promise<LoginResult> {
-  return tauriInvoke<LoginResult>('login', { username, password, endpoint, rememberLogin })
+  // TODO: 实现后端登录 API
+  throw new Error('Login not implemented in HTTP mode')
 }
 
 export async function getCurrentSession(): Promise<LoginResult | null> {
-  return tauriInvoke<LoginResult | null>('get_current_session')
+  // TODO: 实现后端会话查询 API
+  return null
 }
 
 export async function getSavedLoginConfig(): Promise<SavedLoginConfig | null> {
-  return tauriInvoke<SavedLoginConfig | null>('get_saved_login_config')
+  // HTTP 模式不支持本地保存
+  return null
 }
 
 export async function saveLoginCredentials({
-  username,
-  password,
-  endpoint = null,
-  autoLogin
+  username: _username,
+  password: _password,
+  endpoint: _endpoint = null,
+  autoLogin: _autoLogin
 }: {
   username: string
   password: string
   endpoint?: string | null
   autoLogin: boolean
 }): Promise<SavedLoginConfig> {
-  return tauriInvoke<SavedLoginConfig>('save_login_credentials', {
-    username,
-    password,
-    endpoint,
-    autoLogin
-  })
+  // HTTP 模式不支持本地保存
+  throw new Error('Credential storage not supported in HTTP mode')
 }
 
-export async function setLoginAutoLogin(autoLogin: boolean): Promise<SavedLoginConfig | null> {
-  return tauriInvoke<SavedLoginConfig | null>('set_login_auto_login', { autoLogin })
+export async function setLoginAutoLogin(_autoLogin: boolean): Promise<SavedLoginConfig | null> {
+  return null
 }
 
 export async function clearLoginCredentials(): Promise<void> {
-  return tauriInvoke<void>('clear_login_credentials')
+  // HTTP 模式不支持本地保存
 }
 
 export async function getSignInData({
-  userId,
-  endpoint = null
+  userId: _userId,
+  endpoint: _endpoint = null
 }: {
   userId: number
   endpoint?: string | null
 }): Promise<SignInDataResult> {
-  return tauriInvoke<SignInDataResult>('get_sign_in_data', { userId, endpoint })
+  // TODO: 实现后端签到数据 API
+  throw new Error('Sign-in not implemented in HTTP mode')
 }
 
 export async function signIn({
-  userId,
-  dailyId,
-  endpoint = null
+  userId: _userId,
+  dailyId: _dailyId,
+  endpoint: _endpoint = null
 }: {
   userId: number
   dailyId: number
   endpoint?: string | null
 }): Promise<SignInResult> {
-  return tauriInvoke<SignInResult>('sign_in', { userId, dailyId, endpoint })
+  // TODO: 实现后端签到 API
+  throw new Error('Sign-in not implemented in HTTP mode')
 }
 
 export async function clearSession(): Promise<void> {
-  return tauriInvoke<void>('clear_session')
+  // TODO: 实现后端登出 API
 }
