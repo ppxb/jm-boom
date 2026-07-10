@@ -2,6 +2,7 @@ import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from '@tan
 import { SearchIcon } from 'lucide-react'
 
 import { AppPage } from '@/components/app-page'
+import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
@@ -35,34 +36,27 @@ function ExploreLayout() {
 
   return (
     <AppPage>
-      <header className="space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-4xl font-bold">探索</h1>
-            <p className="mt-2 text-muted-foreground">发现值得阅读的作品</p>
-          </div>
-
-          {!isSearchPage ? (
-            <Button asChild variant="outline" size="icon-lg">
-              <Link to="/explore/search">
-                <SearchIcon className="size-5" />
-              </Link>
-            </Button>
-          ) : null}
-        </div>
-
+      <PageHeader title="探索" description="发现值得阅读的作品" inlineActions>
         {!isSearchPage ? (
-          <Tabs value={activeTab} onValueChange={changeTab}>
-            <TabsList className="grid w-full grid-cols-3">
-              {EXPLORE_TABS.map(tab => (
-                <TabsTrigger key={tab.value} value={tab.value}>
-                  {tab.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          <Button asChild variant="outline" size="icon-lg">
+            <Link to="/explore/search" aria-label="搜索漫画">
+              <SearchIcon className="size-5" />
+            </Link>
+          </Button>
         ) : null}
-      </header>
+      </PageHeader>
+
+      {!isSearchPage ? (
+        <Tabs value={activeTab} onValueChange={changeTab}>
+          <TabsList className="grid w-full grid-cols-3">
+            {EXPLORE_TABS.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      ) : null}
 
       <Outlet />
     </AppPage>
