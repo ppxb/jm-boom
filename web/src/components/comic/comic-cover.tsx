@@ -13,6 +13,8 @@ export type ComicCoverProps = {
   className?: string
   ratio?: ComicCoverRatio
   showIdBadge?: boolean
+  loading?: 'eager' | 'lazy'
+  onImageSettled?: () => void
 }
 
 const COVER_RATIO_CLASS: Record<ComicCoverRatio, string> = {
@@ -25,7 +27,9 @@ export function ComicCover({
   image,
   className,
   ratio = 'portrait',
-  showIdBadge = false
+  showIdBadge = false,
+  loading = 'lazy',
+  onImageSettled
 }: ComicCoverProps) {
   const [hasImageError, setHasImageError] = useState(false)
   const hideCovers = useSettingsStore(state => state.hideCovers)
@@ -46,11 +50,15 @@ export function ComicCover({
       {shouldShowImage ? (
         <img
           src={image}
-          loading="lazy"
+          loading={loading}
           decoding="async"
           referrerPolicy="no-referrer"
           className="h-full w-full object-cover"
-          onError={() => setHasImageError(true)}
+          onLoad={onImageSettled}
+          onError={() => {
+            setHasImageError(true)
+            onImageSettled?.()
+          }}
         />
       ) : (
         <CoverPlaceholder />

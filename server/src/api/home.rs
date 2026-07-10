@@ -124,7 +124,6 @@ pub async fn get_home_feed(State(app): State<AppState>) -> JmResult<Json<HomeFee
     let sections = app
         .jm_request(|client, endpoint| Box::pin(client.get_home_feed(endpoint)))
         .await?;
-    let img_host = app.img_host().await;
     let sections = sections
         .into_iter()
         .map(|section| {
@@ -149,7 +148,7 @@ pub async fn get_home_feed(State(app): State<AppState>) -> JmResult<Json<HomeFee
                     .into_iter()
                     .take(8)
                     .map(|comic| FeedComic {
-                        image: cover_url(img_host.as_deref(), &comic.id, &comic.image),
+                        image: cover_url(&comic.id, &comic.image),
                         id: comic.id,
                         title: comic.name,
                         author: comic.author,
@@ -170,7 +169,6 @@ pub async fn get_home_section_list(
 ) -> JmResult<Json<HomeSectionListResult>> {
     let page = query.page.max(1);
     let payload = request_section_list(&app, &query, page).await?;
-    let img_host = app.img_host().await;
     let title = if query.section_title.trim().is_empty() {
         default_title(query.mode).to_string()
     } else {
@@ -184,11 +182,7 @@ pub async fn get_home_section_list(
         total: payload.total,
         has_more: payload.has_more,
         title,
-        items: payload
-            .items
-            .into_iter()
-            .map(|item| map_feed_comic(item, img_host.as_deref()))
-            .collect(),
+        items: payload.items.into_iter().map(map_feed_comic).collect(),
     }))
 }
 
@@ -253,16 +247,10 @@ pub async fn get_week_items(
             })
         })
         .await?;
-    let img_host = app.img_host().await;
-
     Ok(Json(WeekItemsResult {
         page,
         total: payload.total,
-        items: payload
-            .list
-            .into_iter()
-            .map(|item| map_feed_comic(item, img_host.as_deref()))
-            .collect(),
+        items: payload.list.into_iter().map(map_feed_comic).collect(),
     }))
 }
 
@@ -509,7 +497,7 @@ struct CategoryTag {
     title: String,
 }
 
-fn map_feed_comic(item: ComicListPayload, img_host: Option<&str>) -> FeedComic {
+fn map_feed_comic(item: ComicListPayload) -> FeedComic {
     let mut tags = Vec::new();
     for title in [item.category, item.category_sub]
         .into_iter()
@@ -522,7 +510,7 @@ fn map_feed_comic(item: ComicListPayload, img_host: Option<&str>) -> FeedComic {
         }
     }
     FeedComic {
-        image: cover_url(img_host, &item.id, &item.image),
+        image: cover_url(&item.id, &item.image),
         id: item.id,
         title: item.name,
         author: item.author,
@@ -532,17 +520,12 @@ fn map_feed_comic(item: ComicListPayload, img_host: Option<&str>) -> FeedComic {
     }
 }
 
-pub(crate) fn cover_url(img_host: Option<&str>, comic_id: &str, fallback: &str) -> String {
-    img_host
-        .filter(|host| !host.is_empty() && !comic_id.is_empty())
-        .map(|host| {
-            format!(
-                "{}/media/albums/{}_3x4.jpg",
-                host.trim_end_matches('/'),
-                comic_id
-            )
-        })
-        .unwrap_or_else(|| fallback.to_string())
+pub(crate) fn cover_url(comic_id: &str, fallback: &str) -> String {
+    if !comic_id.is_empty() && comic_id.chars().all(|character| character.is_ascii_digit()) {
+        format!("/api/covers/{comic_id}")
+    } else {
+        fallback.to_string()
+    }
 }
 
 fn resolve_list_mode(
@@ -631,4 +614,20 @@ where
 {
     let value = serde_json::Value::deserialize(deserializer)?;
     Ok(value.as_i64().or_else(|| value.as_str()?.parse().ok()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cover_url;
+
+    #[test]
+    fn proxies_numeric_cover_ids() {
+        assert_eq!(cover_url("1444583", "fallback"), "/api/covers/1444583");
+    }
+
+    #[test]
+    fn preserves_fallback_for_invalid_cover_ids() {
+        assert_eq!(cover_url("", "fallback"), "fallback");
+        assert_eq!(cover_url("not-numeric", "fallback"), "fallback");
+    }
 }

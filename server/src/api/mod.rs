@@ -5,6 +5,7 @@ use axum::{
 };
 
 mod comics;
+mod covers;
 mod downloads;
 mod home;
 mod reader;
@@ -19,6 +20,7 @@ pub fn routes() -> Router<AppState> {
         .route("/comics/:id", get(comics::get_comic_detail))
         .route("/comics/:id/chapters", get(comics::get_comic_chapters))
         .route("/comics/:id/comments", get(comics::get_comments))
+        .route("/covers/:id", get(covers::get_cover))
         // 服务端离线缓存任务
         .route("/downloads", get(downloads::list))
         .route("/downloads", post(downloads::enqueue))

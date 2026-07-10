@@ -30,6 +30,7 @@ export function ComicHero({
   onCommentsClick,
   onDownloadClick,
   onFavoriteClick,
+  onCoverSettled,
   downloadBusy = false
 }: {
   comic: ComicDetail
@@ -37,6 +38,7 @@ export function ComicHero({
   onCommentsClick: () => void
   onDownloadClick: () => void
   onFavoriteClick: () => void
+  onCoverSettled: () => void
   downloadBusy?: boolean
 }) {
   const albumId = resolveComicAlbumId(comic)
@@ -48,6 +50,8 @@ export function ComicHero({
         id={comic.id}
         title={comic.title}
         image={comic.image}
+        loading="eager"
+        onImageSettled={onCoverSettled}
         className="mx-auto w-full max-w-60 md:max-w-none"
       />
 

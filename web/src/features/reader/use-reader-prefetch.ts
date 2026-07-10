@@ -84,28 +84,25 @@ function readerPrefetchIndexes(
   radius: number
 ) {
   const normalizedPageStep = Math.max(1, Math.floor(pageStep))
+  const aheadPageCount = Math.max(radius, normalizedPageStep * 2)
+  const behindPageCount = normalizedPageStep
   const indexes: number[] = []
 
-  for (let groupDistance = 1; groupDistance <= radius; groupDistance += 1) {
-    const nextStart = currentIndex + groupDistance * normalizedPageStep
-    const previousStart = currentIndex - groupDistance * normalizedPageStep
+  for (let offset = 1; offset <= aheadPageCount; offset += 1) {
+    const nextIndex = currentIndex + offset
 
-    for (let offset = 0; offset < normalizedPageStep; offset += 1) {
-      const nextIndex = nextStart + offset
-
-      if (nextIndex < pageCount) {
-        indexes.push(nextIndex)
-      }
-    }
-
-    for (let offset = 0; offset < normalizedPageStep; offset += 1) {
-      const previousIndex = previousStart + offset
-
-      if (previousIndex >= 0 && previousIndex < pageCount) {
-        indexes.push(previousIndex)
-      }
+    if (nextIndex < pageCount) {
+      indexes.push(nextIndex)
     }
   }
 
-  return [...new Set(indexes)]
+  for (let offset = 1; offset <= behindPageCount; offset += 1) {
+    const previousIndex = currentIndex - offset
+
+    if (previousIndex >= 0) {
+      indexes.push(previousIndex)
+    }
+  }
+
+  return indexes
 }

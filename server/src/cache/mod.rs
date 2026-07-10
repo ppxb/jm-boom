@@ -5,9 +5,14 @@ use tokio::fs;
 use tokio::sync::RwLock;
 
 const READER_CACHE_VERSION: u8 = 2;
+const COVER_CACHE_VERSION: u8 = 1;
 
 pub fn reader_page_cache_key(chapter_id: &str, page: usize) -> String {
     format!("{chapter_id}:{page}-v{READER_CACHE_VERSION}")
+}
+
+pub fn cover_cache_key(comic_id: &str) -> String {
+    format!("covers:{comic_id}-v{COVER_CACHE_VERSION}")
 }
 
 pub struct ImageCache {
@@ -43,6 +48,10 @@ impl ImageCache {
         self.get_with_extension(key, "gif").await
     }
 
+    pub async fn get_cover(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        self.get_with_extension(key, "img").await
+    }
+
     async fn get_with_extension(&self, key: &str, extension: &str) -> Result<Option<Vec<u8>>> {
         let _operation = self.operation_lock.read().await;
         let cache_key = cache_index_key(key, extension);
@@ -64,6 +73,10 @@ impl ImageCache {
 
     pub async fn put_gif(&self, key: &str, data: &[u8]) -> Result<()> {
         self.put_with_extension(key, "gif", data).await
+    }
+
+    pub async fn put_cover(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.put_with_extension(key, "img", data).await
     }
 
     async fn put_with_extension(&self, key: &str, extension: &str, data: &[u8]) -> Result<()> {

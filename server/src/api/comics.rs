@@ -19,10 +19,9 @@ pub async fn get_comic_detail(
             Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
         })
         .await?;
-    let img_host = app.img_host().await;
-    detail.image = cover_url(img_host.as_deref(), &detail.id, &detail.image);
+    detail.image = cover_url(&detail.id, &detail.image);
     for related in &mut detail.related_list {
-        related.image = cover_url(img_host.as_deref(), &related.id, &related.image);
+        related.image = cover_url(&related.id, &related.image);
     }
     Ok(Json(detail))
 }

@@ -12,12 +12,16 @@ use axum::{
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
-const PAGE_PREWARM_COUNT: u32 = 2;
+const MANIFEST_PREWARM_COUNT: u32 = 5;
+const PAGE_PREWARM_COUNT: u32 = 3;
+const PAGE_PREWARM_CONCURRENCY: usize = 2;
 
 static PAGE_MATERIALIZE_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static PAGE_PREWARM_SEMAPHORE: Lazy<Arc<Semaphore>> =
+    Lazy::new(|| Arc::new(Semaphore::new(PAGE_PREWARM_CONCURRENCY)));
 
 #[derive(Serialize)]
 pub struct ManifestResponse {
@@ -46,7 +50,7 @@ pub async fn get_manifest(
         })
         .await?;
 
-    let pages = chapter
+    let pages: Vec<_> = chapter
         .images
         .iter()
         .enumerate()
@@ -59,6 +63,9 @@ pub async fn get_manifest(
             }
         })
         .collect();
+    let prewarm_count = MANIFEST_PREWARM_COUNT.min(pages.len() as u32);
+
+    prewarm_pages(app, chapter_id.clone(), 0, prewarm_count);
 
     Ok(Json(ManifestResponse {
         chapter_id: chapter.id,
@@ -73,7 +80,7 @@ pub async fn get_page(
 ) -> Result<Response, ApiError> {
     validate_chapter_id(&chapter_id)?;
     let image = materialize_page(&app, &chapter_id, page).await?;
-    prewarm_pages(app, chapter_id, page);
+    prewarm_pages(app, chapter_id, page.saturating_add(1), PAGE_PREWARM_COUNT);
     Ok(image_response(image.content_type, image.data))
 }
 
@@ -138,7 +145,7 @@ async fn materialize_page(
         }
     }
 
-    let image_data = download_page_image(&app, &chapter_id, image_path).await?;
+    let image_data = download_page_image(app, chapter_id, image_path).await?;
 
     if is_gif {
         app.cache
@@ -174,11 +181,15 @@ async fn materialize_page(
     })
 }
 
-fn prewarm_pages(app: AppState, chapter_id: String, current_page: u32) {
-    for page in current_page + 1..=current_page.saturating_add(PAGE_PREWARM_COUNT) {
+fn prewarm_pages(app: AppState, chapter_id: String, start_page: u32, count: u32) {
+    for page in start_page..start_page.saturating_add(count) {
         let app = app.clone();
         let chapter_id = chapter_id.clone();
         tokio::spawn(async move {
+            let Ok(_permit) = PAGE_PREWARM_SEMAPHORE.clone().acquire_owned().await else {
+                return;
+            };
+
             if let Err(error) = materialize_page(&app, &chapter_id, page).await {
                 if !matches!(error, ApiError::NotFound(_)) {
                     tracing::debug!(chapter_id, page, error = ?error, "reader page prewarm failed");
@@ -230,8 +241,8 @@ async fn download_page_image(
 }
 
 fn file_name(url: &str) -> String {
-    url.split('/')
-        .last()
+    url.rsplit('/')
+        .next()
         .and_then(|s| s.split('?').next())
         .unwrap_or("page")
         .to_string()

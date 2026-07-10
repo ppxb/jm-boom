@@ -1,4 +1,10 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient
+} from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -11,7 +17,11 @@ import {
   resolveComicStartReadingId,
   sortComicChapters
 } from '@/lib/comic'
-import { getComicReadManifest } from '@/lib/api/reader'
+import {
+  getComicReadManifest,
+  getComicReadPage,
+  type ComicReadManifestResult
+} from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import { ChaptersSection } from './chapters'
@@ -28,6 +38,10 @@ import {
 } from './download-drawer'
 import { enqueueComicDownload } from '@/lib/api/download'
 import { useLocalFavoritesStore } from '@/stores/local-favorites-store'
+import { useSettingsStore } from '@/stores/settings-store'
+
+const DETAIL_READER_PRELOAD_COUNT = 4
+const DETAIL_READER_PRELOAD_CONCURRENCY = 2
 
 export function ComicDetailPage({ comicId }: { comicId: string }) {
   const detail = useQuery({
@@ -71,10 +85,13 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const queryClient = useQueryClient()
   const isFavorite = useLocalFavoritesStore(state => state.items.some(item => item.id === comic.id))
   const toggleFavorite = useLocalFavoritesStore(state => state.toggle)
+  const hideCovers = useSettingsStore(state => state.hideCovers)
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
+  const [settledCoverUrl, setSettledCoverUrl] = useState('')
   const albumId = resolveComicAlbumId(comic)
   const startReadingId = useMemo(() => resolveComicStartReadingId(comic), [comic])
+  const isCoverSettled = hideCovers || comic.image.length === 0 || settledCoverUrl === comic.image
   const downloadChapters = useMemo(() => {
     const chapters = sortComicChapters(comic.series)
 
@@ -92,6 +109,10 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   }, [comic.id, comic.series])
 
   useEffect(() => {
+    if (!isCoverSettled) {
+      return
+    }
+
     const readId = startReadingId.trim()
 
     if (readId.length === 0) {
@@ -101,12 +122,13 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     let isActive = true
 
     void queryClient
-      .prefetchQuery({
+      .fetchQuery({
         queryKey: queryKeys.readerManifest(readId),
         queryFn: () => getComicReadManifest({ readId }),
         staleTime: CACHE.READER_STALE_TIME,
         gcTime: CACHE.READER_GC_TIME
       })
+      .then(manifest => prefetchReaderStartPages(queryClient, manifest))
       .catch(error => {
         if (isActive && import.meta.env.DEV) {
           console.debug('Comic detail reader manifest prefetch failed', error)
@@ -116,7 +138,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     return () => {
       isActive = false
     }
-  }, [queryClient, startReadingId])
+  }, [isCoverSettled, queryClient, startReadingId])
 
   function handleFavoriteToggle() {
     const favorited = toggleFavorite({
@@ -187,6 +209,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         onCommentsClick={() => setIsCommentsOpen(true)}
         onDownloadClick={handleDownloadClick}
         onFavoriteClick={handleFavoriteToggle}
+        onCoverSettled={() => setSettledCoverUrl(comic.image)}
         downloadBusy={downloadMutation.isPending}
       />
 
@@ -218,5 +241,41 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         onConfirm={chapters => downloadMutation.mutate(chapters)}
       />
     </div>
+  )
+}
+
+async function prefetchReaderStartPages(
+  queryClient: QueryClient,
+  manifest: ComicReadManifestResult
+) {
+  const pages = manifest.pages.slice(0, DETAIL_READER_PRELOAD_COUNT)
+  let nextPageIndex = 0
+
+  async function prefetchWorker() {
+    while (nextPageIndex < pages.length) {
+      const page = pages[nextPageIndex]
+      nextPageIndex += 1
+
+      await queryClient.prefetchQuery({
+        queryKey: queryKeys.readerPage(manifest.readId, page.index, page.path),
+        queryFn: () =>
+          getComicReadPage({
+            readId: manifest.readId,
+            index: page.index,
+            path: page.path,
+            requestOrigin: 'prefetch'
+          }),
+        staleTime: CACHE.READER_STALE_TIME,
+        gcTime: CACHE.READER_GC_TIME,
+        retry: false
+      })
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(DETAIL_READER_PRELOAD_CONCURRENCY, pages.length) },
+      prefetchWorker
+    )
   )
 }

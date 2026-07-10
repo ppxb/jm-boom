@@ -16,10 +16,6 @@ export type ComicReadPageResult = {
   readId: string
   index: number
   path: string
-  width: number
-  height: number
-  aspectRatio: number
-  isCached: boolean
 }
 
 type ReaderPageRequestOrigin = 'visible' | 'prefetch'
@@ -53,25 +49,51 @@ export async function getComicReadPage({
   readId,
   index,
   path,
-  requestOrigin: _requestOrigin = null
+  requestOrigin = 'visible'
 }: {
   readId: string
   index: number
   path: string
-  requestOrigin?: ReaderPageRequestOrigin | null
+  requestOrigin?: ReaderPageRequestOrigin
 }): Promise<ComicReadPageResult> {
+  if (requestOrigin === 'prefetch') {
+    try {
+      await preloadReaderImage(path)
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.debug('Reader image preload failed', { path, error })
+      }
+    }
+  }
+
   return {
     readId,
     index,
-    path,
-    width: 800,
-    height: 1200,
-    aspectRatio: 800 / 1200,
-    isCached: false
+    path
   }
 }
 
 export function readerFileSrc(path: string) {
-  // HTTP 模式：直接返回路径（已经是 HTTP URL）
   return path
+}
+
+async function preloadReaderImage(path: string) {
+  if (typeof Image === 'undefined') {
+    return
+  }
+
+  const image = new Image()
+  image.decoding = 'async'
+
+  if (typeof image.decode === 'function') {
+    image.src = path
+    await image.decode()
+    return
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve()
+    image.onerror = () => reject(new Error(`Failed to preload reader image: ${path}`))
+    image.src = path
+  })
 }

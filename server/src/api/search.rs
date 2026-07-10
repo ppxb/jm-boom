@@ -1,4 +1,4 @@
-use crate::{jm::JmResult, AppState};
+use crate::{api::home::cover_url, jm::JmResult, AppState};
 use axum::{
     extract::{Query, State},
     Json,
@@ -45,11 +45,10 @@ pub async fn search_comics(
             })
             .await
         {
-            let img_host = app.img_host().await;
             return Ok(Json(crate::jm::SearchResult {
                 total: 1,
                 content: vec![crate::jm::Comic {
-                    image: cover_url(img_host.as_deref(), &detail.id, &detail.image),
+                    image: cover_url(&detail.id, &detail.image),
                     id: detail.id,
                     name: detail.name,
                     author: detail.author.join(" / "),
@@ -78,30 +77,16 @@ pub async fn search_comics(
             Box::pin(async move { client.search(endpoint, &keyword, page, &order).await })
         })
         .await?;
-    let img_host = app.img_host().await;
     let result = crate::jm::SearchResult {
         content: result
             .content
             .into_iter()
             .map(|mut comic| {
-                comic.image = cover_url(img_host.as_deref(), &comic.id, &comic.image);
+                comic.image = cover_url(&comic.id, &comic.image);
                 comic
             })
             .collect(),
         ..result
     };
     Ok(Json(result))
-}
-
-fn cover_url(img_host: Option<&str>, comic_id: &str, fallback: &str) -> String {
-    img_host
-        .filter(|host| !host.is_empty() && !comic_id.is_empty())
-        .map(|host| {
-            format!(
-                "{}/media/albums/{}_3x4.jpg",
-                host.trim_end_matches('/'),
-                comic_id
-            )
-        })
-        .unwrap_or_else(|| fallback.to_string())
 }
