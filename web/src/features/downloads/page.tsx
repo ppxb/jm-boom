@@ -26,12 +26,16 @@ export function DownloadsPage() {
     <AppPage>
       <PageHeader title="下载" description="可查看和管理下载任务" />
 
-      <Tabs value={filter} onValueChange={value => setFilter(value as DownloadFilter)}>
-        <TabsList className="max-w-full overflow-x-auto">
+      <Tabs
+        value={filter}
+        className="w-full"
+        onValueChange={value => setFilter(value as DownloadFilter)}
+      >
+        <TabsList className="grid w-full grid-cols-4">
           {DOWNLOAD_FILTERS.map(item => (
-            <TabsTrigger key={item.value} value={item.value} className="min-w-20">
-              {item.label}
-              <span className="ml-1 text-muted-foreground tabular-nums">
+            <TabsTrigger key={item.value} value={item.value}>
+              <span className="truncate">{item.label}</span>
+              <span className="shrink-0 text-muted-foreground tabular-nums">
                 {filterCounts[item.value]}
               </span>
             </TabsTrigger>

@@ -29,7 +29,8 @@ export function useDownloadTasks() {
   const tasks = useQuery({
     queryKey: queryKeys.downloadTasks(),
     queryFn: listDownloadTasks,
-    refetchInterval: 1000,
+    refetchInterval: query =>
+      hasActiveTasks(query.state.data?.tasks ?? EMPTY_DOWNLOAD_TASKS) ? 1000 : false,
     refetchOnWindowFocus: false
   })
   const cancelTask = useTaskMutation(cancelDownloadTask, '已取消下载任务')
@@ -87,6 +88,10 @@ function matchesFilter(task: DownloadTask, filter: DownloadFilter) {
   if (filter === 'paused') return task.status === 'paused'
   if (filter === 'completed') return task.status === 'completed'
   return true
+}
+
+function hasActiveTasks(tasks: DownloadTask[]) {
+  return tasks.some(task => task.status === 'running' || task.status === 'queued')
 }
 
 function showError(error: unknown) {
