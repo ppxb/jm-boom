@@ -29,7 +29,7 @@ function AppRoute() {
   const showNav = !pathname.startsWith('/comic/')
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-dvh">
       {showNav ? <FloatingNav items={NAV_ITEMS} activeId={activeId} /> : null}
       <Outlet />
     </div>

@@ -47,8 +47,8 @@ function BookshelfPage() {
   }
 
   return (
-    <main className="relative min-h-screen bg-background px-4 pt-6 pb-28 text-foreground sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+    <main className="relative flex min-h-dvh flex-col bg-background px-4 pt-6 pb-36 text-foreground sm:px-6 sm:pb-28 lg:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6">
         <PageHeader title="书架" description="继续阅读本地保存的作品">
           {selection.isSelecting ? (
             <>
@@ -125,7 +125,7 @@ function BookshelfPage() {
         </PageHeader>
 
         {sortedItems.length === 0 ? (
-          <EmptyState emoji="(˙ᯅ˙)" title="书架还是空的" />
+          <EmptyState className="min-h-0 flex-1" emoji="(˙ᯅ˙)" title="书架还是空的" />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
             {sortedItems.map(item => {

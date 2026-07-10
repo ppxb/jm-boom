@@ -23,7 +23,7 @@ export function DownloadsPage() {
   } = useDownloadTasks()
 
   return (
-    <main className="relative min-h-screen bg-background px-4 pt-6 pb-28 text-foreground sm:px-6 lg:px-8">
+    <main className="relative min-h-screen bg-background px-4 pt-6 pb-36 text-foreground sm:px-6 sm:pb-28 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <PageHeader title="离线缓存" description="将章节图片缓存到服务端，供阅读器重复使用" />
 

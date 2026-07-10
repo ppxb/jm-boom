@@ -29,7 +29,7 @@ function FavoritesPage() {
   }
 
   return (
-    <main className="relative min-h-screen bg-background px-4 pt-6 pb-28 text-foreground sm:px-6 lg:px-8">
+    <main className="relative min-h-screen bg-background px-4 pt-6 pb-36 text-foreground sm:px-6 sm:pb-28 lg:px-8">
       <div className="mx-auto w-full max-w-6xl space-y-6">
         <PageHeader title="收藏" description="保存在当前浏览器中的漫画">
           <ConfirmDialog

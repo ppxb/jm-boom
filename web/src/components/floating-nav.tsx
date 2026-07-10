@@ -20,11 +20,9 @@ type FloatingNavProps = {
 }
 
 export function FloatingNav({ items, activeId }: FloatingNavProps) {
-  if (items.length === 0) return null
-
   return (
-    <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 -translate-x-1/2 rounded-full border border-border/70 p-1 backdrop-blur">
-      <ul className="flex items-center gap-1">
+    <nav className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border/70 p-1.5 backdrop-blur sm:bottom-4 sm:p-1">
+      <ul className="flex items-center gap-1.5 sm:gap-1">
         {items.map(item => (
           <NavItem key={item.id} item={item} isActive={item.id === activeId} />
         ))}
@@ -44,10 +42,10 @@ function NavItem({ item, isActive }: NavItemProps) {
       <TooltipTrigger asChild>
         <Link
           to={item.to}
-          className={buttonVariants({ variant: isActive ? 'default' : 'ghost', size: 'icon' })}
+          className={`${buttonVariants({ variant: isActive ? 'default' : 'ghost', size: 'icon' })} size-11 sm:size-9`}
           aria-label={item.label}
         >
-          <item.icon className="size-4" />
+          <item.icon className="size-5" />
         </Link>
       </TooltipTrigger>
       <TooltipContent side="top">{item.label}</TooltipContent>

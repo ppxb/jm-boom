@@ -12,7 +12,7 @@ export default defineConfig(async () => ({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://192.168.31.96:3000',
         changeOrigin: true
       }
     }

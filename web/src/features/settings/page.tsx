@@ -27,7 +27,7 @@ export function SettingsPage() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-5xl space-y-8 px-4 pt-6 pb-28 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-5xl space-y-8 px-4 pt-6 pb-36 sm:px-6 sm:pb-28 lg:px-8">
         <PageHeader title="设置" description="调整服务接口和内容显示偏好">
           <Button variant="outline" size="sm" onClick={resetSettings} className="text-xs">
             <RotateCcwIcon className="size-4" />
