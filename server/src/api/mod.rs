@@ -12,8 +12,8 @@ pub fn routes() -> Router<AppState> {
         .route("/search", get(search::search_comics))
 
         // 漫画详情
-        .route("/comics/:id", get(comics::get_detail))
-        .route("/comics/:id/comments", get(comics::get_comments))
+        .route("/comics/:id", get(comics::get_comic_detail))
+        .route("/comics/:id/chapters", get(comics::get_comic_chapters))
 
         // 阅读器
         .route("/reader/:chapter_id/manifest", get(reader::get_manifest))

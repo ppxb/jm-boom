@@ -1,22 +1,33 @@
+use crate::jm::{Chapter, ComicDetail, JmClient, JmResult};
 use axum::{extract::Path, Json};
-use serde::Serialize;
+use serde::Deserialize;
 
-#[derive(Serialize)]
-pub struct ComicDetail {
-    id: String,
-    title: String,
-    // TODO: 添加更多字段
+/// Get comic detail
+pub async fn get_comic_detail(Path(comic_id): Path<String>) -> JmResult<Json<ComicDetail>> {
+    let client = JmClient::new()?;
+    let endpoint = "https://www.cdnhjk.net"; // TODO: 从配置获取
+
+    let detail: ComicDetail = client
+        .get(endpoint, &format!("album/{}", comic_id), &[])
+        .await?;
+
+    Ok(Json(detail))
 }
 
-pub async fn get_detail(Path(id): Path<String>) -> Json<ComicDetail> {
-    // TODO: 从 JM API 获取详情
-    Json(ComicDetail {
-        id,
-        title: "Test Comic".to_string(),
-    })
-}
+/// Get comic chapters
+pub async fn get_comic_chapters(Path(comic_id): Path<String>) -> JmResult<Json<Vec<Chapter>>> {
+    let client = JmClient::new()?;
+    let endpoint = "https://www.cdnhjk.net"; // TODO: 从配置获取
 
-pub async fn get_comments(Path(_id): Path<String>) -> Json<Vec<String>> {
-    // TODO: 实现评论获取
-    Json(vec![])
+    #[derive(Deserialize)]
+    struct ChapterResponse {
+        #[serde(default)]
+        list: Vec<Chapter>,
+    }
+
+    let response: ChapterResponse = client
+        .get(endpoint, &format!("chapter/{}", comic_id), &[])
+        .await?;
+
+    Ok(Json(response.list))
 }

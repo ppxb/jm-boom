@@ -1,12 +1,33 @@
-use axum::Json;
-use serde::Serialize;
+use crate::jm::{JmClient, JmResult, SearchResult};
+use axum::{extract::Query, Json};
+use serde::Deserialize;
 
-#[derive(Serialize)]
-pub struct SearchResult {
-    items: Vec<String>,
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    #[serde(default)]
+    pub keyword: String,
+    #[serde(default = "default_page")]
+    pub page: u32,
 }
 
-pub async fn search_comics() -> Json<SearchResult> {
-    // TODO: 实现搜索
-    Json(SearchResult { items: vec![] })
+fn default_page() -> u32 {
+    1
+}
+
+pub async fn search_comics(Query(query): Query<SearchQuery>) -> JmResult<Json<SearchResult>> {
+    let client = JmClient::new()?;
+    let endpoint = "https://www.cdnhjk.net"; // TODO: 从配置获取
+
+    let result: SearchResult = client
+        .get(
+            endpoint,
+            "search",
+            &[
+                ("search_query", query.keyword),
+                ("page", query.page.to_string()),
+            ],
+        )
+        .await?;
+
+    Ok(Json(result))
 }

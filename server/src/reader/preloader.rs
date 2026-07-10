@@ -38,7 +38,7 @@ impl ChapterPreloader {
 
             // TODO: 并发下载和处理图片
             // 当前只是占位实现
-            let cache = self.cache.clone();
+            let _cache = self.cache.clone();
             let key = cache_key.clone();
 
             let task = tokio::spawn(async move {
