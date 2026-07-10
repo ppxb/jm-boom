@@ -178,8 +178,29 @@ fn is_unsupported_section(title: &str) -> bool {
     let title = title.trim();
     matches!(
         title,
-        "最新成人APP" | "大人気エロ同人" | "人気のエロ動画" | "オススメ動画サイト"
+        "禁漫小说"
+            | "禁漫书库"
+            | "禁漫書庫"
+            | "禁漫小說"
+            | "最新成人APP"
+            | "大人気エロ同人"
+            | "人気のエロ動画"
+            | "オススメ動画サイト"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_unsupported_section;
+
+    #[test]
+    fn filters_unsupported_home_sections() {
+        for title in ["禁漫小说", "禁漫书库", "禁漫書庫", "禁漫小說"] {
+            assert!(is_unsupported_section(title));
+        }
+
+        assert!(!is_unsupported_section("每周推荐"));
+    }
 }
 
 // Internal helpers

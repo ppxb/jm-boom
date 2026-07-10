@@ -20,6 +20,7 @@ function ExploreLayout() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: state => state.location.pathname })
   const isSearchPage = pathname.startsWith('/explore/search')
+  const isSectionListPage = pathname.startsWith('/explore/list')
   const activeTab = pathname.startsWith('/explore/weekly')
     ? 'weekly'
     : pathname.startsWith('/explore/ranking')
@@ -36,17 +37,19 @@ function ExploreLayout() {
 
   return (
     <AppPage>
-      <PageHeader title="探索" description="发现值得阅读的作品" inlineActions>
-        {!isSearchPage ? (
-          <Button asChild variant="outline" size="icon-lg">
-            <Link to="/explore/search" aria-label="搜索漫画">
-              <SearchIcon className="size-5" />
-            </Link>
-          </Button>
-        ) : null}
-      </PageHeader>
+      {!isSectionListPage ? (
+        <PageHeader title="探索" description="发现值得阅读的作品" inlineActions>
+          {!isSearchPage ? (
+            <Button asChild variant="outline" size="icon-lg">
+              <Link to="/explore/search" aria-label="搜索漫画">
+                <SearchIcon className="size-5" />
+              </Link>
+            </Button>
+          ) : null}
+        </PageHeader>
+      ) : null}
 
-      {!isSearchPage ? (
+      {!isSearchPage && !isSectionListPage ? (
         <Tabs value={activeTab} onValueChange={changeTab}>
           <TabsList className="grid w-full grid-cols-3">
             {EXPLORE_TABS.map(tab => (

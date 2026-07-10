@@ -1,20 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { CalendarDaysIcon } from 'lucide-react'
+import { CalendarDaysIcon, TagsIcon } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 
 import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
+import { FilterSelect } from '@/components/filter-select'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getWeekFilters, getWeekItems } from '@/lib/api/home'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
@@ -47,6 +39,14 @@ function WeeklyPage() {
   })
   const categories = useMemo(() => filters.data?.categories ?? [], [filters.data?.categories])
   const types = useMemo(() => filters.data?.types ?? [], [filters.data?.types])
+  const categoryOptions = useMemo(
+    () => categories.map(category => ({ label: category.label, value: category.id })),
+    [categories]
+  )
+  const typeOptions = useMemo(
+    () => types.map(type => ({ label: type.title, value: type.id })),
+    [types]
+  )
 
   useEffect(() => {
     if (filters.data == null) {
@@ -128,39 +128,29 @@ function WeeklyPage() {
         />
       ) : (
         <>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-end gap-2">
             {types.length > 0 ? (
-              <Tabs value={selectedTypeId} onValueChange={updateTypeId} className="max-w-full">
-                <TabsList className="max-w-full overflow-x-auto">
-                  {types.map(type => (
-                    <TabsTrigger key={type.id} value={type.id} className="min-w-16">
-                      {type.title}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+              <FilterSelect
+                value={selectedTypeId}
+                options={typeOptions}
+                placeholder="选择类型"
+                icon={<TagsIcon className="size-4 text-muted-foreground" />}
+                onValueChange={updateTypeId}
+              />
             ) : (
-              <div className="h-9 w-full animate-pulse rounded-md bg-muted sm:w-64" />
+              <div className="h-9 min-w-0 flex-1 animate-pulse rounded-md bg-muted sm:w-40 sm:flex-none" />
             )}
 
             {categories.length > 0 ? (
-              <Select value={selectedCategoryId} onValueChange={updateCategoryId}>
-                <SelectTrigger className="w-full sm:w-auto">
-                  <CalendarDaysIcon className="size-4 text-muted-foreground" />
-                  <SelectValue placeholder="选择期数" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {categories.map(category => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <FilterSelect
+                value={selectedCategoryId}
+                options={categoryOptions}
+                placeholder="选择期数"
+                icon={<CalendarDaysIcon className="size-4 text-muted-foreground" />}
+                onValueChange={updateCategoryId}
+              />
             ) : (
-              <div className="h-9 w-full animate-pulse rounded-md sm:w-80" />
+              <div className="h-9 min-w-0 flex-1 animate-pulse rounded-md bg-muted sm:w-48 sm:flex-none" />
             )}
           </div>
 

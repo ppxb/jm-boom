@@ -4,16 +4,9 @@ import { BarChart3Icon, ListFilterIcon } from 'lucide-react'
 
 import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
+import { FilterSelect } from '@/components/filter-select'
 import { ListPagination } from '@/components/list-pagination'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
 import { getHomeSectionList } from '@/lib/api/home'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
@@ -99,38 +92,21 @@ function RankingPage() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <Select value={search.order} onValueChange={updateOrder}>
-          <SelectTrigger className="w-full sm:w-auto">
-            <ListFilterIcon className="size-4 text-muted-foreground" />
-            <SelectValue placeholder="选择排序" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {RANKING_ORDER_OPTIONS.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
-        <Select value={search.category} onValueChange={updateCategory}>
-          <SelectTrigger className="w-full sm:w-auto">
-            <BarChart3Icon className="size-4 text-muted-foreground" />
-            <SelectValue placeholder="选择分类" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {categories.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+      <div className="flex items-center justify-end gap-2">
+        <FilterSelect
+          value={search.order}
+          options={RANKING_ORDER_OPTIONS}
+          placeholder="选择排序"
+          icon={<ListFilterIcon className="size-4 text-muted-foreground" />}
+          onValueChange={updateOrder}
+        />
+        <FilterSelect
+          value={search.category}
+          options={categories}
+          placeholder="选择分类"
+          icon={<BarChart3Icon className="size-4 text-muted-foreground" />}
+          onValueChange={updateCategory}
+        />
       </div>
 
       {query.isError ? (

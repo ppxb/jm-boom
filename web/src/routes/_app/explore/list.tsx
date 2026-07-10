@@ -89,6 +89,7 @@ function HomeSectionListPage() {
   })
   const items = query.data?.items ?? []
   const title = query.data?.title || search.title || sectionModeTitle(search.mode)
+  const totalPages = resolveTotalPages(query.data?.total, query.data?.pageSize)
 
   function updateCategory(value: string) {
     void navigate({
@@ -173,6 +174,7 @@ function HomeSectionListPage() {
           <ListPagination
             page={search.page}
             hasMore={query.data?.hasMore ?? false}
+            totalPages={totalPages}
             disabled={query.isFetching}
             onPageChange={updatePage}
           />
@@ -180,4 +182,12 @@ function HomeSectionListPage() {
       )}
     </section>
   )
+}
+
+function resolveTotalPages(total: number | undefined, pageSize: number | undefined) {
+  if (!total || !pageSize || total < 1 || pageSize < 1) {
+    return undefined
+  }
+
+  return Math.ceil(total / pageSize)
 }
