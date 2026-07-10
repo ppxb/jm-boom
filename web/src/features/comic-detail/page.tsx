@@ -14,7 +14,7 @@ import {
 import {
   SINGLE_CHAPTER_TITLE,
   resolveComicAlbumId,
-  resolveComicStartReadingTarget,
+  resolveComicStartReadingId,
   sortComicChapters
 } from '@/lib/comic'
 import { getComicReadManifest } from '@/lib/api/reader'
@@ -77,7 +77,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
   const albumId = resolveComicAlbumId(comic)
-  const startReadingTarget = useMemo(() => resolveComicStartReadingTarget(comic), [comic])
+  const startReadingId = useMemo(() => resolveComicStartReadingId(comic), [comic])
   const downloadChapters = useMemo(() => {
     const chapters = sortComicChapters(comic.series)
 
@@ -95,7 +95,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   }, [comic.id, comic.series])
 
   useEffect(() => {
-    const readId = startReadingTarget.readId.trim()
+    const readId = startReadingId.trim()
 
     if (readId.length === 0) {
       return
@@ -119,7 +119,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     return () => {
       isActive = false
     }
-  }, [queryClient, startReadingTarget.readId])
+  }, [queryClient, startReadingId])
 
   const favoriteMutation = useMutation({
     mutationFn: async () =>
@@ -216,7 +216,6 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
           <ChaptersSection
             albumId={albumId}
             comicId={comic.id}
-            comicTitle={comic.title}
             chapters={comic.series}
           />
         </div>

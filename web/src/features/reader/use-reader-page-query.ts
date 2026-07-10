@@ -1,7 +1,12 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 
-import { type ComicReadPageResult, getComicReadPage, readerFileSrc } from '@/lib/api/reader'
+import {
+  type ComicReadManifestPage,
+  type ComicReadPageResult,
+  getComicReadPage,
+  readerFileSrc
+} from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import type { ReaderWindowPage } from './types'
@@ -15,25 +20,35 @@ export type ReaderPageRequester = (
 
 export function useReaderPageQuery({
   comicId,
+  manifestPages,
   pageIndex,
   enabled
 }: {
   comicId: string
+  manifestPages: ComicReadManifestPage[]
   pageIndex: number
   enabled: boolean
 }) {
   const pageQueryKey = useCallback<ReaderPageQueryKeyFactory>(
-    (index: number) => queryKeys.readerPage(comicId, index),
-    [comicId]
+    (index: number) => queryKeys.readerPage(comicId, index, manifestPages[index]?.path ?? ''),
+    [comicId, manifestPages]
   )
   const requestPage = useCallback<ReaderPageRequester>(
-    (index: number, requestOrigin: ReaderPageRequestOrigin) =>
-      getComicReadPage({
+    async (index: number, requestOrigin: ReaderPageRequestOrigin) => {
+      const manifestPage = manifestPages[index]
+
+      if (!manifestPage) {
+        throw new Error('Reader page is missing from manifest')
+      }
+
+      return getComicReadPage({
         readId: comicId,
         index,
+        path: manifestPage.path,
         requestOrigin
-      }),
-    [comicId]
+      })
+    },
+    [comicId, manifestPages]
   )
   const page = useQuery({
     queryKey: pageQueryKey(pageIndex),

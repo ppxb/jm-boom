@@ -150,13 +150,8 @@ function HistoryPage() {
                           to: '/reader/$comicId',
                           params: { comicId: item.chapterId },
                           search: {
-                            title: item.title,
-                            chapter: item.chapterTitle,
                             albumId: item.albumId,
-                            fromDetail: '',
-                            pageIndex: String(item.pageIndex),
-                            nextId: '',
-                            nextChapter: ''
+                            pageIndex: String(item.pageIndex)
                           }
                         }
                       : undefined

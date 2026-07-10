@@ -80,7 +80,7 @@ export function ReaderChapterDrawer({
                   to="/reader/$comicId"
                   params={{ comicId: chapter.id }}
                   replace
-                  search={toReaderChapterSearch({ title, albumId, chapter, chapters })}
+                  search={toReaderChapterSearch({ albumId })}
                   aria-current={isCurrent ? 'page' : undefined}
                   data-current-chapter={isCurrent ? 'true' : undefined}
                   className={cn(

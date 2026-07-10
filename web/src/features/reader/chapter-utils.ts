@@ -4,19 +4,17 @@ import type { ReaderChapterItem } from './types'
 
 export function resolveReaderChapterInfo({
   currentReadId,
-  chapters,
-  fallback
+  chapters
 }: {
   currentReadId: string
   chapters: ComicChapter[]
-  fallback: string
 }) {
   const chapterItems = toReaderChapterItems(chapters)
   const currentIndex = chapterItems.findIndex(chapter => chapter.id === currentReadId)
   const currentChapter = currentIndex >= 0 ? chapterItems[currentIndex] : null
 
   return {
-    chapterTitle: currentChapter?.title ?? fallback.trim(),
+    chapterTitle: currentChapter?.title ?? '',
     chapters: chapterItems,
     currentChapter,
     previousChapter: currentIndex >= 0 ? (chapterItems[currentIndex + 1] ?? null) : null,

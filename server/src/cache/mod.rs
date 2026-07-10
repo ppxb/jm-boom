@@ -2,6 +2,12 @@ use anyhow::Result;
 use std::path::PathBuf;
 use tokio::fs;
 
+const READER_CACHE_VERSION: u8 = 2;
+
+pub fn reader_page_cache_key(chapter_id: &str, page: usize) -> String {
+    format!("{chapter_id}:{page}-v{READER_CACHE_VERSION}")
+}
+
 pub struct ImageCache {
     cache_dir: PathBuf,
     db: sqlx::SqlitePool,

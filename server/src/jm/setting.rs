@@ -1,4 +1,4 @@
-use super::{crypto, error::JmError, JmResult, SettingAuth};
+use super::{crypto, error::JmError, JmResult, SettingAuth, API_SECRET};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::{
@@ -9,6 +9,7 @@ use std::{
 use tokio::sync::{Mutex, RwLock};
 
 const IMG_HOST_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+const SETTING_AES_SEEDS: [&str; 2] = [API_SECRET, "18comicAPPContent"];
 
 #[derive(Clone)]
 struct CachedImgHost {
@@ -32,7 +33,11 @@ struct SettingResponse {
 
 #[derive(Debug, Deserialize)]
 struct SettingData {
-    #[serde(rename = "app_img_shunt")]
+    #[serde(
+        default,
+        alias = "app_img_shunt",
+        deserialize_with = "string_from_scalar"
+    )]
     img_host: String,
 }
 
@@ -97,7 +102,7 @@ impl super::client::JmClient {
         let value = envelope.data.ok_or(JmError::MissingData)?;
         let setting = match value {
             serde_json::Value::String(encrypted) => {
-                let decrypted = crypto::decrypt_data(&encrypted, &auth.ts)?;
+                let decrypted = decrypt_setting_data(&encrypted, &auth.ts)?;
                 serde_json::from_str::<SettingData>(&decrypted)
                     .map_err(|error| JmError::Decode(format!("Invalid setting data: {error}")))?
             }
@@ -131,6 +136,34 @@ impl super::client::JmClient {
             .map(|bytes| bytes.to_vec())
             .map_err(|error| JmError::Network(error.to_string()))
     }
+}
+
+fn decrypt_setting_data(data: &str, ts: &str) -> JmResult<String> {
+    let mut last_error = None;
+
+    for seed in SETTING_AES_SEEDS {
+        let key = format!("{:x}", md5::compute(format!("{ts}{seed}")));
+        match crypto::decrypt_base64(data, &key) {
+            Ok(decrypted) => return Ok(decrypted),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| JmError::Decrypt("Unable to decrypt setting data".into())))
+}
+
+fn string_from_scalar<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(value) => value,
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        _ => String::new(),
+    })
 }
 
 pub async fn invalidate_img_host(endpoint: &str) {

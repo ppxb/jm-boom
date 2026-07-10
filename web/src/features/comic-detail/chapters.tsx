@@ -26,12 +26,10 @@ import { SectionHeading } from './shared'
 export function ChaptersSection({
   albumId,
   comicId,
-  comicTitle,
   chapters
 }: {
   albumId: string
   comicId: string
-  comicTitle: string
   chapters: ComicChapter[]
 }) {
   const sortedChapters = useMemo(() => sortComicChapters(chapters), [chapters])
@@ -65,13 +63,8 @@ export function ChaptersSection({
           to="/reader/$comicId"
           params={{ comicId }}
           search={{
-            title: comicTitle,
-            chapter: SINGLE_CHAPTER_TITLE,
             albumId,
-            fromDetail: '1',
-            pageIndex: '0',
-            nextId: '',
-            nextChapter: ''
+            pageIndex: '0'
           }}
           className="block"
         >
@@ -90,11 +83,7 @@ export function ChaptersSection({
           <div className="space-y-2">
             {visibleChapters.map((chapter, index) => {
               const chapterIndex = (safePage - 1) * UI.CHAPTER_PAGE_SIZE + index
-              const nextChapter = sortedChapters[chapterIndex - 1] ?? null
               const chapterTitle = formatComicChapterTitle(chapter, chapterIndex)
-              const nextChapterTitle = nextChapter
-                ? formatComicChapterTitle(nextChapter, chapterIndex - 1)
-                : ''
 
               return (
                 <Link
@@ -102,13 +91,8 @@ export function ChaptersSection({
                   to="/reader/$comicId"
                   params={{ comicId: chapter.id }}
                   search={{
-                    title: comicTitle,
-                    chapter: chapterTitle,
                     albumId,
-                    fromDetail: '1',
-                    pageIndex: '0',
-                    nextId: nextChapter?.id ?? '',
-                    nextChapter: nextChapterTitle
+                    pageIndex: '0'
                   }}
                   className="block"
                 >

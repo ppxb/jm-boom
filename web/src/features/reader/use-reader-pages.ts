@@ -6,9 +6,12 @@ import { useReaderNavigation } from './use-reader-navigation'
 import { useAdjacentReaderPageQueries, useReaderPageQuery } from './use-reader-page-query'
 import { useReaderPrefetch } from './use-reader-prefetch'
 
+const EMPTY_MANIFEST_PAGES: never[] = []
+
 export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) {
   const manifest = useReaderManifestQuery(comicId)
-  const pageCount = manifest.data?.pageCount ?? 0
+  const manifestPages = manifest.data?.pages ?? EMPTY_MANIFEST_PAGES
+  const pageCount = manifestPages.length
   const {
     effectiveCurrentIndex,
     navigationRequestId,
@@ -25,6 +28,7 @@ export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) 
   })
   const { page, pageSrc, isPageReady, pageQueryKey, requestPage } = useReaderPageQuery({
     comicId,
+    manifestPages,
     pageIndex: effectiveCurrentIndex,
     enabled: manifest.isSuccess && pageCount > 0
   })

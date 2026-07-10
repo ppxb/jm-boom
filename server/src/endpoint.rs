@@ -251,6 +251,9 @@ impl EndpointManager {
             .decrypt_padded_vec_mut::<Pkcs7>(&encrypted)
             .map_err(|error| anyhow::anyhow!("failed to decrypt endpoint config: {error}"))?;
         let payload: HostConfigPayload = serde_json::from_slice(&decrypted)?;
+        if payload.server.is_empty() {
+            anyhow::bail!("host config did not include Server endpoints");
+        }
         Ok(payload.server)
     }
 
@@ -323,6 +326,7 @@ where
 
 #[derive(Deserialize)]
 struct HostConfigPayload {
+    #[serde(default, rename = "Server", alias = "server")]
     server: Vec<String>,
 }
 

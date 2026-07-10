@@ -10,6 +10,14 @@ const API_BASE_URL = import.meta.env.DEV
   ? 'http://localhost:3000'
   : ''
 
+export function resolveApiUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) {
+    return path
+  }
+
+  return `${API_BASE_URL}${path}`
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -25,7 +33,7 @@ async function request<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = `${API_BASE_URL}${path}`
+  const url = resolveApiUrl(path)
 
   try {
     const response = await fetch(url, {

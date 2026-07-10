@@ -19,7 +19,7 @@ import type { ComicDetail } from '@/lib/api/comic'
 import {
   getComicDisplayChapterCount,
   resolveComicAlbumId,
-  resolveComicStartReadingTarget
+  resolveComicStartReadingId
 } from '@/lib/comic'
 import { formatNumber } from '@/lib/format'
 import { ComicCover } from './shared'
@@ -40,7 +40,7 @@ export function ComicHero({
   favoriteBusy?: boolean
 }) {
   const albumId = resolveComicAlbumId(comic)
-  const startReading = resolveComicStartReadingTarget(comic)
+  const startReadingId = resolveComicStartReadingId(comic)
 
   return (
     <section className="grid grid-cols-[240px_minmax(0,1fr)] gap-8">
@@ -69,15 +69,10 @@ export function ComicHero({
           <Button asChild>
             <Link
               to="/reader/$comicId"
-              params={{ comicId: startReading.readId }}
+              params={{ comicId: startReadingId }}
               search={{
-                title: comic.title,
-                chapter: startReading.chapterTitle,
                 albumId,
-                fromDetail: '1',
-                pageIndex: '0',
-                nextId: startReading.nextChapter?.id ?? '',
-                nextChapter: startReading.nextChapter?.title ?? ''
+                pageIndex: '0'
               }}
             >
               <BookOpenIcon className="size-4" />

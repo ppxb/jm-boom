@@ -110,23 +110,23 @@ pub(crate) struct SearchPayload {
 pub(crate) struct ComicPayload {
     #[serde(default, deserialize_with = "string_from_any_or_default")]
     pub id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_from_any_or_default")]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_from_any_or_default")]
     pub author: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_from_any_or_default")]
     pub description: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_from_any_or_default")]
     pub image: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_vec_from_any")]
     pub tags: Vec<String>,
     #[serde(default, deserialize_with = "u32_from_any")]
     pub likes: u32,
     #[serde(default, deserialize_with = "u32_from_any", rename = "total_views")]
     pub views: u32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "bool_from_any")]
     pub is_favorite: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "bool_from_any")]
     pub liked: bool,
 }
 
@@ -135,76 +135,48 @@ fn string_from_any_or_default<'de, D>(deserializer: D) -> Result<String, D::Erro
 where
     D: serde::Deserializer<'de>,
 {
-    use serde::de::{self, Visitor};
-    use std::fmt;
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(string_from_value(value))
+}
 
-    struct StringVisitor;
+fn string_vec_from_any<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let values = match value {
+        serde_json::Value::Null => Vec::new(),
+        serde_json::Value::Array(values) => values,
+        value => vec![value],
+    };
+    Ok(values
+        .into_iter()
+        .map(string_from_value)
+        .filter(|value| !value.is_empty())
+        .collect())
+}
 
-    impl<'de> Visitor<'de> for StringVisitor {
-        type Value = String;
+fn bool_from_any<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value {
+        serde_json::Value::Bool(value) => value,
+        serde_json::Value::Number(value) => value.as_i64().unwrap_or_default() != 0,
+        serde_json::Value::String(value) => matches!(value.as_str(), "1" | "true" | "yes"),
+        _ => false,
+    })
+}
 
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, number, or boolean")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value)
-        }
-
-        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_none<E>(self) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(String::new())
-        }
-
-        fn visit_unit<E>(self) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(String::new())
-        }
+fn string_from_value(value: serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(value) => value,
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        _ => String::new(),
     }
-
-    deserializer.deserialize_any(StringVisitor)
 }
 
 #[derive(Debug, Deserialize)]
@@ -288,56 +260,12 @@ fn u32_from_any<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    use serde::de::{self, Visitor};
-    use std::fmt;
-
-    struct U32Visitor;
-
-    impl<'de> Visitor<'de> for U32Visitor {
-        type Value = u32;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a number or string representing a number")
-        }
-
-        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            value.try_into().map_err(de::Error::custom)
-        }
-
-        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            value.try_into().map_err(de::Error::custom)
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            value
-                .parse()
-                .unwrap_or(0)
-                .try_into()
-                .map_err(de::Error::custom)
-        }
-
-        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            value
-                .parse()
-                .unwrap_or(0)
-                .try_into()
-                .map_err(de::Error::custom)
-        }
-    }
-
-    deserializer.deserialize_any(U32Visitor)
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_u64()
+        .map(|value| value as u32)
+        .or_else(|| value.as_str()?.parse().ok())
+        .unwrap_or_default())
 }
 
 #[derive(Debug, Deserialize)]

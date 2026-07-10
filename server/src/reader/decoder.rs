@@ -20,6 +20,16 @@ pub fn needs_decoding(comic_id: u32, page_name: &str, is_gif: bool) -> bool {
     !is_gif && segmentation_count(comic_id, page_name) > 1
 }
 
+pub fn page_name_from_image(image: &str) -> String {
+    let image = image.split('?').next().unwrap_or(image);
+    let file_name = image.rsplit('/').next().unwrap_or(image);
+
+    file_name
+        .rsplit_once('.')
+        .map(|(name, _)| name.to_string())
+        .unwrap_or_else(|| file_name.to_string())
+}
+
 /// Encode decoded image to WebP
 pub fn encode_webp(decoded: &RgbImage) -> Vec<u8> {
     let (width, height) = decoded.dimensions();
@@ -91,8 +101,8 @@ mod tests {
 
     #[test]
     fn test_segmentation_count() {
-        assert_eq!(segmentation_count(100_000, "001.jpg"), 0);
-        assert_eq!(segmentation_count(250_000, "001.jpg"), 10);
-        assert!(segmentation_count(500_000, "001.jpg") >= 2);
+        assert_eq!(segmentation_count(100_000, "001"), 0);
+        assert_eq!(segmentation_count(250_000, "001"), 10);
+        assert!(segmentation_count(500_000, "001") >= 2);
     }
 }

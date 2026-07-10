@@ -15,8 +15,6 @@ export function useReaderChapterInfo({
   search: ReaderSearch
 }) {
   const albumId = safeAlbumId(search.albumId)
-  const searchTitle = safeTrim(search.title)
-  const searchChapter = safeTrim(search.chapter)
   const albumDetail = useQuery({
     queryKey: queryKeys.comicDetail(albumId),
     queryFn: () => getComicDetail(albumId),
@@ -32,12 +30,11 @@ export function useReaderChapterInfo({
     () =>
       resolveReaderChapterInfo({
         currentReadId: comicId,
-        chapters: chapters ?? [],
-        fallback: searchChapter
+        chapters: chapters ?? []
       }),
-    [chapters, comicId, searchChapter]
+    [chapters, comicId]
   )
-  const title = searchTitle || safeTrim(albumDetail.data?.comic.title)
+  const title = safeTrim(albumDetail.data?.comic.title)
   const author = albumDetail.data?.comic.author.join(' / ') ?? ''
   const coverUrl = albumDetail.data?.comic.image ?? ''
 

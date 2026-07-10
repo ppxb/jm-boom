@@ -1,8 +1,15 @@
-import { apiClient } from './client'
+import { apiClient, resolveApiUrl } from './client'
+
+export type ComicReadManifestPage = {
+  index: number
+  name: string
+  path: string
+}
 
 export type ComicReadManifestResult = {
   readId: string
   pageCount: number
+  pages: ComicReadManifestPage[]
 }
 
 export type ComicReadPageResult = {
@@ -33,25 +40,30 @@ export async function getComicReadManifest({
 
   return {
     readId: result.chapter_id,
-    pageCount: result.pages.length
+    pageCount: result.pages.length,
+    pages: result.pages.map(page => ({
+      index: page.index,
+      name: page.name,
+      path: resolveApiUrl(page.url)
+    }))
   }
 }
 
 export async function getComicReadPage({
   readId,
   index,
+  path,
   requestOrigin: _requestOrigin = null
 }: {
   readId: string
   index: number
+  path: string
   requestOrigin?: ReaderPageRequestOrigin | null
 }): Promise<ComicReadPageResult> {
-  const imageUrl = `/api/reader/${readId}/pages/${index}`
-
   return {
     readId,
     index,
-    path: imageUrl,
+    path,
     width: 800,
     height: 1200,
     aspectRatio: 800 / 1200,

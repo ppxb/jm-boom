@@ -35,33 +35,7 @@ export function resolveComicAlbumId(comic: { id: string; seriesId?: string | nul
   return seriesId.length > 0 && seriesId !== '0' ? seriesId : comic.id
 }
 
-export function resolveComicStartReadingTarget(comic: ComicDetail) {
+export function resolveComicStartReadingId(comic: ComicDetail) {
   const sortedChapters = sortComicChapters(comic.series)
-  const firstChapterIndex = sortedChapters.length - 1
-  const firstChapter = sortedChapters[firstChapterIndex]
-
-  if (!firstChapter) {
-    return {
-      readId: comic.id,
-      chapterTitle: SINGLE_CHAPTER_TITLE,
-      nextChapter: null
-    }
-  }
-
-  return {
-    readId: firstChapter.id,
-    chapterTitle: formatComicChapterTitle(firstChapter, firstChapterIndex),
-    nextChapter: toReaderNextChapter(sortedChapters[firstChapterIndex - 1], firstChapterIndex - 1)
-  }
-}
-
-function toReaderNextChapter(chapter: ComicChapter | undefined, index: number) {
-  if (!chapter) {
-    return null
-  }
-
-  return {
-    id: chapter.id,
-    title: formatComicChapterTitle(chapter, index)
-  }
+  return sortedChapters[sortedChapters.length - 1]?.id ?? comic.id
 }

@@ -1,5 +1,5 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 import { ReaderBottomBar, ReaderTopBar } from './reader-bars'
 import { ReaderHotZones } from './reader-hot-zones'
@@ -7,7 +7,7 @@ import { ReaderImageWindow } from './reader-image'
 import { ReaderError, ReaderLoading } from './reader-state'
 import { ReaderStripWindow } from './reader-strip-window'
 import { toReaderChapterSearch } from './reader-chapter-link'
-import type { ReaderChapterItem, ReaderSearch } from './types'
+import type { ReaderSearch } from './types'
 import { useReaderAutoRead } from './use-reader-auto-read'
 import { useReaderChapterInfo } from './use-reader-chapter-info'
 import { useReaderHistorySync } from './use-reader-history-sync'
@@ -63,10 +63,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     requestPage,
     retry
   } = useReaderPages(comicId, Number.isNaN(initialPageIndex) ? 0 : initialPageIndex, pageStep)
-  const availableNextChapter = useMemo(
-    () => nextChapter ?? resolveSearchNextChapter(search, comicId),
-    [comicId, nextChapter, search]
-  )
+  const availableNextChapter = nextChapter
 
   useReaderHistorySync({
     comicId,
@@ -101,13 +98,13 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
       return
     }
 
-    if (search.fromDetail === '1' && albumId.length > 0) {
+    if (albumId.length > 0) {
       void navigate({ to: '/comic/$comicId', params: { comicId: albumId }, replace: true })
       return
     }
 
     void navigate({ to: '/' })
-  }, [albumId, navigate, router, search.fromDetail])
+  }, [albumId, navigate, router])
   const goToNextChapter = useCallback(() => {
     if (!availableNextChapter) {
       return false
@@ -123,17 +120,14 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
       params: { comicId: availableNextChapter.id },
       replace: true,
       search: toReaderChapterSearch({
-        title,
-        albumId,
-        chapter: availableNextChapter,
-        chapters
+        albumId
       })
     }).catch(() => {
       nextChapterNavigationRef.current = null
     })
 
     return true
-  }, [albumId, availableNextChapter, chapters, navigate, title])
+  }, [albumId, availableNextChapter, navigate])
   const goToNextPageOrChapter = useCallback(() => {
     if (isLastPage && goToNextChapter()) {
       return
@@ -181,7 +175,8 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     pageStep
   })
 
-  const showReaderBars = isToolbarVisible && pageCount > 0
+  const showReaderTopBar = isToolbarVisible
+  const showReaderBottomBar = isToolbarVisible && pageCount > 0
   const canAutoReadAdvance =
     !isManifestLoading &&
     !manifestError &&
@@ -191,7 +186,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     pageStep,
     pageCount,
     currentIndex,
-    controlsVisible: showReaderBars,
+    controlsVisible: showReaderBottomBar,
     canAdvance: canAutoReadAdvance,
     stripScrollRef,
     onNextPage: goToNextPage
@@ -207,7 +202,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
         title={title}
         chapter={chapter}
         isFetching={isFetching}
-        visible={showReaderBars}
+        visible={showReaderTopBar}
         onBack={goBack}
         onRetry={retry}
       />
@@ -271,25 +266,9 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
         currentIndex={currentIndex}
         pageCount={pageCount}
         doublePageMode={isDoublePageMode}
-        visible={showReaderBars}
+        visible={showReaderBottomBar}
         onPageChange={goToPage}
       />
     </main>
   )
-}
-
-function resolveSearchNextChapter(
-  search: ReaderSearch,
-  currentReadId: string
-): ReaderChapterItem | null {
-  const nextId = search.nextId.trim()
-
-  if (!nextId || nextId === currentReadId) {
-    return null
-  }
-
-  return {
-    id: nextId,
-    title: search.nextChapter.trim() || '下一章'
-  }
 }

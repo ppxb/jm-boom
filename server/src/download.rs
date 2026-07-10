@@ -1,8 +1,8 @@
 use crate::{
-    cache::ImageCache,
+    cache::{reader_page_cache_key, ImageCache},
     endpoint::{request_with_failover, EndpointManager},
     jm::{invalidate_img_host, JmClient, JmResult},
-    reader::{decode_scrambled_image, encode_webp, needs_decoding},
+    reader::{decode_scrambled_image, encode_webp, needs_decoding, page_name_from_image},
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -285,8 +285,9 @@ impl DownloadManager {
                 if !self.wait_until_active(task_id).await? {
                     return Ok(());
                 }
-                let cache_key = format!("{}:{}", chapter_request.chapter_id, index);
+                let cache_key = reader_page_cache_key(&chapter_request.chapter_id, index);
                 let file_name = image_path.split('/').last().unwrap_or(image_path);
+                let page_name = page_name_from_image(image_path);
                 let is_gif = file_name.to_ascii_lowercase().ends_with(".gif");
                 let cached = if is_gif {
                     self.cache.get_gif(&cache_key).await?
@@ -303,13 +304,16 @@ impl DownloadManager {
                             self.cache.put_gif(&cache_key, &data).await?;
                             data.len() as u64
                         } else {
-                            let original = image::load_from_memory(&data)?;
-                            let rgb = if needs_decoding(comic_id, file_name, false) {
-                                decode_scrambled_image(original, comic_id, file_name)
-                            } else {
-                                original.to_rgb8()
-                            };
-                            let encoded = encode_webp(&rgb);
+                            let encoded = tokio::task::spawn_blocking(move || {
+                                let original = image::load_from_memory(&data)?;
+                                let rgb = if needs_decoding(comic_id, &page_name, false) {
+                                    decode_scrambled_image(original, comic_id, &page_name)
+                                } else {
+                                    original.to_rgb8()
+                                };
+                                Ok::<_, anyhow::Error>(encode_webp(&rgb))
+                            })
+                            .await??;
                             self.cache.put(&cache_key, &encoded).await?;
                             encoded.len() as u64
                         }

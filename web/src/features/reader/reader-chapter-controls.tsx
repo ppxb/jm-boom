@@ -46,20 +46,16 @@ export function ReaderChapterControls({
       <div className="flex w-full items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1">
           <ChapterNavButton
-            title={title}
             albumId={albumId}
             chapter={hasChapterNavigation ? previousChapter : null}
-            chapters={chapters}
           >
             <ChevronLeftIcon className="size-3.5" />
             上一章
           </ChapterNavButton>
 
           <ChapterNavButton
-            title={title}
             albumId={albumId}
             chapter={hasChapterNavigation ? nextChapter : null}
-            chapters={chapters}
           >
             下一章
             <ChevronRightIcon className="size-3.5" />
@@ -96,16 +92,12 @@ export function ReaderChapterControls({
 }
 
 function ChapterNavButton({
-  title,
   albumId,
   chapter,
-  chapters,
   children
 }: {
-  title: string
   albumId: string
   chapter: ReaderChapterItem | null
-  chapters: ReaderChapterItem[]
   children: ReactNode
 }) {
   if (!chapter) {
@@ -122,7 +114,7 @@ function ChapterNavButton({
         to="/reader/$comicId"
         params={{ comicId: chapter.id }}
         replace
-        search={toReaderChapterSearch({ title, albumId, chapter, chapters })}
+        search={toReaderChapterSearch({ albumId })}
       >
         {children}
       </Link>

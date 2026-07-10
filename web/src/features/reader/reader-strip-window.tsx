@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { readerFileSrc } from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+import { ReaderPageImage } from './reader-image'
 import type { ReaderPageQueryKeyFactory, ReaderPageRequester } from './use-reader-page-query'
 
 const STRIP_PAGE_PRELOAD_DISTANCE = 2
@@ -246,11 +247,11 @@ function ReaderStripImage({
       data-reader-page-index={index}
     >
       {src ? (
-        <img
+        <ReaderPageImage
           src={src}
-          alt=""
-          className="block w-full object-contain select-none"
-          draggable={false}
+          label={`第 ${index + 1} 张`}
+          wrapperClassName="min-h-[64vh] w-full"
+          imageClassName="block w-full object-contain"
           loading="eager"
           decoding={Math.abs(index - currentIndex) <= 1 ? 'sync' : 'async'}
           onLoad={onLayoutChange}

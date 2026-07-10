@@ -83,6 +83,10 @@ impl JmClient {
         *self.jwt_token.write().await = token;
     }
 
+    pub(crate) async fn jwt_token(&self) -> Option<String> {
+        self.jwt_token.read().await.clone()
+    }
+
     /// Search comics
     pub async fn search(
         &self,
