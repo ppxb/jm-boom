@@ -65,8 +65,8 @@ export function ReaderProgressSlider({
           '[&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-transparent sm:[&::-webkit-slider-runnable-track]:h-0.5',
           '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full',
           isScrubbing
-            ? '[&::-moz-range-thumb]:size-4 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:size-4 sm:[&::-moz-range-thumb]:size-2.5 sm:[&::-webkit-slider-thumb]:mt-[-4px] sm:[&::-webkit-slider-thumb]:size-2.5'
-            : '[&::-moz-range-thumb]:size-2.5 [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:size-2.5 sm:[&::-moz-range-thumb]:size-1.5 sm:[&::-webkit-slider-thumb]:mt-[-2px] sm:[&::-webkit-slider-thumb]:size-1.5',
+            ? '[&::-moz-range-thumb]:size-4 sm:[&::-moz-range-thumb]:size-2.5 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:size-4 sm:[&::-webkit-slider-thumb]:mt-[-4px] sm:[&::-webkit-slider-thumb]:size-2.5'
+            : '[&::-moz-range-thumb]:size-2.5 sm:[&::-moz-range-thumb]:size-1.5 [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:size-2.5 sm:[&::-webkit-slider-thumb]:mt-[-2px] sm:[&::-webkit-slider-thumb]:size-1.5',
           showKnob
             ? '[&::-moz-range-thumb]:bg-neutral-50 [&::-webkit-slider-thumb]:bg-neutral-50 [&::-webkit-slider-thumb]:shadow'
             : '[&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:bg-transparent [&::-webkit-slider-thumb]:shadow-none'

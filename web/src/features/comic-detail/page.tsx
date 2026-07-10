@@ -4,11 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { BackTopButton } from '@/components/back-top-button'
 import { PageBackButton } from '@/components/page-back-button'
-import {
-  getComicComments,
-  getComicDetail,
-  type ComicDetail
-} from '@/lib/api/comic'
+import { getComicComments, getComicDetail, type ComicDetail } from '@/lib/api/comic'
 import {
   SINGLE_CHAPTER_TITLE,
   resolveComicAlbumId,
@@ -73,9 +69,7 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
 
 function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const queryClient = useQueryClient()
-  const isFavorite = useLocalFavoritesStore(state =>
-    state.items.some(item => item.id === comic.id)
-  )
+  const isFavorite = useLocalFavoritesStore(state => state.items.some(item => item.id === comic.id))
   const toggleFavorite = useLocalFavoritesStore(state => state.toggle)
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)

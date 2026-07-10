@@ -25,10 +25,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  path: string,
-  options?: RequestInit
-): Promise<T> {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = resolveApiUrl(path)
 
   try {
@@ -36,8 +33,8 @@ async function request<T>(
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...options?.headers,
-      },
+        ...options?.headers
+      }
     })
 
     if (!response.ok) {
@@ -48,11 +45,7 @@ async function request<T>(
         errorData = { error: response.statusText }
       }
 
-      throw new ApiError(
-        errorData.error || `HTTP ${response.status}`,
-        response.status,
-        errorData
-      )
+      throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
     }
 
     // 如果是图片响应，返回 blob
@@ -66,24 +59,24 @@ async function request<T>(
       throw error
     }
 
-    throw new ApiError(
-      error instanceof Error ? error.message : 'Network error',
-      undefined,
-      error
-    )
+    throw new ApiError(error instanceof Error ? error.message : 'Network error', undefined, error)
   }
 }
 
 export const apiClient = {
   get: <T>(path: string, params?: Record<string, any>) => {
     const query = params
-      ? '?' + new URLSearchParams(
-          Object.entries(params).reduce((acc, [key, value]) => {
-            if (value !== null && value !== undefined) {
-              acc[key] = String(value)
-            }
-            return acc
-          }, {} as Record<string, string>)
+      ? '?' +
+        new URLSearchParams(
+          Object.entries(params).reduce(
+            (acc, [key, value]) => {
+              if (value !== null && value !== undefined) {
+                acc[key] = String(value)
+              }
+              return acc
+            },
+            {} as Record<string, string>
+          )
         ).toString()
       : ''
 
@@ -93,15 +86,14 @@ export const apiClient = {
   post: <T>(path: string, data?: any) =>
     request<T>(path, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(data)
     }),
 
   put: <T>(path: string, data?: any) =>
     request<T>(path, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: JSON.stringify(data)
     }),
 
-  delete: <T>(path: string) =>
-    request<T>(path, { method: 'DELETE' }),
+  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' })
 }

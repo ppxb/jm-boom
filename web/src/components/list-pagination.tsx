@@ -129,13 +129,5 @@ function buildPaginationEntries(page: number, totalPages: number): PaginationEnt
     ]
   }
 
-  return [
-    1,
-    'start-ellipsis',
-    page - 1,
-    page,
-    page + 1,
-    'end-ellipsis',
-    totalPages
-  ]
+  return [1, 'start-ellipsis', page - 1, page, page + 1, 'end-ellipsis', totalPages]
 }

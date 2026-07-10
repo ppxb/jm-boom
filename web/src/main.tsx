@@ -17,7 +17,9 @@ export const router = createRouter({
 })
 
 function parseSearchParams(searchString: string) {
-  const search = new URLSearchParams(searchString.startsWith('?') ? searchString.slice(1) : searchString)
+  const search = new URLSearchParams(
+    searchString.startsWith('?') ? searchString.slice(1) : searchString
+  )
   const result: Record<string, unknown> = {}
 
   for (const [key, rawValue] of search.entries()) {

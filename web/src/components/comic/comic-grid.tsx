@@ -14,7 +14,9 @@ export function ComicGrid({ items }: { items: FeedComic[] }) {
             to: '/comic/$comicId',
             params: { comicId: item.id }
           }}
-          metadata={<p className="line-clamp-1 text-xs text-muted-foreground">{item.author || 'N/A'}</p>}
+          metadata={
+            <p className="line-clamp-1 text-xs text-muted-foreground">{item.author || 'N/A'}</p>
+          }
         />
       ))}
     </div>

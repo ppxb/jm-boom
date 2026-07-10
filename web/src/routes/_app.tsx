@@ -1,11 +1,5 @@
 import { createFileRoute, Outlet, useRouterState } from '@tanstack/react-router'
-import {
-  BookmarkIcon,
-  CompassIcon,
-  DownloadIcon,
-  SettingsIcon,
-  ShellIcon
-} from 'lucide-react'
+import { BookmarkIcon, CompassIcon, DownloadIcon, SettingsIcon, ShellIcon } from 'lucide-react'
 
 import { FloatingNav, type FloatingNavItem } from '@/components/floating-nav'
 

@@ -1,9 +1,4 @@
-import {
-  DatabaseIcon,
-  LoaderCircleIcon,
-  PackageIcon,
-  Trash2Icon
-} from 'lucide-react'
+import { DatabaseIcon, LoaderCircleIcon, PackageIcon, Trash2Icon } from 'lucide-react'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -44,12 +39,7 @@ export function CacheSection({
             onConfirm={onClear}
             icon={<Trash2Icon className="size-5 text-destructive" />}
             trigger={
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isLoading || isClearing}
-              >
+              <Button type="button" variant="outline" size="sm" disabled={isLoading || isClearing}>
                 {isClearing ? (
                   <LoaderCircleIcon className="size-4 animate-spin" />
                 ) : (

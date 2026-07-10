@@ -46,5 +46,15 @@ export function useReaderHistorySync({
       pageIndex: currentIndex,
       pageCount
     })
-  }, [author, chapter, comicId, coverUrl, currentIndex, pageCount, albumId, title, upsertReadingHistory])
+  }, [
+    author,
+    chapter,
+    comicId,
+    coverUrl,
+    currentIndex,
+    pageCount,
+    albumId,
+    title,
+    upsertReadingHistory
+  ])
 }

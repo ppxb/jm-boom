@@ -230,7 +230,7 @@ export function ReaderPageImage({
         src={requestSrc}
         alt=""
         className={cn(
-          'select-none transition-opacity duration-200',
+          'transition-opacity duration-200 select-none',
           status === 'loaded' ? 'opacity-100' : 'opacity-0',
           imageClassName
         )}

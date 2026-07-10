@@ -85,10 +85,7 @@ export function ComicHero({
               开始阅读
             </Link>
           </Button>
-          <Button
-            variant={isFavorite ? 'secondary' : 'outline'}
-            onClick={onFavoriteClick}
-          >
+          <Button variant={isFavorite ? 'secondary' : 'outline'} onClick={onFavoriteClick}>
             {isFavorite ? (
               <BookmarkCheckIcon className="size-4" />
             ) : (
@@ -212,9 +209,7 @@ function PillGroup({
           key={`${title}-${item}`}
           variant={variant}
           asChild
-          className={
-            mobileProminent ? 'h-7 px-3 text-sm sm:h-5 sm:px-2 sm:text-xs' : undefined
-          }
+          className={mobileProminent ? 'h-7 px-3 text-sm sm:h-5 sm:px-2 sm:text-xs' : undefined}
         >
           <Link
             to="/explore/search"

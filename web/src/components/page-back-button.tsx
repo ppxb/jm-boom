@@ -11,7 +11,7 @@ export function PageBackButton() {
       type="button"
       variant="ghost"
       size="default"
-      className="h-11 self-start gap-2 px-3 text-base"
+      className="h-11 gap-2 self-start px-3 text-base"
       onClick={() => router.history.back()}
     >
       <ArrowLeftIcon className="size-5" />

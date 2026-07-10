@@ -79,9 +79,7 @@ export function ReaderChapterControls({
           <ReaderSettingsMenu />
         </div>
 
-        <div className="shrink-0 text-sm text-neutral-300 tabular-nums sm:text-xs">
-          {pageLabel}
-        </div>
+        <div className="shrink-0 text-sm text-neutral-300 tabular-nums sm:text-xs">{pageLabel}</div>
       </div>
 
       <ReaderChapterDrawer
