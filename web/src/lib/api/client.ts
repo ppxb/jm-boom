@@ -1,21 +1,17 @@
 /**
  * HTTP API Client for JM Boom Server
  *
- * 根据环境自动选择：
- * - 开发环境：连接本地后端 http://localhost:3000
- * - 生产环境：使用相对路径 /api
+ * API 请求统一使用同源路径：
+ * - 开发环境由 Vite 将 /api 代理到本地后端
+ * - 生产环境由 Web Server 将 /api 转发到后端
  */
-
-const API_BASE_URL = import.meta.env.DEV
-  ? 'http://localhost:3000'
-  : ''
 
 export function resolveApiUrl(path: string) {
   if (/^https?:\/\//i.test(path)) {
     return path
   }
 
-  return `${API_BASE_URL}${path}`
+  return `/${path.replace(/^\/+/, '')}`
 }
 
 export class ApiError extends Error {

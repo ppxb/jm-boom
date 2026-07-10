@@ -9,10 +9,12 @@ export default defineConfig(async () => ({
     tsconfigPaths: true
   },
   server: {
+    host: true,
     port: 5173,
+    strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://192.168.31.96:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true
       }
     }

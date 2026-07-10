@@ -102,7 +102,6 @@
 
 - `web/src/components/theme-toggle.tsx` 当前没有引用。
 - `/api/comics/:id/chapters` 当前没有前端调用，详情接口已经返回章节列表。
-- `.env.development`、`.env.production` 定义了 `VITE_API_BASE`，但 API Client 没有读取。
 - `server/Cargo.toml` 中直接依赖的 `tower`、`cbc`、Redis feature 当前没有实现用途；Axum 的 multipart/ws 和 `tower-http` 的 fs feature 也未使用。清理前先确认近期规划。
 - 阅读器结果中的固定宽高、宽高比、`isCached` 和空操作 `readerFileSrc()` 属于 Tauri 兼容残留。
 - 漫画详情前端人为补出的 `seriesId: ''`、`price: 0`、`purchased: true` 应删除或由真实 DTO 表达。
