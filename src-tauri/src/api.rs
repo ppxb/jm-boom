@@ -49,8 +49,6 @@ const HOME_SECTION_LIST_PAGE_SIZE: usize = 20;
 const SEARCH_PAGE_SIZE: usize = 80;
 const JM_PLUGIN_ID: &str = "bf99008d-010b-4f17-ac7c-61a9b57dc3d9";
 static IMG_HOST_CACHE: OnceLock<Mutex<HashMap<String, ImgHostCacheEntry>>> = OnceLock::new();
-static SHARED_HTTP_CLIENT: OnceLock<Mutex<Option<reqwest::Client>>> = OnceLock::new();
-static NETWORK_PROXY_CONFIG: OnceLock<Mutex<NetworkProxyConfig>> = OnceLock::new();
 static JWT_TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 #[derive(Clone, Debug)]
