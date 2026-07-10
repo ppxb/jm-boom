@@ -249,7 +249,7 @@ function ReaderStripImage({
       {src ? (
         <ReaderPageImage
           src={src}
-          label={`第 ${index + 1} 张`}
+          label={`第 ${index + 1} 页`}
           wrapperClassName="min-h-[64vh] w-full"
           imageClassName="block w-full object-contain"
           loading="eager"
@@ -277,7 +277,7 @@ function ReaderStripImage({
         </div>
       ) : (
         <div className="flex min-h-[64vh] w-full items-center justify-center text-xs text-neutral-500">
-          正在准备第 {index + 1} 张
+          正在准备第 {index + 1} 页
         </div>
       )}
     </article>
