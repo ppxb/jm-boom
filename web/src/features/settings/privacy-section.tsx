@@ -12,7 +12,7 @@ export function PrivacySection({
 }) {
   return (
     <SettingsSection icon={<ShieldIcon className="size-4" />} title="NSFW 保护">
-      <SettingRow title="封面隐私模式" description="控制列表项是否遮挡封面">
+      <SettingRow title="封面隐私模式" description="控制列表项是否遮挡封面" inline>
         <Switch checked={hideCovers} onCheckedChange={onHideCoversChange} />
       </SettingRow>
     </SettingsSection>

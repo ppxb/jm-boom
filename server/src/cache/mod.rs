@@ -1,6 +1,8 @@
 use anyhow::Result;
+use serde::Serialize;
 use std::path::PathBuf;
 use tokio::fs;
+use tokio::sync::RwLock;
 
 const READER_CACHE_VERSION: u8 = 2;
 
@@ -11,6 +13,14 @@ pub fn reader_page_cache_key(chapter_id: &str, page: usize) -> String {
 pub struct ImageCache {
     cache_dir: PathBuf,
     db: sqlx::SqlitePool,
+    operation_lock: RwLock<()>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheStats {
+    pub size_bytes: i64,
+    pub entry_count: i64,
 }
 
 impl ImageCache {
@@ -18,7 +28,11 @@ impl ImageCache {
         let cache_dir = PathBuf::from("data/cache/images");
         fs::create_dir_all(&cache_dir).await?;
 
-        Ok(Self { cache_dir, db })
+        Ok(Self {
+            cache_dir,
+            db,
+            operation_lock: RwLock::new(()),
+        })
     }
 
     pub async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
@@ -30,6 +44,7 @@ impl ImageCache {
     }
 
     async fn get_with_extension(&self, key: &str, extension: &str) -> Result<Option<Vec<u8>>> {
+        let _operation = self.operation_lock.read().await;
         let cache_key = cache_index_key(key, extension);
         let path = self.get_path(key, extension);
 
@@ -52,6 +67,7 @@ impl ImageCache {
     }
 
     async fn put_with_extension(&self, key: &str, extension: &str, data: &[u8]) -> Result<()> {
+        let _operation = self.operation_lock.read().await;
         let cache_key = cache_index_key(key, extension);
         let path = self.get_path(key, extension);
 
@@ -75,6 +91,37 @@ impl ImageCache {
         .bind(now)
         .execute(&self.db)
         .await?;
+
+        Ok(())
+    }
+
+    pub async fn stats(&self) -> Result<CacheStats> {
+        let _operation = self.operation_lock.read().await;
+        let (size_bytes, entry_count) = sqlx::query_as::<_, (i64, i64)>(
+            "SELECT COALESCE(SUM(size), 0), COUNT(*) FROM cache_index",
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(CacheStats {
+            size_bytes,
+            entry_count,
+        })
+    }
+
+    pub async fn clear(&self) -> Result<()> {
+        let _operation = self.operation_lock.write().await;
+
+        match fs::remove_dir_all(&self.cache_dir).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        fs::create_dir_all(&self.cache_dir).await?;
+        sqlx::query("DELETE FROM cache_index")
+            .execute(&self.db)
+            .await?;
 
         Ok(())
     }

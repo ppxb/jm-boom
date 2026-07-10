@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { ApiEndpointSection } from './api-endpoint-section'
 import { AppearanceSection } from './appearance-section'
 import { PrivacySection } from './privacy-section'
+import { CacheSection, VersionSection } from './system-sections'
 import { useSettingsData } from './use-settings-data'
 
 export function SettingsPage() {
@@ -18,7 +19,8 @@ export function SettingsPage() {
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const setHideCovers = useSettingsStore(state => state.setHideCovers)
   const reset = useSettingsStore(state => state.reset)
-  const { endpointState, refreshEndpoints, changeEndpoint } = useSettingsData()
+  const { endpointState, systemInfo, refreshEndpoints, changeEndpoint, clearCache } =
+    useSettingsData()
 
   function resetSettings() {
     reset()
@@ -28,8 +30,14 @@ export function SettingsPage() {
 
   return (
     <AppPage contentClassName="max-w-5xl gap-8" showBackTop={false}>
-      <PageHeader title="设置" description="调整服务接口和内容显示偏好">
-        <Button variant="outline" size="sm" onClick={resetSettings} className="text-xs">
+      <PageHeader title="设置" description="APP 设置及缓存管理" inlineActions>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={resetSettings}
+          className="text-xs"
+        >
           <RotateCcwIcon className="size-4" />
           恢复默认
         </Button>
@@ -37,6 +45,10 @@ export function SettingsPage() {
 
       <Card>
         <CardContent className="space-y-8">
+          <VersionSection info={systemInfo.data} isLoading={systemInfo.isLoading} />
+
+          <Separator />
+
           <AppearanceSection theme={theme} onThemeChange={setTheme} />
 
           <Separator />
@@ -53,6 +65,15 @@ export function SettingsPage() {
           <Separator />
 
           <PrivacySection hideCovers={hideCovers} onHideCoversChange={setHideCovers} />
+
+          <Separator />
+
+          <CacheSection
+            info={systemInfo.data}
+            isLoading={systemInfo.isLoading}
+            isClearing={clearCache.isPending}
+            onClear={() => clearCache.mutate()}
+          />
         </CardContent>
       </Card>
     </AppPage>

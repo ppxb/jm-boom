@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import { cn } from '@/lib/utils'
+
 export function SettingsSection({
   icon,
   title,
@@ -29,14 +31,21 @@ export function SectionTitle({ icon, title }: { icon: ReactNode; title: string }
 export function SettingRow({
   title,
   description,
-  children
+  children,
+  inline = false
 }: {
   title: string
   description: string
   children: ReactNode
+  inline?: boolean
 }) {
   return (
-    <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-6">
+    <div
+      className={cn(
+        'flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-6',
+        inline && 'flex-row items-center gap-4'
+      )}
+    >
       <div className="min-w-0 space-y-1">
         <div className="text-sm font-medium">{title}</div>
         <div className="text-xs leading-5 text-muted-foreground">{description}</div>

@@ -16,6 +16,16 @@ export type EndpointState = {
   endpoints: ApiEndpointProbe[]
 }
 
+export type ServerCacheStats = {
+  sizeBytes: number
+  entryCount: number
+}
+
+export type SystemInfo = {
+  serverVersion: string
+  cache: ServerCacheStats
+}
+
 export function getEndpointState(): Promise<EndpointState> {
   return apiClient.get('/api/settings/endpoints')
 }
@@ -26,4 +36,12 @@ export function refreshApiEndpoints(): Promise<EndpointState> {
 
 export function setApiEndpoint(endpoint: string | null): Promise<EndpointState> {
   return apiClient.put('/api/settings/endpoints', { endpoint })
+}
+
+export function getSystemInfo(): Promise<SystemInfo> {
+  return apiClient.get('/api/settings/system')
+}
+
+export function clearServerCache(): Promise<SystemInfo> {
+  return apiClient.delete('/api/settings/cache')
 }

@@ -68,7 +68,7 @@ export function ApiEndpointSection({
                 )}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" align="end">
               <SelectGroup>
                 <SelectItem value={AUTO_ENDPOINT_VALUE}>自动优选</SelectItem>
                 {state?.endpoints.map(option => (

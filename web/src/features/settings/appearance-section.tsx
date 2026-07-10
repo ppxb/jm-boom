@@ -18,7 +18,7 @@ export function AppearanceSection({
 }) {
   return (
     <SettingsSection icon={<MonitorCogIcon className="size-4" />} title="外观">
-      <SettingRow title="主题" description="控制应用的明暗色主题">
+      <SettingRow title="主题" description="控制应用的明暗色主题" inline>
         <Tabs value={theme} onValueChange={onThemeChange}>
           <TabsList>
             {THEME_OPTIONS.map(option => (

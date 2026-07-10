@@ -64,7 +64,7 @@
 - 所有非 GIF 图片都会解码为 RGB 并重新编码为质量 75 的 WebP，即使图片不需要解扰。这会增加 CPU、造成二次有损压缩，并丢失 PNG/WebP alpha 通道。
 - 不需要解扰的图片应优先原样缓存；只有需要解扰的图片才进行解码和重新编码，并保留必要的颜色/透明度信息。
 - 页面响应使用一年 `immutable`，但公开 URL 不包含缓存或解扰算法版本。算法更新后浏览器仍可能长期使用旧图；版本必须进入 URL/ETag，或取消 immutable。
-- 需要恢复服务端缓存统计、容量配置和清理 API；“打开缓存目录”属于 Tauri 能力，可继续放弃。
+- 服务端缓存统计和清理 API 已恢复；仍需补容量配置、LRU 淘汰和孤儿文件修复。“打开缓存目录”属于 Tauri 能力，可继续放弃。
 
 ### P1：阅读器预取兼容层没有真正预取图片
 
@@ -94,10 +94,10 @@
 
 ## 设置页尚未对齐的非 Tauri 能力
 
-- 缓存容量、缓存统计和清理：应迁移到服务端，不能因放弃 Tauri 一并删除。
+- 缓存统计和清理已迁移到服务端；仍缺缓存容量上限和自动淘汰配置。
 - 网络代理：代理作用对象现在是服务端 HTTP Client，应改为服务端环境变量或受保护的管理配置，而不是浏览器本地设置。
 - 账号会话管理：需要展示当前服务端会话、退出其他会话或撤销会话，不应照搬桌面端保存密码方案。
-- 版本展示、检查更新和安装更新属于不同概念：安装更新可放弃；显示 Web/Server 构建版本仍有诊断价值，但优先级较低。
+- Web/Server 构建版本已恢复展示；检查更新和安装更新仍属于后续独立能力，其中安装更新可继续放弃。
 
 ## 冗余和待清理代码
 
@@ -106,7 +106,7 @@
 - `server/Cargo.toml` 中直接依赖的 `tower`、`cbc`、Redis feature 当前没有实现用途；Axum 的 multipart/ws 和 `tower-http` 的 fs feature 也未使用。清理前先确认近期规划。
 - 阅读器结果中的固定宽高、宽高比、`isCached` 和空操作 `readerFileSrc()` 属于 Tauri 兼容残留。
 - 漫画详情前端人为补出的 `seriesId: ''`、`price: 0`、`purchased: true` 应删除或由真实 DTO 表达。
-- `cache_index.created_at/accessed_at/size` 当前没有消费方，在完成缓存管理前属于半成品基础设施。
+- `cache_index.size` 已用于缓存统计；`created_at/accessed_at` 在完成 LRU 淘汰和诊断前仍属于半成品基础设施。
 
 ## 测试和验证基线
 
@@ -115,9 +115,10 @@
 - `bun x tsc --noEmit`
 - `bun run lint`
 - `cargo test --locked`
-- `cargo clippy --locked --all-targets -- -D warnings`
 - `cargo fmt --check`
 - `git diff --check master...HEAD`
+
+当前 Rust 工具链下，严格 Clippy 被 `reader.rs`、`download.rs` 和 `crypto.rs` 中 5 个既有警告阻断，需单独清理后恢复为验证基线。
 
 服务端目前只有一个图片分段算法单测。后续至少补充：
 
