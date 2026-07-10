@@ -47,7 +47,7 @@ export function ReaderImageWindow({
           >
             <ReaderPageImage
               src={page.src}
-              label={`第 ${page.index + 1} 张`}
+              label={`第 ${page.index + 1} 页`}
               wrapperClassName="h-screen w-screen"
               imageClassName="h-screen w-screen object-contain"
               loading="eager"

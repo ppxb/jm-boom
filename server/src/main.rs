@@ -7,12 +7,16 @@ mod reader;
 
 use axum::{
     extract::DefaultBodyLimit,
-    http::{header, Method},
+    http::{header, HeaderValue, Method},
     Router,
 };
 use std::net::SocketAddr;
 use std::{future::Future, pin::Pin};
-use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+use tower_http::{
+    compression::CompressionLayer,
+    cors::{AllowOrigin, CorsLayer},
+    trace::TraceLayer,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -32,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new().await?;
 
     // 构建路由
-    let app = Router::new()
+    let mut app = Router::new()
         // API 路由
         .nest("/api", api::routes())
         // 健康检查
@@ -40,15 +44,13 @@ async fn main() -> anyhow::Result<()> {
         // 注入状态
         .with_state(state)
         // 中间件
-        .layer(
-            CorsLayer::new()
-                .allow_origin(tower_http::cors::Any)
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
-        )
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)); // 50MB
+
+    if let Some(cors) = cors_layer_from_env()? {
+        app = app.layer(cors);
+    }
 
     // 启动服务器
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
@@ -62,6 +64,59 @@ async fn main() -> anyhow::Result<()> {
 
 async fn health_check() -> &'static str {
     "OK"
+}
+
+fn cors_layer_from_env() -> anyhow::Result<Option<CorsLayer>> {
+    let configured = match std::env::var("JM_BOOM_CORS_ORIGINS") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(error) => return Err(anyhow::anyhow!("invalid JM_BOOM_CORS_ORIGINS: {error}")),
+    };
+    let origins = parse_cors_origins(&configured)?;
+
+    if origins.is_empty() {
+        return Ok(None);
+    }
+
+    tracing::info!(origins = ?origins, "cross-origin access enabled");
+    Ok(Some(
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::list(origins))
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+            .allow_headers([header::CONTENT_TYPE]),
+    ))
+}
+
+fn parse_cors_origins(configured: &str) -> anyhow::Result<Vec<HeaderValue>> {
+    let mut origins = Vec::new();
+
+    for value in configured
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let url = reqwest::Url::parse(value)
+            .map_err(|error| anyhow::anyhow!("invalid CORS origin {value:?}: {error}"))?;
+        let is_http = matches!(url.scheme(), "http" | "https");
+        let is_origin_only = url.path() == "/"
+            && url.query().is_none()
+            && url.fragment().is_none()
+            && url.username().is_empty()
+            && url.password().is_none();
+
+        if !is_http || url.host_str().is_none() || !is_origin_only {
+            return Err(anyhow::anyhow!(
+                "CORS origin must be an http(s) origin without path, query, credentials, or fragment: {value:?}"
+            ));
+        }
+
+        let origin = HeaderValue::from_str(&url.origin().ascii_serialization())?;
+        if !origins.contains(&origin) {
+            origins.push(origin);
+        }
+    }
+
+    Ok(origins)
 }
 
 // 应用状态
@@ -144,5 +199,32 @@ impl AppState {
         self.jm_request(|client, endpoint| Box::pin(client.get_img_host(endpoint)))
             .await
             .ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_cors_origins;
+
+    #[test]
+    fn parses_and_normalizes_cors_origins() {
+        let origins = parse_cors_origins(
+            " http://localhost:5173,https://example.com/,http://localhost:5173 ",
+        )
+        .expect("origins should be valid");
+
+        assert_eq!(origins.len(), 2);
+        assert_eq!(origins[0], "http://localhost:5173");
+        assert_eq!(origins[1], "https://example.com");
+    }
+
+    #[test]
+    fn rejects_non_origin_cors_values() {
+        for value in ["*", "ftp://example.com", "https://example.com/path"] {
+            assert!(
+                parse_cors_origins(value).is_err(),
+                "{value} should be rejected"
+            );
+        }
     }
 }
