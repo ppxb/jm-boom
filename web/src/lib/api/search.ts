@@ -1,5 +1,7 @@
 import { apiClient } from './client'
 
+const SEARCH_PAGE_SIZE = 80
+
 export type StringMap = Record<string, unknown>
 
 export type ImageItem = {
@@ -95,11 +97,12 @@ export async function searchComic({
   })
 
   // 转换为前端格式
+  const totalPages = Math.ceil(result.total / SEARCH_PAGE_SIZE)
   const paging = {
     page,
-    pages: Math.ceil(result.total / 80),
+    pages: totalPages,
     total: result.total,
-    hasReachedMax: page >= Math.ceil(result.total / 80)
+    hasReachedMax: page >= totalPages
   }
 
   const items: ComicListItem[] = result.content.map(comic => ({

@@ -85,6 +85,7 @@ function SearchPage() {
     const nextKeyword = draftKeyword.trim()
 
     void navigate({
+      replace: true,
       search: createSearchParams({ q: nextKeyword, sort: selectedSortBy })
     })
   }
@@ -123,13 +124,15 @@ function SearchPage() {
               <SearchIcon className="size-4" />
             </InputGroupAddon>
             <InputGroupInput
+              type="search"
               value={draftKeyword}
               onChange={event => setDraftKeyword(event.target.value)}
               placeholder="搜索关键词或 JM 号"
               aria-label="搜索关键词"
+              enterKeyHint="search"
             />
-            <InputGroupAddon align="inline-end">
-              <InputGroupButton type="submit" variant="secondary" size="sm">
+            <InputGroupAddon align="inline-end" className="hidden sm:flex">
+              <InputGroupButton type="submit" variant="default" size="xs">
                 搜索
               </InputGroupButton>
             </InputGroupAddon>
@@ -137,14 +140,13 @@ function SearchPage() {
         </form>
 
         <Select value={String(selectedSortBy)} onValueChange={updateSortBy}>
-          <SelectTrigger
-            className="w-9 shrink-0 justify-center px-0 sm:w-auto sm:justify-between sm:px-3 [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
-            aria-label="选择排序"
-          >
+          <SelectTrigger className="w-9 shrink-0 justify-center overflow-hidden px-0 sm:w-auto sm:justify-between sm:px-3 [&>svg:last-child]:hidden sm:[&>svg:last-child]:block">
             <ListFilterIcon className="size-4 text-muted-foreground" />
-            <SelectValue className="sr-only sm:not-sr-only" placeholder="选择排序" />
+            <span className="hidden">
+              <SelectValue placeholder="选择排序" />
+            </span>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent position="popper" align="end" className="w-44">
             <SelectGroup>
               {SEARCH_SORT_OPTIONS.map(option => (
                 <SelectItem key={option.value} value={option.value}>
@@ -162,6 +164,7 @@ function SearchPage() {
         isLoading={query.isLoading}
         items={items}
         page={page}
+        totalPages={paging?.pages}
         hasMore={!paging?.hasReachedMax}
         disabled={query.isFetching}
         onRetry={() => query.refetch()}
@@ -177,6 +180,7 @@ function SearchContent({
   isLoading,
   items,
   page,
+  totalPages,
   hasMore,
   disabled,
   onRetry,
@@ -187,6 +191,7 @@ function SearchContent({
   isLoading: boolean
   items: ReturnType<typeof mapSearchItems>
   page: number
+  totalPages: number | undefined
   hasMore: boolean
   disabled: boolean
   onRetry: () => void
@@ -224,6 +229,7 @@ function SearchContent({
       <ListPagination
         page={page}
         hasMore={hasMore}
+        totalPages={totalPages}
         disabled={disabled}
         onPageChange={onPageChange}
       />
