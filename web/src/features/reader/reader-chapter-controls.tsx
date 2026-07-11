@@ -10,7 +10,7 @@ import { ReaderSettingsMenu } from './reader-settings-menu'
 import type { ReaderChapterItem } from './types'
 
 const CHAPTER_BUTTON_CLASS =
-  'h-11 w-11 rounded-md px-0 text-xs text-neutral-200 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50 disabled:text-neutral-500 sm:h-9 sm:w-auto sm:px-3 sm:text-sm'
+  'h-11 w-11 rounded-md px-0 text-xs text-neutral-200 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50 disabled:text-neutral-500 sm:h-8 sm:w-auto sm:px-2 sm:text-xs'
 
 export function ReaderChapterControls({
   title,
@@ -43,8 +43,8 @@ export function ReaderChapterControls({
 
   return (
     <>
-      <div className="flex w-full items-center justify-between gap-2 sm:gap-4">
-        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+      <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
           <ChapterNavButton
             label="上一章"
             albumId={albumId}
@@ -79,7 +79,7 @@ export function ReaderChapterControls({
           <ReaderSettingsMenu />
         </div>
 
-        <div className="shrink-0 text-sm text-neutral-300 tabular-nums sm:min-w-24 sm:text-right sm:text-sm">
+        <div className="shrink-0 text-sm text-neutral-300 tabular-nums sm:min-w-20 sm:text-right sm:text-xs">
           {pageLabel}
         </div>
       </div>

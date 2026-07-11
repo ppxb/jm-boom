@@ -46,7 +46,9 @@ export function ReaderTopBar({
       </Button>
 
       <div className="mx-auto w-full max-w-[52vw] min-w-0 text-center sm:max-w-xl lg:max-w-3xl">
-        <div className="truncate text-sm font-medium text-neutral-50 lg:text-base">{displayTitle}</div>
+        <div className="truncate text-sm font-medium text-neutral-50 lg:text-base">
+          {displayTitle}
+        </div>
         {chapter ? (
           <div className="mt-1 truncate text-xs text-neutral-400 lg:text-sm">{chapter}</div>
         ) : null}
@@ -98,7 +100,7 @@ export function ReaderBottomBar({
   return (
     <footer
       className={cn(
-        'absolute bottom-24 left-1/2 z-30 flex w-[360px] max-w-[calc(100vw-24px)] -translate-x-1/2 flex-col rounded-2xl border border-input/20 bg-neutral-950/85 p-4 text-neutral-50 backdrop-blur transition-all duration-200 sm:bottom-8 sm:w-[640px] sm:max-w-[calc(100vw-48px)] sm:gap-3 sm:p-4 lg:w-[720px] lg:p-5',
+        'absolute bottom-24 left-1/2 z-30 flex w-[360px] max-w-[calc(100vw-24px)] -translate-x-1/2 flex-col rounded-2xl border border-input/20 bg-neutral-950/85 p-4 text-neutral-50 backdrop-blur transition-all duration-200 sm:bottom-8 sm:w-[480px] sm:max-w-[calc(100vw-48px)] sm:gap-2 sm:p-3 lg:w-[480px]',
         visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0'
       )}
       onClick={event => event.stopPropagation()}

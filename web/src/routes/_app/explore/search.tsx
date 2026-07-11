@@ -8,12 +8,7 @@ import { EmptyState } from '@/components/empty-state'
 import { ListPagination } from '@/components/list-pagination'
 import { PageBackButton } from '@/components/page-back-button'
 import { Button } from '@/components/ui/button'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput
-} from '@/components/ui/input-group'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import {
   Select,
   SelectContent,
@@ -131,11 +126,6 @@ function SearchPage() {
               aria-label="搜索关键词"
               enterKeyHint="search"
             />
-            <InputGroupAddon align="inline-end" className="hidden sm:flex">
-              <InputGroupButton type="submit" variant="default" size="xs">
-                搜索
-              </InputGroupButton>
-            </InputGroupAddon>
           </InputGroup>
         </form>
 
