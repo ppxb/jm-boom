@@ -6,6 +6,7 @@ use axum::{
 use serde::{Deserialize, Deserializer, Serialize};
 
 const PAGE_SIZE: usize = 20;
+const PROMOTE_PAGE_SIZE: usize = 27;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,7 +179,7 @@ pub async fn get_home_section_list(
     Ok(Json(HomeSectionListResult {
         mode: query.mode,
         page,
-        page_size: PAGE_SIZE as u32,
+        page_size: payload.page_size,
         total: payload.total,
         has_more: payload.has_more,
         title,
@@ -268,8 +269,7 @@ async fn request_section_list(
                 .ok()
                 .or_else(|| query.filter_value.parse::<u32>().ok())
                 .unwrap_or_default();
-            let source_page = (start / 27) as u32;
-            let offset = start % 27;
+            let source_page = page.saturating_sub(1);
             let payload: PromotePayload = app
                 .jm_request(move |client, endpoint| {
                     Box::pin(async move {
@@ -284,16 +284,13 @@ async fn request_section_list(
                 })
                 .await?;
             let count = payload.list.len();
+            let loaded_count = source_page as usize * PROMOTE_PAGE_SIZE + count;
             Ok(SectionPayload {
+                page_size: PROMOTE_PAGE_SIZE as u32,
                 total: payload.total,
-                has_more: count > offset + PAGE_SIZE
-                    || (payload.total > 0 && start + PAGE_SIZE < payload.total as usize),
-                items: payload
-                    .list
-                    .into_iter()
-                    .skip(offset)
-                    .take(PAGE_SIZE)
-                    .collect(),
+                has_more: count >= PROMOTE_PAGE_SIZE
+                    && (payload.total == 0 || loaded_count < payload.total as usize),
+                items: payload.list,
             })
         }
         HomeSectionMode::Weekly => {
@@ -328,6 +325,7 @@ async fn request_section_list(
                 .await?;
             let count = payload.list.len();
             Ok(SectionPayload {
+                page_size: PAGE_SIZE as u32,
                 total: 0,
                 has_more: count > offset + PAGE_SIZE || count >= 40,
                 items: payload
@@ -352,6 +350,7 @@ async fn request_section_list(
                 .await?;
             let count = items.len();
             Ok(SectionPayload {
+                page_size: PAGE_SIZE as u32,
                 total: 0,
                 has_more: count > offset + PAGE_SIZE || count >= 80,
                 items: items.into_iter().skip(offset).take(PAGE_SIZE).collect(),
@@ -391,6 +390,7 @@ async fn request_section_list(
                 .await?;
             let count = payload.content.len();
             Ok(SectionPayload {
+                page_size: PAGE_SIZE as u32,
                 total: payload.total,
                 has_more: count > offset + PAGE_SIZE
                     || (payload.total > 0 && start + PAGE_SIZE < payload.total as usize),
@@ -406,6 +406,7 @@ async fn request_section_list(
 }
 
 struct SectionPayload {
+    page_size: u32,
     total: u32,
     has_more: bool,
     items: Vec<ComicListPayload>,

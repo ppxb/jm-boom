@@ -164,7 +164,6 @@ function SearchPage() {
         isLoading={query.isLoading}
         items={items}
         page={page}
-        totalPages={paging?.pages}
         hasMore={!paging?.hasReachedMax}
         disabled={query.isFetching}
         onRetry={() => query.refetch()}
@@ -180,7 +179,6 @@ function SearchContent({
   isLoading,
   items,
   page,
-  totalPages,
   hasMore,
   disabled,
   onRetry,
@@ -191,7 +189,6 @@ function SearchContent({
   isLoading: boolean
   items: ReturnType<typeof mapSearchItems>
   page: number
-  totalPages: number | undefined
   hasMore: boolean
   disabled: boolean
   onRetry: () => void
@@ -229,7 +226,6 @@ function SearchContent({
       <ListPagination
         page={page}
         hasMore={hasMore}
-        totalPages={totalPages}
         disabled={disabled}
         onPageChange={onPageChange}
       />
