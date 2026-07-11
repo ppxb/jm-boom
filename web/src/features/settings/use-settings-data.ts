@@ -25,6 +25,7 @@ export function useSettingsData() {
     queryFn: getSystemInfo,
     staleTime: 15 * 1000,
     retry: false,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false
   })
 
