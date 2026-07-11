@@ -1,23 +1,5 @@
 import { apiClient } from './client'
 
-const SEARCH_PAGE_SIZE = 80
-
-export type StringMap = Record<string, unknown>
-
-export type ImageItem = {
-  id: string
-  url: string
-  name: string
-  path: string
-  extern: StringMap
-}
-
-export type MetadataListItem = {
-  type: string
-  name: string
-  value: string[]
-}
-
 export type PagingInfo = {
   page: number
   pages: number
@@ -25,160 +7,49 @@ export type PagingInfo = {
   hasReachedMax: boolean
 }
 
-export type ComicListItem = {
-  source: string
+export type SearchComicItem = {
   id: string
   title: string
-  subtitle: string
-  finished: boolean
-  likesCount: number
-  viewsCount: number
-  updatedAt: string
-  cover: ImageItem
-  metadata: MetadataListItem[]
-  raw: StringMap
-  extern: StringMap
+  author: string
+  description: string
+  image: string
+  tags: string[]
+  updatedAt: number | null
 }
 
-export type SearchResultContract = {
-  source: string
-  extern: StringMap
-  scheme: {
-    version: '1.0.0'
-    type: 'searchResult'
-    source: string
-    list: string
-  }
-  data: {
-    paging: PagingInfo
-    items: ComicListItem[]
-  }
+export type SearchResult = {
   paging: PagingInfo
-  items: ComicListItem[]
+  items: SearchComicItem[]
 }
 
 export type SearchComicParams = {
   keyword: string
   page?: number
-  extern?: StringMap | null
+  sortBy?: number
 }
 
 export async function searchComic({
   keyword,
   page = 1,
-  extern = null
-}: SearchComicParams): Promise<SearchResultContract> {
+  sortBy = 1
+}: SearchComicParams): Promise<SearchResult> {
   const normalizedKeyword = keyword.trim()
 
   if (normalizedKeyword.length === 0) {
-    return emptySearchResult(page, extern)
+    return {
+      paging: {
+        page,
+        pages: 0,
+        total: 0,
+        hasReachedMax: true
+      },
+      items: []
+    }
   }
 
-  // 调用 HTTP API (不再传递 endpoint，由后端管理)
-  const result = await apiClient.get<{
-    total: number
-    content: Array<{
-      id: string
-      name: string
-      author: string
-      description: string
-      image: string
-      tags: string[]
-      likes: number
-      views: number
-    }>
-    redirect_aid?: string | null
-  }>('/api/search', {
+  return apiClient.get<SearchResult>('/api/search', {
     keyword: normalizedKeyword,
     page,
-    sortBy: Number(extern?.sortBy ?? 1)
+    sortBy
   })
-
-  // 转换为前端格式
-  const totalPages = Math.ceil(result.total / SEARCH_PAGE_SIZE)
-  const paging = {
-    page,
-    pages: totalPages,
-    total: result.total,
-    hasReachedMax: page >= totalPages
-  }
-
-  const items: ComicListItem[] = result.content.map(comic => ({
-    source: 'jm-boom-http',
-    id: comic.id,
-    title: comic.name,
-    subtitle: '',
-    finished: false,
-    likesCount: comic.likes,
-    viewsCount: comic.views,
-    updatedAt: Date.now().toString(),
-    cover: {
-      id: comic.id,
-      url: comic.image,
-      name: comic.name,
-      path: comic.image,
-      extern: {}
-    },
-    metadata: [
-      {
-        type: 'author',
-        name: '作者',
-        value: [comic.author]
-      },
-      {
-        type: 'tags',
-        name: '标签',
-        value: comic.tags
-      }
-    ],
-    raw: {
-      description: comic.description || '',
-      author: comic.author
-    },
-    extern: {}
-  }))
-
-  return {
-    source: 'jm-boom-http',
-    extern: extern ?? { sortBy: 1 },
-    scheme: {
-      version: '1.0.0',
-      type: 'searchResult',
-      source: 'jm-boom-http',
-      list: 'comicGrid'
-    },
-    data: {
-      paging,
-      items
-    },
-    paging,
-    items
-  }
-}
-
-function emptySearchResult(page: number, extern: StringMap | null): SearchResultContract {
-  const paging = {
-    page,
-    pages: page,
-    total: 0,
-    hasReachedMax: true
-  }
-  const items: ComicListItem[] = []
-
-  return {
-    source: 'jm-boom-http',
-    extern: extern ?? { sortBy: 1 },
-    scheme: {
-      version: '1.0.0',
-      type: 'searchResult',
-      source: 'jm-boom-http',
-      list: 'comicGrid'
-    },
-    data: {
-      paging,
-      items
-    },
-    paging,
-    items
-  }
 }

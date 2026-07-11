@@ -24,7 +24,7 @@ pub struct Comic {
 pub struct SearchResult {
     pub total: u32,
     pub content: Vec<Comic>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "optional_string_from_any")]
     pub redirect_aid: Option<String>,
 }
 
@@ -94,7 +94,7 @@ pub struct HomeSection {
 pub(crate) struct SearchPayload {
     #[serde(default, deserialize_with = "u32_from_any")]
     pub total: u32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "optional_string_from_any")]
     pub redirect_aid: Option<String>,
     #[serde(default)]
     pub content: Vec<ComicPayload>,
@@ -127,6 +127,15 @@ where
 {
     let value = serde_json::Value::deserialize(deserializer)?;
     Ok(string_from_value(value))
+}
+
+fn optional_string_from_any<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let value = string_from_value(value).trim().to_string();
+    Ok((!value.is_empty()).then_some(value))
 }
 
 fn string_vec_from_any<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>

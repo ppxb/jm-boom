@@ -3,7 +3,9 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+const SEARCH_PAGE_SIZE: u32 = 80;
 
 #[derive(Debug, Deserialize)]
 pub struct SearchQuery {
@@ -13,6 +15,34 @@ pub struct SearchQuery {
     pub page: u32,
     #[serde(default = "default_sort_by", rename = "sortBy")]
     pub sort_by: u8,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResponse {
+    paging: SearchPaging,
+    items: Vec<SearchComic>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchPaging {
+    page: u32,
+    pages: u32,
+    total: u32,
+    has_reached_max: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchComic {
+    id: String,
+    title: String,
+    author: String,
+    description: String,
+    image: String,
+    tags: Vec<String>,
+    updated_at: Option<i64>,
 }
 
 fn default_page() -> u32 {
@@ -26,17 +56,14 @@ fn default_sort_by() -> u8 {
 pub async fn search_comics(
     State(app): State<AppState>,
     Query(query): Query<SearchQuery>,
-) -> JmResult<Json<crate::jm::SearchResult>> {
+) -> JmResult<Json<SearchResponse>> {
     let keyword = query.keyword.trim().to_string();
+    let page = query.page.max(1);
     if keyword.is_empty() {
-        return Ok(Json(crate::jm::SearchResult {
-            total: 0,
-            content: vec![],
-            redirect_aid: None,
-        }));
+        return Ok(Json(search_response(page, 0, Vec::new())));
     }
 
-    if query.page == 1 && keyword.chars().all(|ch| ch.is_ascii_digit()) {
+    if page == 1 && is_comic_id(&keyword) {
         let comic_id = keyword.clone();
         if let Ok(detail) = app
             .jm_request(move |client, endpoint| {
@@ -45,24 +72,14 @@ pub async fn search_comics(
             })
             .await
         {
-            return Ok(Json(crate::jm::SearchResult {
-                total: 1,
-                content: vec![crate::jm::Comic {
-                    image: cover_url(&detail.id, &detail.image),
-                    id: detail.id,
-                    name: detail.name,
-                    author: detail.author.join(" / "),
-                    description: detail.description,
-                    tags: detail.tags,
-                    likes: detail.likes,
-                    views: detail.total_views,
-                }],
-                redirect_aid: None,
-            }));
+            return Ok(Json(search_response(
+                page,
+                1,
+                vec![search_comic_from_detail(detail)],
+            )));
         }
     }
 
-    let page = query.page;
     let order = match query.sort_by {
         2 => "mv",
         3 => "mp",
@@ -77,16 +94,65 @@ pub async fn search_comics(
             Box::pin(async move { client.search(endpoint, &keyword, page, &order).await })
         })
         .await?;
-    let result = crate::jm::SearchResult {
-        content: result
-            .content
-            .into_iter()
-            .map(|mut comic| {
-                comic.image = cover_url(&comic.id, &comic.image);
-                comic
-            })
-            .collect(),
-        ..result
-    };
-    Ok(Json(result))
+
+    if result.content.is_empty() {
+        if let Some(redirect_id) = result.redirect_aid.filter(|id| is_comic_id(id)) {
+            let detail = app
+                .jm_request(move |client, endpoint| {
+                    let comic_id = redirect_id.clone();
+                    Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
+                })
+                .await?;
+            return Ok(Json(search_response(
+                page,
+                1,
+                vec![search_comic_from_detail(detail)],
+            )));
+        }
+    }
+
+    let total = result.total;
+    let items = result
+        .content
+        .into_iter()
+        .map(|comic| SearchComic {
+            image: cover_url(&comic.id, &comic.image),
+            id: comic.id,
+            title: comic.name,
+            author: comic.author,
+            description: comic.description,
+            tags: comic.tags,
+            updated_at: None,
+        })
+        .collect();
+    Ok(Json(search_response(page, total, items)))
+}
+
+fn search_comic_from_detail(detail: crate::jm::ComicDetail) -> SearchComic {
+    SearchComic {
+        image: cover_url(&detail.id, &detail.image),
+        id: detail.id,
+        title: detail.name,
+        author: detail.author.join(" / "),
+        description: detail.description,
+        tags: detail.tags,
+        updated_at: None,
+    }
+}
+
+fn search_response(page: u32, total: u32, items: Vec<SearchComic>) -> SearchResponse {
+    let pages = total.div_ceil(SEARCH_PAGE_SIZE);
+    SearchResponse {
+        paging: SearchPaging {
+            page,
+            pages,
+            total,
+            has_reached_max: page >= pages,
+        },
+        items,
+    }
+}
+
+fn is_comic_id(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(|character| character.is_ascii_digit())
 }

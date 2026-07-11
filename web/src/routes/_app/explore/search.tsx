@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { searchComic, type ComicListItem } from '@/lib/api/search'
+import { searchComic, type SearchComicItem } from '@/lib/api/search'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -64,7 +64,7 @@ function SearchPage() {
       searchComic({
         keyword,
         page,
-        extern: { sortBy }
+        sortBy
       }),
     enabled: keyword.length > 0,
     staleTime: CACHE.LIST_STALE_TIME,
@@ -72,7 +72,7 @@ function SearchPage() {
     refetchOnMount: false,
     refetchOnWindowFocus: false
   })
-  const items = mapSearchItems(query.data?.items ?? [])
+  const items = query.data?.items ?? []
   const paging = query.data?.paging
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -177,7 +177,7 @@ function SearchContent({
   keyword: string
   isError: boolean
   isLoading: boolean
-  items: ReturnType<typeof mapSearchItems>
+  items: SearchComicItem[]
   page: number
   hasMore: boolean
   disabled: boolean
@@ -221,28 +221,6 @@ function SearchContent({
       />
     </>
   )
-}
-
-function mapSearchItems(items: ComicListItem[]) {
-  return items.map(item => ({
-    id: item.id,
-    title: item.title,
-    author: searchItemAuthor(item),
-    description: String(item.raw.description ?? ''),
-    image: item.cover.url,
-    tags: item.metadata
-      .filter(meta => meta.type !== 'author')
-      .flatMap(meta => meta.value)
-      .filter(Boolean),
-    updatedAt: Number.parseInt(item.updatedAt, 10) || null
-  }))
-}
-
-function searchItemAuthor(item: ComicListItem) {
-  const authorMeta = item.metadata.find(meta => meta.type === 'author')
-  const author = authorMeta?.value.join(' / ').trim()
-
-  return author || String(item.raw.author ?? '')
 }
 
 function validateSearchParams(search: Record<string, unknown>): SearchPageSearch {
