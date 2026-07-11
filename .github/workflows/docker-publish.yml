@@ -9,7 +9,7 @@ on:
       version:
         description: Image version without the v prefix
         required: true
-        default: "0.5.1"
+        default: "0.5.2"
 
 permissions:
   contents: read
