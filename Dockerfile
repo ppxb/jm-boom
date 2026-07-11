@@ -1,35 +1,57 @@
-# 多阶段构建
-FROM rust:1.75-slim as server-builder
+FROM rust:1.96-slim-bookworm AS server-builder
 
-WORKDIR /build
-COPY server /build/server
-RUN cd server && cargo build --release
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential cmake pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-FROM node:20-slim as web-builder
+WORKDIR /build/server
+COPY server/Cargo.toml server/Cargo.lock ./
+COPY server/migrations ./migrations
+COPY server/src ./src
+RUN cargo build --release --locked
 
-WORKDIR /build
-COPY web /build/web
-RUN cd web && npm install && npm run build
+FROM oven/bun:1.3.14 AS web-builder
 
-# 运行时镜像
-FROM debian:bookworm-slim
+WORKDIR /build/web
+COPY web/package.json web/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY web/ ./
+RUN bun run build
 
-RUN apt-get update && \
-    apt-get install -y ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+FROM debian:bookworm-slim AS runtime
+
+ARG VERSION=0.5.0
+ARG REVISION=unknown
+
+LABEL org.opencontainers.image.title="JM Boom" \
+      org.opencontainers.image.description="JM Boom React Web frontend and Axum backend" \
+      org.opencontainers.image.source="https://github.com/ppxb/jm-boom" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 jm-boom \
+    && useradd --uid 10001 --gid jm-boom --create-home --home-dir /app jm-boom
 
 WORKDIR /app
 
-# 复制编译产物
-COPY --from=server-builder /build/server/target/release/jm-boom-server /app/
-COPY --from=web-builder /build/web/dist /app/static
+COPY --from=server-builder --chown=jm-boom:jm-boom \
+    /build/server/target/release/jm-boom-server /app/jm-boom-server
+COPY --from=web-builder --chown=jm-boom:jm-boom /build/web/dist /app/static
 
-# 创建数据目录
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R jm-boom:jm-boom /app
+
+USER jm-boom
+
+ENV RUST_LOG="info,jm_boom_server=info" \
+    JM_BOOM_STATIC_DIR="/app/static"
 
 VOLUME ["/app/data"]
 EXPOSE 3000
 
-ENV RUST_LOG=info
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl --fail --silent http://127.0.0.1:3000/health || exit 1
 
-CMD ["/app/jm-boom-server"]
+ENTRYPOINT ["/app/jm-boom-server"]

@@ -7,14 +7,16 @@ mod reader;
 
 use axum::{
     extract::DefaultBodyLimit,
-    http::{header, HeaderValue, Method},
-    Router,
+    http::{header, HeaderValue, Method, StatusCode},
+    response::IntoResponse,
+    Json, Router,
 };
 use std::net::SocketAddr;
 use std::{future::Future, pin::Pin};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
+    services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -30,17 +32,23 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("JM Boom Server starting...");
+    tracing::info!("JM Boom 服务端正在启动");
 
     // 初始化应用状态
     let state = AppState::new().await?;
 
+    let static_dir = std::env::var("JM_BOOM_STATIC_DIR").unwrap_or_else(|_| "./static".into());
+    let index_file = std::path::Path::new(&static_dir).join("index.html");
+    let static_service = ServeDir::new(&static_dir).not_found_service(ServeFile::new(index_file));
+
     // 构建路由
     let mut app = Router::new()
         // API 路由
-        .nest("/api", api::routes())
+        .nest("/api", api::routes().fallback(api_not_found))
         // 健康检查
         .route("/health", axum::routing::get(health_check))
+        // React 静态资源与 SPA 路由回退
+        .fallback_service(static_service)
         // 注入状态
         .with_state(state)
         // 中间件
@@ -64,6 +72,13 @@ async fn main() -> anyhow::Result<()> {
 
 async fn health_check() -> &'static str {
     "OK"
+}
+
+async fn api_not_found() -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "API 路由不存在" })),
+    )
 }
 
 fn cors_layer_from_env() -> anyhow::Result<Option<CorsLayer>> {
@@ -127,6 +142,7 @@ pub struct AppState {
     pub endpoints: std::sync::Arc<endpoint::EndpointManager>,
     pub jm: std::sync::Arc<jm::JmClient>,
     pub downloads: std::sync::Arc<download::DownloadManager>,
+    pub access_password: Option<std::sync::Arc<str>>,
 }
 
 impl AppState {
@@ -163,6 +179,11 @@ impl AppState {
             )
             .await?,
         );
+        let access_password = std::env::var("JM_BOOM_ACCESS_PASSWORD")
+            .ok()
+            .filter(|password| !password.is_empty())
+            .map(std::sync::Arc::<str>::from);
+        tracing::info!(enabled = access_password.is_some(), "轻量访问门禁配置完成");
 
         let endpoint_manager = endpoints.clone();
         tokio::spawn(async move {
@@ -180,6 +201,7 @@ impl AppState {
             endpoints,
             jm,
             downloads,
+            access_password,
         })
     }
 

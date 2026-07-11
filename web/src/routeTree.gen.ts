@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as ReaderComicIdRouteImport } from './routes/reader/$comicId'
@@ -24,6 +25,11 @@ import { Route as AppExploreRankingRouteImport } from './routes/_app/explore/ran
 import { Route as AppExploreListRouteImport } from './routes/_app/explore/list'
 import { Route as AppComicComicIdRouteImport } from './routes/_app/comic/$comicId'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -96,6 +102,7 @@ const AppComicComicIdRoute = AppComicComicIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/login': typeof LoginRoute
   '/bookshelf': typeof AppBookshelfRoute
   '/downloads': typeof AppDownloadsRoute
   '/explore': typeof AppExploreRouteWithChildren
@@ -110,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/explore/': typeof AppExploreIndexRoute
 }
 export interface FileRoutesByTo {
+  '/login': typeof LoginRoute
   '/bookshelf': typeof AppBookshelfRoute
   '/downloads': typeof AppDownloadsRoute
   '/favorites': typeof AppFavoritesRoute
@@ -126,6 +134,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
   '/_app/bookshelf': typeof AppBookshelfRoute
   '/_app/downloads': typeof AppDownloadsRoute
   '/_app/explore': typeof AppExploreRouteWithChildren
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/bookshelf'
     | '/downloads'
     | '/explore'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/explore/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/login'
     | '/bookshelf'
     | '/downloads'
     | '/favorites'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/login'
     | '/_app/bookshelf'
     | '/_app/downloads'
     | '/_app/explore'
@@ -190,11 +202,19 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  LoginRoute: typeof LoginRoute
   ReaderComicIdRoute: typeof ReaderComicIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -340,6 +360,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  LoginRoute: LoginRoute,
   ReaderComicIdRoute: ReaderComicIdRoute,
 }
 export const routeTree = rootRouteImport

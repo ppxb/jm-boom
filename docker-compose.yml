@@ -1,13 +1,21 @@
-version: '3.8'
+name: jm-boom
 
 services:
   jm-boom:
-    build: .
+    image: ghcr.io/ppxb/jm-boom:${JM_BOOM_VERSION:-0.5.0}
+    container_name: jm-boom
+    init: true
     ports:
-      - "3000:3000"
+      - "${JM_BOOM_PORT:-3000}:3000"
     volumes:
-      - ./data:/app/data
+      - jm-boom-data:/app/data
     environment:
-      - RUST_LOG=info
-      - DATABASE_URL=sqlite:/app/data/app.db
+      RUST_LOG: ${RUST_LOG:-info,jm_boom_server=info}
+      JM_BOOM_ACCESS_PASSWORD: ${JM_BOOM_ACCESS_PASSWORD:?access password is required}
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  jm-boom-data:
+    name: jm-boom-data

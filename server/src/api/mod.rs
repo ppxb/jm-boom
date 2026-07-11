@@ -4,6 +4,7 @@ use axum::{
     Router,
 };
 
+mod auth;
 mod comics;
 mod covers;
 mod downloads;
@@ -14,6 +15,9 @@ mod settings;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        // 本地部署轻量访问门禁
+        .route("/auth/config", get(auth::config))
+        .route("/auth/login", post(auth::login))
         // 搜索
         .route("/search", get(search::search_comics))
         // 漫画详情

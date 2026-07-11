@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet, useRouter } from '@tanstack/react-router'
+import { createRootRoute, Outlet, redirect, useRouter, useRouterState } from '@tanstack/react-router'
 import { ArrowLeftIcon, CircleAlertIcon, HomeIcon } from 'lucide-react'
 import { useState } from 'react'
 
@@ -13,17 +13,29 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSettingsStore } from '@/stores/settings-store'
+import { hasAccessGateGrant, loadAccessGateConfig } from '@/lib/access-gate'
 
 export const Route = createRootRoute({
+  beforeLoad: async ({ location }) => {
+    if (location.pathname === '/login') return
+    const config = await loadAccessGateConfig()
+    if (config.enabled && !hasAccessGateGrant()) {
+      throw redirect({
+        to: '/login',
+        search: { redirect: location.href }
+      })
+    }
+  },
   component: RootLayout,
   notFoundComponent: NotFoundComponent
 })
 
 function RootLayout() {
+  const pathname = useRouterState({ select: state => state.location.pathname })
   return (
     <>
       <Outlet />
-      <NsfwStartupDialog />
+      {pathname !== '/login' ? <NsfwStartupDialog /> : null}
     </>
   )
 }
