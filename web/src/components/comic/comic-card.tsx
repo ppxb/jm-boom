@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { OverflowTooltip } from '@/components/overflow-tooltip'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { ComicCover } from './comic-cover'
 
@@ -18,9 +19,11 @@ type ComicCardProps<T extends BaseComic> = {
   showIdBadge?: boolean
   metadata?: React.ReactNode
   progress?: number
+  coverOverlay?: React.ReactNode
   selectable?: boolean
   selected?: boolean
   onSelect?: (id: string, checked: boolean) => void
+  onOpen?: () => void
   linkProps?: {
     to: string
     params: Record<string, string>
@@ -35,9 +38,11 @@ export function ComicCard<T extends BaseComic>({
   showIdBadge = false,
   metadata,
   progress,
+  coverOverlay,
   selectable = false,
   selected = false,
   onSelect,
+  onOpen,
   linkProps,
   className
 }: ComicCardProps<T>) {
@@ -45,19 +50,23 @@ export function ComicCard<T extends BaseComic>({
     <Card
       size="sm"
       aria-pressed={selectable ? selected : undefined}
-      role={selectable ? 'button' : undefined}
-      tabIndex={selectable ? 0 : undefined}
+      role={selectable ? 'button' : onOpen ? 'link' : undefined}
+      tabIndex={selectable || onOpen ? 0 : undefined}
       className={cn(
-        'gap-0 overflow-hidden py-0 transition-shadow hover:cursor-pointer hover:shadow-xl',
+        'group gap-0 overflow-hidden py-0 transition-shadow hover:cursor-pointer hover:shadow-xl',
         className
       )}
-      onClick={selectable ? () => onSelect?.(comic.id, !selected) : undefined}
+      onClick={selectable ? () => onSelect?.(comic.id, !selected) : onOpen}
       onKeyDown={
-        selectable
+        selectable || onOpen
           ? event => {
               if (event.key !== 'Enter' && event.key !== ' ') return
               event.preventDefault()
-              onSelect?.(comic.id, !selected)
+              if (selectable) {
+                onSelect?.(comic.id, !selected)
+              } else {
+                onOpen?.()
+              }
             }
           : undefined
       }
@@ -84,14 +93,11 @@ export function ComicCard<T extends BaseComic>({
           className={ratio === 'square' ? 'w-full rounded-none' : undefined}
         />
 
+        {coverOverlay}
+
         {progress !== undefined ? (
-          <div className="absolute right-2 bottom-2 left-2 z-20">
-            <div className="h-1 overflow-hidden rounded-full bg-black/40">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.min(100, progress * 100)}%` }}
-              />
-            </div>
+          <div className="absolute right-2 bottom-2 left-2 z-30">
+            <Progress value={Math.min(100, progress * 100)} className="h-1.5 bg-black/40" />
           </div>
         ) : null}
       </div>

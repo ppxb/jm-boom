@@ -36,7 +36,7 @@ export function useDownloadTasks() {
   const cancelTask = useTaskMutation(cancelDownloadTask, '已取消下载任务')
   const pauseTask = useTaskMutation(pauseDownloadTask, '已暂停下载任务')
   const resumeTask = useTaskMutation(resumeDownloadTask, '已加入下载队列')
-  const removeTask = useTaskMutation(removeDownloadTask, '已删除下载任务和文件')
+  const removeTasks = useTaskMutation(removeDownloadTasks, '已删除选中的下载任务和文件')
   const taskList = tasks.data?.tasks ?? EMPTY_DOWNLOAD_TASKS
   const filterCounts = useMemo(() => getFilterCounts(taskList), [taskList])
   const filteredTasks = useMemo(
@@ -54,12 +54,12 @@ export function useDownloadTasks() {
     cancelTask,
     pauseTask,
     resumeTask,
-    removeTask
+    removeTasks
   }
 }
 
-function useTaskMutation(
-  mutationFn: (taskId: string) => Promise<DownloadTaskListResult>,
+function useTaskMutation<TVariables>(
+  mutationFn: (variables: TVariables) => Promise<DownloadTaskListResult>,
   message: string
 ) {
   const queryClient = useQueryClient()
@@ -72,6 +72,14 @@ function useTaskMutation(
     },
     onError: showError
   })
+}
+
+async function removeDownloadTasks(taskIds: string[]) {
+  let result: DownloadTaskListResult = { tasks: [] }
+  for (const taskId of taskIds) {
+    result = await removeDownloadTask(taskId)
+  }
+  return result
 }
 
 function getFilterCounts(tasks: DownloadTask[]): Record<DownloadFilter, number> {

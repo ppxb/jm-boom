@@ -1,7 +1,7 @@
-use crate::cache::reader_page_cache_key;
+use crate::cache::{reader_page_cache_key, READER_CACHE_VERSION};
 use crate::endpoint::request_with_failover;
 use crate::jm::invalidate_img_host;
-use crate::reader::{decode_scrambled_image, encode_webp, needs_decoding, page_name_from_image};
+use crate::reader::{page_name_from_image, prepare_page_image};
 use crate::AppState;
 use axum::{
     extract::{Path, State},
@@ -11,7 +11,7 @@ use axum::{
 };
 use once_cell::sync::Lazy;
 use serde::Serialize;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::{Mutex, Semaphore};
 
 const MANIFEST_PREWARM_COUNT: u32 = 5;
@@ -48,10 +48,25 @@ pub async fn get_manifest(
             let chapter_id = request_chapter_id.clone();
             Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
         })
-        .await?;
+        .await;
 
-    let pages: Vec<_> = chapter
-        .images
+    let (manifest_chapter_id, images) = match chapter {
+        Ok(chapter) => (chapter.id, chapter.images),
+        Err(upstream_error) => match app
+            .downloads
+            .offline_manifest(&chapter_id)
+            .await
+            .map_err(ApiError::Cache)?
+        {
+            Some(manifest) => {
+                tracing::debug!(chapter_id, "上游章节不可用，使用离线 manifest");
+                (manifest.chapter_id, manifest.images)
+            }
+            None => return Err(ApiError::Jm(upstream_error)),
+        },
+    };
+
+    let pages: Vec<_> = images
         .iter()
         .enumerate()
         .map(|(index, image)| {
@@ -59,7 +74,7 @@ pub async fn get_manifest(
             PageInfo {
                 index: index as u32,
                 name,
-                url: format!("/api/reader/{chapter_id}/pages/{index}"),
+                url: format!("/api/reader/{chapter_id}/pages/{index}?v={READER_CACHE_VERSION}"),
             }
         })
         .collect();
@@ -68,7 +83,7 @@ pub async fn get_manifest(
     prewarm_pages(app, chapter_id.clone(), 0, prewarm_count);
 
     Ok(Json(ManifestResponse {
-        chapter_id: chapter.id,
+        chapter_id: manifest_chapter_id,
         pages,
     }))
 }
@@ -94,90 +109,122 @@ async fn materialize_page(
     chapter_id: &str,
     page: u32,
 ) -> Result<MaterializedImage, ApiError> {
+    let materialize_started = Instant::now();
     let comic_id = validate_chapter_id(chapter_id)?;
     let cache_key = reader_page_cache_key(chapter_id, page as usize);
 
-    if let Some(cached) = app.cache.get(&cache_key).await.map_err(ApiError::Cache)? {
+    if let Some(cached) = app
+        .cache
+        .get_reader_page(&cache_key)
+        .await
+        .map_err(ApiError::Cache)?
+    {
+        tracing::debug!(
+            chapter_id,
+            page,
+            elapsed_ms = materialize_started.elapsed().as_millis(),
+            bytes = cached.data.len(),
+            "阅读页命中缓存"
+        );
         return Ok(MaterializedImage {
-            content_type: "image/webp",
-            data: cached,
+            content_type: cached.format.content_type(),
+            data: cached.data,
         });
     }
 
     let materialize_lock = page_materialize_lock(&cache_key).await;
+    let lock_started = Instant::now();
     let _guard = materialize_lock.lock().await;
+    let lock_wait_ms = lock_started.elapsed().as_millis();
 
-    if let Some(cached) = app.cache.get(&cache_key).await.map_err(ApiError::Cache)? {
+    if let Some(cached) = app
+        .cache
+        .get_reader_page(&cache_key)
+        .await
+        .map_err(ApiError::Cache)?
+    {
+        tracing::debug!(
+            chapter_id,
+            page,
+            lock_wait_ms,
+            elapsed_ms = materialize_started.elapsed().as_millis(),
+            bytes = cached.data.len(),
+            "阅读页等待并复用物化结果"
+        );
         return Ok(MaterializedImage {
-            content_type: "image/webp",
-            data: cached,
+            content_type: cached.format.content_type(),
+            data: cached.data,
+        });
+    }
+
+    if let Some(offline) = app
+        .downloads
+        .offline_page(chapter_id, page as usize)
+        .await
+        .map_err(ApiError::Cache)?
+    {
+        tracing::debug!(
+            chapter_id,
+            page,
+            lock_wait_ms,
+            elapsed_ms = materialize_started.elapsed().as_millis(),
+            bytes = offline.data.len(),
+            "阅读页命中离线下载"
+        );
+        return Ok(MaterializedImage {
+            content_type: offline.format.content_type(),
+            data: offline.data,
         });
     }
 
     let request_chapter_id = chapter_id.to_string();
+    let chapter_started = Instant::now();
     let chapter = app
         .jm_request(move |client, endpoint| {
             let chapter_id = request_chapter_id.clone();
             Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
         })
         .await?;
+    let chapter_fetch_ms = chapter_started.elapsed().as_millis();
 
     let image_path = chapter
         .images
         .get(page as usize)
         .ok_or_else(|| ApiError::NotFound("Page index out of range".into()))?;
 
-    let file_name = file_name(image_path);
     let page_name = page_name_from_image(image_path);
-    let is_gif = file_name.to_ascii_lowercase().ends_with(".gif");
 
-    if is_gif {
-        if let Some(cached) = app
-            .cache
-            .get_gif(&cache_key)
-            .await
-            .map_err(ApiError::Cache)?
-        {
-            return Ok(MaterializedImage {
-                content_type: "image/gif",
-                data: cached,
-            });
-        }
-    }
-
+    let download_started = Instant::now();
     let image_data = download_page_image(app, chapter_id, image_path).await?;
+    let download_ms = download_started.elapsed().as_millis();
 
-    if is_gif {
-        app.cache
-            .put_gif(&cache_key, &image_data)
-            .await
-            .map_err(ApiError::Cache)?;
-        return Ok(MaterializedImage {
-            content_type: "image/gif",
-            data: image_data,
-        });
-    }
-
-    let webp_data = tokio::task::spawn_blocking(move || {
-        let original = image::load_from_memory(&image_data).map_err(|error| error.to_string())?;
-        let rgb = if needs_decoding(comic_id, &page_name, false) {
-            decode_scrambled_image(original, comic_id, &page_name)
-        } else {
-            original.to_rgb8()
-        };
-        Ok::<_, String>(encode_webp(&rgb))
-    })
-    .await
-    .map_err(|error| ApiError::ImageProcessing(error.to_string()))?
-    .map_err(ApiError::ImageProcessing)?;
+    let image_process_started = Instant::now();
+    let prepared = prepare_page_image(image_data, comic_id, page_name)
+        .await
+        .map_err(|error| ApiError::ImageProcessing(error.to_string()))?;
+    let image_process_ms = image_process_started.elapsed().as_millis();
+    let cache_write_started = Instant::now();
     app.cache
-        .put(&cache_key, &webp_data)
+        .put_reader_page(&cache_key, prepared.format, &prepared.data)
         .await
         .map_err(ApiError::Cache)?;
+    tracing::debug!(
+        chapter_id,
+        page,
+        lock_wait_ms,
+        chapter_fetch_ms,
+        download_ms,
+        image_process_ms,
+        cache_write_ms = cache_write_started.elapsed().as_millis(),
+        elapsed_ms = materialize_started.elapsed().as_millis(),
+        bytes = prepared.data.len(),
+        decoded = prepared.decoded,
+        "阅读页物化完成"
+    );
 
     Ok(MaterializedImage {
-        content_type: "image/webp",
-        data: webp_data,
+        content_type: prepared.format.content_type(),
+        data: prepared.data,
     })
 }
 
@@ -238,14 +285,6 @@ async fn download_page_image(
             app.jm.download_image(&refreshed_url).await
         }
     }
-}
-
-fn file_name(url: &str) -> String {
-    url.rsplit('/')
-        .next()
-        .and_then(|s| s.split('?').next())
-        .unwrap_or("page")
-        .to_string()
 }
 
 fn image_response(content_type: &'static str, body: Vec<u8>) -> Response {

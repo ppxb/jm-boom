@@ -1,15 +1,16 @@
 use crate::{
-    cache::{reader_page_cache_key, ImageCache},
+    cache::{reader_page_cache_key, CachedReaderPage, ImageCache},
     endpoint::{request_with_failover, EndpointManager},
     jm::{invalidate_img_host, JmClient, JmResult},
-    reader::{decode_scrambled_image, encode_webp, needs_decoding, page_name_from_image},
+    reader::{page_name_from_image, prepare_page_image},
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     future::Future,
+    path::PathBuf,
     pin::Pin,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -18,11 +19,21 @@ use std::{
     time::Instant,
 };
 use tokio::{
-    sync::{Mutex, RwLock},
-    time::{sleep, Duration},
+    fs,
+    sync::{watch, Mutex, RwLock, Semaphore},
+    task::JoinSet,
+    time::Duration,
 };
 
 static TASK_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+const PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_secs(1);
+const DOWNLOAD_TASK_CONCURRENCY: usize = 2;
+const DOWNLOAD_PAGE_CONCURRENCY_PER_TASK: usize = 5;
+const DOWNLOAD_PAGE_CONCURRENCY_GLOBAL: usize = 8;
+
+fn default_generation() -> u64 {
+    1
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,11 +80,29 @@ pub struct DownloadTask {
     pub started_at: Option<i64>,
     pub updated_at: i64,
     pub completed_at: Option<i64>,
+    #[serde(default = "default_generation")]
+    pub generation: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DownloadTaskList {
     pub tasks: Vec<DownloadTask>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct OfflineChapterManifest {
+    pub task_id: String,
+    pub album_id: String,
+    pub chapter_id: String,
+    pub title: String,
+    pub images: Vec<String>,
+    pub updated_at: i64,
+}
+
+struct WorkerHandle {
+    generation: u64,
+    cancel: watch::Sender<bool>,
+    finished: watch::Sender<bool>,
 }
 
 #[derive(Clone)]
@@ -82,8 +111,12 @@ pub struct DownloadManager {
     jm: Arc<JmClient>,
     endpoints: Arc<EndpointManager>,
     cache: Arc<ImageCache>,
+    download_dir: PathBuf,
     tasks: Arc<RwLock<HashMap<String, DownloadTask>>>,
-    workers: Arc<Mutex<HashSet<String>>>,
+    workers: Arc<Mutex<HashMap<String, WorkerHandle>>>,
+    task_semaphore: Arc<Semaphore>,
+    page_semaphore: Arc<Semaphore>,
+    progress_persisted_at: Arc<Mutex<HashMap<String, Instant>>>,
 }
 
 impl DownloadManager {
@@ -93,6 +126,8 @@ impl DownloadManager {
         endpoints: Arc<EndpointManager>,
         cache: Arc<ImageCache>,
     ) -> Result<Self> {
+        let download_dir = PathBuf::from("data/downloads");
+        fs::create_dir_all(&download_dir).await?;
         let rows =
             sqlx::query_as::<_, (String, String)>("SELECT task_id, payload FROM download_tasks")
                 .fetch_all(&db)
@@ -102,6 +137,11 @@ impl DownloadManager {
             if let Ok(mut task) = serde_json::from_str::<DownloadTask>(&payload) {
                 if task.status == DownloadStatus::Running {
                     task.status = DownloadStatus::Queued;
+                    task.total_pages = 0;
+                    task.completed_pages = 0;
+                    task.eta_seconds = None;
+                    task.speed_bytes_per_second = 0;
+                    task.completed_at = None;
                 }
                 tasks.insert(task_id, task);
             }
@@ -111,8 +151,12 @@ impl DownloadManager {
             jm,
             endpoints,
             cache,
+            download_dir,
             tasks: Arc::new(RwLock::new(tasks)),
-            workers: Arc::new(Mutex::new(HashSet::new())),
+            workers: Arc::new(Mutex::new(HashMap::new())),
+            task_semaphore: Arc::new(Semaphore::new(DOWNLOAD_TASK_CONCURRENCY)),
+            page_semaphore: Arc::new(Semaphore::new(DOWNLOAD_PAGE_CONCURRENCY_GLOBAL)),
+            progress_persisted_at: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -152,6 +196,7 @@ impl DownloadManager {
             started_at: None,
             updated_at: now,
             completed_at: None,
+            generation: 1,
         };
         self.tasks
             .write()
@@ -174,19 +219,58 @@ impl DownloadManager {
         DownloadTaskList { tasks }
     }
 
+    pub async fn offline_manifest(
+        &self,
+        chapter_id: &str,
+    ) -> Result<Option<OfflineChapterManifest>> {
+        let payload = sqlx::query_scalar::<_, String>(
+            "SELECT payload FROM download_manifests WHERE chapter_id = ? \
+             ORDER BY updated_at DESC LIMIT 1",
+        )
+        .bind(chapter_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        payload
+            .map(|payload| serde_json::from_str(&payload).map_err(Into::into))
+            .transpose()
+    }
+
+    pub async fn offline_page(
+        &self,
+        chapter_id: &str,
+        page: usize,
+    ) -> Result<Option<CachedReaderPage>> {
+        let task_ids = sqlx::query_scalar::<_, String>(
+            "SELECT task_id FROM download_manifests WHERE chapter_id = ? \
+             ORDER BY updated_at DESC",
+        )
+        .bind(chapter_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        for task_id in task_ids {
+            if let Some(page) = self.read_offline_page(&task_id, chapter_id, page).await? {
+                return Ok(Some(page));
+            }
+        }
+        Ok(None)
+    }
+
     pub async fn pause(&self, task_id: &str) -> Result<DownloadTaskList> {
         self.set_status(task_id, DownloadStatus::Paused).await?;
+        self.cancel_worker(task_id).await;
         Ok(self.list().await)
     }
 
     pub async fn cancel(&self, task_id: &str) -> Result<DownloadTaskList> {
         self.set_status(task_id, DownloadStatus::Cancelled).await?;
+        self.cancel_worker(task_id).await;
         Ok(self.list().await)
     }
 
     pub async fn resume(&self, task_id: &str) -> Result<DownloadTaskList> {
-        let mut should_spawn = false;
-        {
+        let snapshot = {
             let mut tasks = self.tasks.write().await;
             let task = tasks
                 .get_mut(task_id)
@@ -202,36 +286,78 @@ impl DownloadManager {
                 task.eta_seconds = None;
                 task.speed_bytes_per_second = 0;
                 task.completed_at = None;
-                task.updated_at = chrono::Utc::now().timestamp_millis();
-                self.persist(task).await?;
-                should_spawn = true;
+                task.generation = task.generation.saturating_add(1);
+                mark_task_updated(task);
+                Some(task.clone())
+            } else {
+                None
             }
-        }
-        if should_spawn {
+        };
+        if let Some(snapshot) = snapshot {
+            self.persist(&snapshot).await?;
+            self.progress_persisted_at.lock().await.remove(task_id);
             self.spawn(task_id.to_string());
         }
         Ok(self.list().await)
     }
 
     pub async fn remove(&self, task_id: &str) -> Result<DownloadTaskList> {
+        self.cancel_worker_and_wait(task_id).await?;
         self.tasks.write().await.remove(task_id);
+        let mut transaction = self.db.begin().await?;
+        sqlx::query("DELETE FROM download_manifests WHERE task_id = ?")
+            .bind(task_id)
+            .execute(&mut *transaction)
+            .await?;
         sqlx::query("DELETE FROM download_tasks WHERE task_id = ?")
             .bind(task_id)
-            .execute(&self.db)
+            .execute(&mut *transaction)
             .await?;
+        transaction.commit().await?;
+        match fs::remove_dir_all(self.download_dir.join(task_id)).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         Ok(self.list().await)
     }
 
     fn spawn(&self, task_id: String) {
         let manager = self.clone();
         tokio::spawn(async move {
-            if !manager.workers.lock().await.insert(task_id.clone()) {
-                return;
+            let generation = match manager.task_generation(&task_id).await {
+                Some(generation) => generation,
+                None => return,
+            };
+            let (cancel, mut cancelled) = watch::channel(false);
+            let (finished, _) = watch::channel(false);
+            {
+                let mut workers = manager.workers.lock().await;
+                if workers.contains_key(&task_id) {
+                    return;
+                }
+                workers.insert(
+                    task_id.clone(),
+                    WorkerHandle {
+                        generation,
+                        cancel,
+                        finished,
+                    },
+                );
             }
-            if let Err(error) = manager.run_task(&task_id).await {
-                let _ = manager.fail(&task_id, error.to_string()).await;
+
+            let permit = tokio::select! {
+                permit = manager.task_semaphore.clone().acquire_owned() => permit.ok(),
+                _ = wait_for_cancel(&mut cancelled) => None,
+            };
+            if let Some(_permit) = permit {
+                if let Err(error) = manager.run_task(&task_id, generation, &mut cancelled).await {
+                    let _ = manager
+                        .fail_generation(&task_id, generation, error.to_string())
+                        .await;
+                }
             }
-            manager.workers.lock().await.remove(&task_id);
+            manager.finish_worker(&task_id, generation).await;
 
             let should_restart = manager
                 .tasks
@@ -245,32 +371,41 @@ impl DownloadManager {
         });
     }
 
-    async fn run_task(&self, task_id: &str) -> Result<()> {
-        let chapters = {
+    async fn run_task(
+        &self,
+        task_id: &str,
+        generation: u64,
+        cancelled: &watch::Receiver<bool>,
+    ) -> Result<()> {
+        let (chapters, snapshot) = {
             let mut tasks = self.tasks.write().await;
             let task = tasks
                 .get_mut(task_id)
                 .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-            if task.status != DownloadStatus::Queued {
+            if task.status != DownloadStatus::Queued || task.generation != generation {
                 return Ok(());
             }
             task.status = DownloadStatus::Running;
             task.started_at
                 .get_or_insert_with(|| chrono::Utc::now().timestamp_millis());
-            task.updated_at = chrono::Utc::now().timestamp_millis();
+            mark_task_updated(task);
             let chapters = task.chapters.clone();
-            self.persist(task).await?;
-            chapters
+            (chapters, task.clone())
         };
+        self.persist(&snapshot).await?;
         let started = Instant::now();
         let mut downloaded_bytes = 0u64;
+        let mut resolved_chapters = Vec::with_capacity(chapters.len());
 
         for chapter_request in chapters {
-            if !self.wait_until_active(task_id).await? {
+            if !self
+                .is_generation_active(task_id, generation, cancelled)
+                .await
+            {
                 return Ok(());
             }
-            let comic_id = chapter_request.chapter_id.parse::<u32>()?;
-            self.update_chapter(task_id, &chapter_request.title).await?;
+            self.update_chapter(task_id, generation, &chapter_request.title)
+                .await?;
             let request_chapter_id = chapter_request.chapter_id.clone();
             let (_, chapter) = self
                 .jm_request(move |client, endpoint| {
@@ -278,66 +413,100 @@ impl DownloadManager {
                     Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
                 })
                 .await?;
-            self.add_total_pages(task_id, chapter.images.len() as u32)
+            if !self
+                .is_generation_active(task_id, generation, cancelled)
+                .await
+            {
+                return Ok(());
+            }
+            self.persist_offline_manifest(&snapshot, &chapter_request, &chapter.images)
                 .await?;
+            resolved_chapters.push((chapter_request, chapter));
+        }
 
-            for (index, image_path) in chapter.images.iter().enumerate() {
-                if !self.wait_until_active(task_id).await? {
-                    return Ok(());
+        let total_pages = resolved_chapters
+            .iter()
+            .map(|(_, chapter)| chapter.images.len() as u32)
+            .sum();
+        self.set_total_pages(task_id, generation, total_pages)
+            .await?;
+
+        for (chapter_request, chapter) in resolved_chapters {
+            if !self
+                .is_generation_active(task_id, generation, cancelled)
+                .await
+            {
+                return Ok(());
+            }
+            let comic_id = chapter_request.chapter_id.parse::<u32>()?;
+            self.update_chapter(task_id, generation, &chapter_request.title)
+                .await?;
+            let mut jobs = JoinSet::new();
+            let mut next_page = 0usize;
+            while next_page < chapter.images.len() || !jobs.is_empty() {
+                while next_page < chapter.images.len()
+                    && jobs.len() < DOWNLOAD_PAGE_CONCURRENCY_PER_TASK
+                {
+                    let manager = self.clone();
+                    let task_id = task_id.to_string();
+                    let chapter_id = chapter_request.chapter_id.clone();
+                    let image_path = chapter.images[next_page].clone();
+                    let page = next_page;
+                    let cancelled = cancelled.clone();
+                    jobs.spawn(async move {
+                        manager
+                            .process_page_job(
+                                &task_id,
+                                generation,
+                                &cancelled,
+                                comic_id,
+                                &chapter_id,
+                                page,
+                                &image_path,
+                            )
+                            .await
+                    });
+                    next_page += 1;
                 }
-                let cache_key = reader_page_cache_key(&chapter_request.chapter_id, index);
-                let file_name = image_path.split('/').last().unwrap_or(image_path);
-                let page_name = page_name_from_image(image_path);
-                let is_gif = file_name.to_ascii_lowercase().ends_with(".gif");
-                let cached = if is_gif {
-                    self.cache.get_gif(&cache_key).await?
-                } else {
-                    self.cache.get(&cache_key).await?
-                };
-                let size = match cached {
-                    Some(data) => data.len() as u64,
-                    None => {
-                        let data = self
-                            .download_page_image(&chapter_request.chapter_id, image_path)
-                            .await?;
-                        if is_gif {
-                            self.cache.put_gif(&cache_key, &data).await?;
-                            data.len() as u64
-                        } else {
-                            let encoded = tokio::task::spawn_blocking(move || {
-                                let original = image::load_from_memory(&data)?;
-                                let rgb = if needs_decoding(comic_id, &page_name, false) {
-                                    decode_scrambled_image(original, comic_id, &page_name)
-                                } else {
-                                    original.to_rgb8()
-                                };
-                                Ok::<_, anyhow::Error>(encode_webp(&rgb))
-                            })
-                            .await??;
-                            self.cache.put(&cache_key, &encoded).await?;
-                            encoded.len() as u64
-                        }
+
+                if let Some(result) = jobs.join_next().await {
+                    if let Some(size) = result?? {
+                        downloaded_bytes = downloaded_bytes.saturating_add(size);
+                        self.complete_page(
+                            task_id,
+                            generation,
+                            downloaded_bytes,
+                            started.elapsed(),
+                        )
+                        .await?;
                     }
-                };
-                downloaded_bytes = downloaded_bytes.saturating_add(size);
-                self.complete_page(task_id, downloaded_bytes, started.elapsed())
-                    .await?;
+                }
             }
         }
 
-        if !self.wait_until_active(task_id).await? {
+        if !self
+            .is_generation_active(task_id, generation, cancelled)
+            .await
+        {
             return Ok(());
         }
 
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-        task.status = DownloadStatus::Completed;
-        task.eta_seconds = Some(0);
-        task.completed_at = Some(chrono::Utc::now().timestamp_millis());
-        task.updated_at = chrono::Utc::now().timestamp_millis();
-        self.persist(task).await
+        let snapshot = {
+            let mut tasks = self.tasks.write().await;
+            let task = tasks
+                .get_mut(task_id)
+                .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
+            if task.generation != generation || task.status != DownloadStatus::Running {
+                return Ok(());
+            }
+            task.status = DownloadStatus::Completed;
+            task.eta_seconds = Some(0);
+            task.completed_at = Some(chrono::Utc::now().timestamp_millis());
+            mark_task_updated(task);
+            task.clone()
+        };
+        self.progress_persisted_at.lock().await.remove(task_id);
+        self.persist(&snapshot).await
     }
 
     async fn jm_request<T, F>(&self, operation: F) -> JmResult<(String, T)>
@@ -348,6 +517,79 @@ impl DownloadManager {
         ) -> Pin<Box<dyn Future<Output = JmResult<T>> + Send + 'a>>,
     {
         request_with_failover(&self.jm, &self.endpoints, operation).await
+    }
+
+    async fn process_page_job(
+        &self,
+        task_id: &str,
+        generation: u64,
+        cancelled: &watch::Receiver<bool>,
+        comic_id: u32,
+        chapter_id: &str,
+        page: usize,
+        image_path: &str,
+    ) -> Result<Option<u64>> {
+        if !self
+            .is_generation_active(task_id, generation, cancelled)
+            .await
+        {
+            return Ok(None);
+        }
+
+        let mut cancel_wait = cancelled.clone();
+        let permit = tokio::select! {
+            permit = self.page_semaphore.clone().acquire_owned() => permit.ok(),
+            _ = wait_for_cancel(&mut cancel_wait) => None,
+        };
+        let Some(_permit) = permit else {
+            return Ok(None);
+        };
+
+        let offline = self.read_offline_page(task_id, chapter_id, page).await?;
+        let was_offline = offline.is_some();
+        let cache_key = reader_page_cache_key(chapter_id, page);
+        let page_image = match offline {
+            Some(offline) => offline,
+            None => match self.cache.get_reader_page(&cache_key).await? {
+                Some(cached) => cached,
+                None => {
+                    let data = self.download_page_image(chapter_id, image_path).await?;
+                    if !self
+                        .is_generation_active(task_id, generation, cancelled)
+                        .await
+                    {
+                        return Ok(None);
+                    }
+                    let page_name = page_name_from_image(image_path);
+                    let prepared = prepare_page_image(data, comic_id, page_name).await?;
+                    if !self
+                        .is_generation_active(task_id, generation, cancelled)
+                        .await
+                    {
+                        return Ok(None);
+                    }
+                    self.cache
+                        .put_reader_page(&cache_key, prepared.format, &prepared.data)
+                        .await?;
+                    CachedReaderPage {
+                        data: prepared.data,
+                        format: prepared.format,
+                    }
+                }
+            },
+        };
+
+        if !self
+            .is_generation_active(task_id, generation, cancelled)
+            .await
+        {
+            return Ok(None);
+        }
+        if !was_offline {
+            self.store_offline_page(task_id, chapter_id, page, &page_image)
+                .await?;
+        }
+        Ok(Some(page_image.data.len() as u64))
     }
 
     async fn download_page_image(&self, chapter_id: &str, image_path: &str) -> JmResult<Vec<u8>> {
@@ -370,91 +612,302 @@ impl DownloadManager {
         }
     }
 
-    async fn wait_until_active(&self, task_id: &str) -> Result<bool> {
-        loop {
-            let status = self
-                .tasks
-                .read()
-                .await
-                .get(task_id)
-                .map(|task| task.status)
-                .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-            match status {
-                DownloadStatus::Paused => sleep(Duration::from_millis(300)).await,
-                DownloadStatus::Cancelled => return Ok(false),
-                DownloadStatus::Running | DownloadStatus::Queued => return Ok(true),
-                _ => return Ok(false),
+    async fn persist_offline_manifest(
+        &self,
+        task: &DownloadTask,
+        chapter: &DownloadChapter,
+        images: &[String],
+    ) -> Result<()> {
+        let manifest = OfflineChapterManifest {
+            task_id: task.task_id.clone(),
+            album_id: task.album_id.clone(),
+            chapter_id: chapter.chapter_id.clone(),
+            title: chapter.title.clone(),
+            images: images.to_vec(),
+            updated_at: chrono::Utc::now().timestamp_millis(),
+        };
+        sqlx::query(
+            "INSERT INTO download_manifests \
+             (task_id, album_id, chapter_id, title, payload, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(task_id, chapter_id) DO UPDATE SET \
+             album_id = excluded.album_id, title = excluded.title, \
+             payload = excluded.payload, updated_at = excluded.updated_at",
+        )
+        .bind(&manifest.task_id)
+        .bind(&manifest.album_id)
+        .bind(&manifest.chapter_id)
+        .bind(&manifest.title)
+        .bind(serde_json::to_string(&manifest)?)
+        .bind(manifest.updated_at)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    async fn store_offline_page(
+        &self,
+        task_id: &str,
+        chapter_id: &str,
+        page: usize,
+        page_image: &CachedReaderPage,
+    ) -> Result<()> {
+        let path = self.offline_page_path(task_id, chapter_id, page, page_image.format.extension());
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        fs::write(path, &page_image.data).await?;
+        Ok(())
+    }
+
+    async fn read_offline_page(
+        &self,
+        task_id: &str,
+        chapter_id: &str,
+        page: usize,
+    ) -> Result<Option<CachedReaderPage>> {
+        for format in crate::reader::PageImageFormat::supported() {
+            let path = self.offline_page_path(task_id, chapter_id, page, format.extension());
+            match fs::read(path).await {
+                Ok(data) => return Ok(Some(CachedReaderPage { data, format })),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
             }
+        }
+        Ok(None)
+    }
+
+    fn offline_page_path(
+        &self,
+        task_id: &str,
+        chapter_id: &str,
+        page: usize,
+        extension: &str,
+    ) -> PathBuf {
+        self.download_dir
+            .join(task_id)
+            .join(chapter_id)
+            .join(format!("{page}.{extension}"))
+    }
+
+    async fn task_generation(&self, task_id: &str) -> Option<u64> {
+        self.tasks
+            .read()
+            .await
+            .get(task_id)
+            .map(|task| task.generation)
+    }
+
+    async fn is_generation_active(
+        &self,
+        task_id: &str,
+        generation: u64,
+        cancelled: &watch::Receiver<bool>,
+    ) -> bool {
+        if *cancelled.borrow() {
+            return false;
+        }
+        self.tasks.read().await.get(task_id).is_some_and(|task| {
+            task.generation == generation
+                && matches!(
+                    task.status,
+                    DownloadStatus::Queued | DownloadStatus::Running
+                )
+        })
+    }
+
+    async fn cancel_worker(&self, task_id: &str) {
+        let cancel = self
+            .workers
+            .lock()
+            .await
+            .get(task_id)
+            .map(|worker| worker.cancel.clone());
+        if let Some(cancel) = cancel {
+            let _ = cancel.send(true);
+        }
+    }
+
+    async fn cancel_worker_and_wait(&self, task_id: &str) -> Result<()> {
+        let handles = self
+            .workers
+            .lock()
+            .await
+            .get(task_id)
+            .map(|worker| (worker.cancel.clone(), worker.finished.subscribe()));
+        let Some((cancel, mut finished)) = handles else {
+            return Ok(());
+        };
+        let _ = cancel.send(true);
+        if !*finished.borrow() {
+            tokio::time::timeout(Duration::from_secs(30), finished.changed())
+                .await
+                .map_err(|_| anyhow::anyhow!("等待下载 worker 退出超时"))??;
+        }
+        Ok(())
+    }
+
+    async fn finish_worker(&self, task_id: &str, generation: u64) {
+        let mut workers = self.workers.lock().await;
+        if workers
+            .get(task_id)
+            .is_some_and(|worker| worker.generation == generation)
+        {
+            if let Some(worker) = workers.get(task_id) {
+                let _ = worker.finished.send(true);
+            }
+            workers.remove(task_id);
         }
     }
 
     async fn set_status(&self, task_id: &str, status: DownloadStatus) -> Result<()> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-        task.status = status;
-        task.updated_at = chrono::Utc::now().timestamp_millis();
-        self.persist(task).await
+        let snapshot = {
+            let mut tasks = self.tasks.write().await;
+            let task = tasks
+                .get_mut(task_id)
+                .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
+            task.status = status;
+            mark_task_updated(task);
+            task.clone()
+        };
+        self.persist(&snapshot).await
     }
 
-    async fn update_chapter(&self, task_id: &str, title: &str) -> Result<()> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-        task.current_chapter_title = title.to_string();
-        task.updated_at = chrono::Utc::now().timestamp_millis();
-        self.persist(task).await
+    async fn update_chapter(&self, task_id: &str, generation: u64, title: &str) -> Result<()> {
+        let snapshot = {
+            let mut tasks = self.tasks.write().await;
+            let task = tasks
+                .get_mut(task_id)
+                .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
+            if task.generation != generation || task.status != DownloadStatus::Running {
+                return Ok(());
+            }
+            task.current_chapter_title = title.to_string();
+            mark_task_updated(task);
+            task.clone()
+        };
+        self.persist(&snapshot).await
     }
 
-    async fn add_total_pages(&self, task_id: &str, count: u32) -> Result<()> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-        task.total_pages = task.total_pages.saturating_add(count);
-        task.updated_at = chrono::Utc::now().timestamp_millis();
-        self.persist(task).await
+    async fn set_total_pages(&self, task_id: &str, generation: u64, total: u32) -> Result<()> {
+        let snapshot = {
+            let mut tasks = self.tasks.write().await;
+            let task = tasks
+                .get_mut(task_id)
+                .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
+            if task.generation != generation || task.status != DownloadStatus::Running {
+                return Ok(());
+            }
+            task.total_pages = total;
+            mark_task_updated(task);
+            task.clone()
+        };
+        self.persist(&snapshot).await
     }
 
-    async fn complete_page(&self, task_id: &str, bytes: u64, elapsed: Duration) -> Result<()> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-        task.completed_pages = task.completed_pages.saturating_add(1);
-        let seconds = elapsed.as_secs_f64().max(0.001);
-        task.speed_bytes_per_second = (bytes as f64 / seconds) as u64;
-        let remaining = task.total_pages.saturating_sub(task.completed_pages) as f64;
-        let pages_per_second = task.completed_pages as f64 / seconds;
-        task.eta_seconds =
-            (pages_per_second > 0.0).then_some((remaining / pages_per_second) as u64);
-        task.updated_at = chrono::Utc::now().timestamp_millis();
-        self.persist(task).await
+    async fn complete_page(
+        &self,
+        task_id: &str,
+        generation: u64,
+        bytes: u64,
+        elapsed: Duration,
+    ) -> Result<()> {
+        let snapshot = {
+            let mut tasks = self.tasks.write().await;
+            let task = tasks
+                .get_mut(task_id)
+                .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
+            if task.generation != generation || task.status != DownloadStatus::Running {
+                return Ok(());
+            }
+            task.completed_pages = task.completed_pages.saturating_add(1);
+            let seconds = elapsed.as_secs_f64().max(0.001);
+            task.speed_bytes_per_second = (bytes as f64 / seconds) as u64;
+            let remaining = task.total_pages.saturating_sub(task.completed_pages) as f64;
+            let pages_per_second = task.completed_pages as f64 / seconds;
+            task.eta_seconds =
+                (pages_per_second > 0.0).then_some((remaining / pages_per_second) as u64);
+            mark_task_updated(task);
+            task.clone()
+        };
+
+        if self.should_persist_progress(task_id, &snapshot).await {
+            self.persist(&snapshot).await?;
+        }
+        Ok(())
     }
 
-    async fn fail(&self, task_id: &str, error: String) -> Result<()> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
-        task.status = DownloadStatus::Failed;
-        task.error = Some(error);
-        task.updated_at = chrono::Utc::now().timestamp_millis();
-        self.persist(task).await
+    async fn fail_generation(&self, task_id: &str, generation: u64, error: String) -> Result<()> {
+        let snapshot = {
+            let mut tasks = self.tasks.write().await;
+            let task = tasks
+                .get_mut(task_id)
+                .ok_or_else(|| anyhow::anyhow!("Download task not found"))?;
+            if task.generation != generation || task.status != DownloadStatus::Running {
+                return Ok(());
+            }
+            task.status = DownloadStatus::Failed;
+            task.error = Some(error);
+            mark_task_updated(task);
+            task.clone()
+        };
+        self.progress_persisted_at.lock().await.remove(task_id);
+        self.persist(&snapshot).await
+    }
+
+    async fn should_persist_progress(&self, task_id: &str, task: &DownloadTask) -> bool {
+        if task.completed_pages >= task.total_pages {
+            return true;
+        }
+
+        let now = Instant::now();
+        let mut persisted_at = self.progress_persisted_at.lock().await;
+        match persisted_at.get_mut(task_id) {
+            Some(previous) if now.duration_since(*previous) < PROGRESS_PERSIST_INTERVAL => false,
+            Some(previous) => {
+                *previous = now;
+                true
+            }
+            None => {
+                persisted_at.insert(task_id.to_string(), now);
+                true
+            }
+        }
     }
 
     async fn persist(&self, task: &DownloadTask) -> Result<()> {
+        let started = Instant::now();
         sqlx::query(
             "INSERT INTO download_tasks (task_id, payload, updated_at) VALUES (?, ?, ?) \
-             ON CONFLICT(task_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at",
+             ON CONFLICT(task_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at \
+             WHERE excluded.updated_at >= download_tasks.updated_at",
         )
         .bind(&task.task_id)
         .bind(serde_json::to_string(task)?)
         .bind(task.updated_at)
         .execute(&self.db)
         .await?;
+        tracing::debug!(
+            task_id = task.task_id,
+            status = ?task.status,
+            completed_pages = task.completed_pages,
+            total_pages = task.total_pages,
+            elapsed_ms = started.elapsed().as_millis(),
+            "下载任务持久化完成"
+        );
         Ok(())
     }
+}
+
+fn mark_task_updated(task: &mut DownloadTask) {
+    task.updated_at = chrono::Utc::now()
+        .timestamp_millis()
+        .max(task.updated_at.saturating_add(1));
+}
+
+async fn wait_for_cancel(cancelled: &mut watch::Receiver<bool>) {
+    if *cancelled.borrow() {
+        return;
+    }
+    let _ = cancelled.changed().await;
 }
