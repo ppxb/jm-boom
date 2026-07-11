@@ -70,4 +70,4 @@ docker compose up -d
 
 ## License
 
-遵循 [MIT](./LICENSE) 协议。
+遵循 [MIT](https://github.com/ppxb/jm-boom/blob/master/LICENSE) 协议。
