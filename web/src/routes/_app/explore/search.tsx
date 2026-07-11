@@ -110,7 +110,11 @@ function SearchPage() {
 
   return (
     <section className="space-y-6">
-      <PageBackButton />
+      <PageBackButton
+        onClick={() => {
+          void navigate({ to: '/explore', replace: true })
+        }}
+      />
 
       <div className="flex w-full max-w-xl items-center gap-2">
         <form className="min-w-0 flex-1" onSubmit={submitSearch}>
@@ -119,7 +123,9 @@ function SearchPage() {
               <SearchIcon className="size-4" />
             </InputGroupAddon>
             <InputGroupInput
-              type="search"
+              type="text"
+              role="searchbox"
+              inputMode="search"
               value={draftKeyword}
               onChange={event => setDraftKeyword(event.target.value)}
               placeholder="搜索关键词或 JM 号"

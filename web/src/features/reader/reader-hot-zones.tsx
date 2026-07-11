@@ -16,8 +16,9 @@ export function ReaderHotZones({
     <>
       <button
         type="button"
+        tabIndex={-1}
         aria-label={pageDirection === 'rtl' ? '下一页' : '上一页'}
-        className="absolute top-20 bottom-20 left-0 z-20 w-[12vw] max-w-36 min-w-20 cursor-pointer border-0 bg-transparent p-0"
+        className="absolute top-20 bottom-20 left-0 z-20 w-[12vw] max-w-36 min-w-20 cursor-pointer border-0 bg-transparent p-0 outline-none focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
         onClick={event => {
           event.stopPropagation()
           leftAction()
@@ -25,8 +26,9 @@ export function ReaderHotZones({
       />
       <button
         type="button"
+        tabIndex={-1}
         aria-label={pageDirection === 'rtl' ? '上一页' : '下一页'}
-        className="absolute top-20 right-0 bottom-20 z-20 w-[12vw] max-w-36 min-w-20 cursor-pointer border-0 bg-transparent p-0"
+        className="absolute top-20 right-0 bottom-20 z-20 w-[12vw] max-w-36 min-w-20 cursor-pointer border-0 bg-transparent p-0 outline-none focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
         onClick={event => {
           event.stopPropagation()
           rightAction()

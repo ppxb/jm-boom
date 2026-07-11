@@ -3,6 +3,7 @@ mod client;
 mod crypto;
 mod error;
 mod models;
+pub(crate) mod serde_ext;
 mod setting;
 mod signature;
 

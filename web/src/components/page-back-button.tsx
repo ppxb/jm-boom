@@ -3,7 +3,7 @@ import { ArrowLeftIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
-export function PageBackButton() {
+export function PageBackButton({ onClick }: { onClick?: () => void }) {
   const router = useRouter()
 
   return (
@@ -12,7 +12,7 @@ export function PageBackButton() {
       variant="ghost"
       size="default"
       className="h-11 gap-2 self-start px-3 text-base"
-      onClick={() => router.history.back()}
+      onClick={onClick ?? (() => router.history.back())}
     >
       <ArrowLeftIcon className="size-5" />
       返回

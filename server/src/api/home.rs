@@ -1,4 +1,10 @@
-use crate::{jm::JmResult, AppState};
+use crate::{
+    jm::{
+        serde_ext::{string_from_any as string_from_value, u32_from_any as u32_from_value},
+        JmResult,
+    },
+    AppState,
+};
 use axum::{
     extract::{Query, State},
     Json,
@@ -581,32 +587,6 @@ fn current_china_weekday() -> u32 {
         0 => 7,
         value => value as u32,
     }
-}
-
-fn string_from_value<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::Null => String::new(),
-        serde_json::Value::String(value) => value,
-        serde_json::Value::Number(value) => value.to_string(),
-        serde_json::Value::Bool(value) => value.to_string(),
-        value => value.to_string(),
-    })
-}
-
-fn u32_from_value<'de, D>(deserializer: D) -> Result<u32, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(value
-        .as_u64()
-        .map(|value| value as u32)
-        .or_else(|| value.as_str()?.parse().ok())
-        .unwrap_or_default())
 }
 
 fn optional_i64_from_value<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>

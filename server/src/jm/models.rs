@@ -1,3 +1,7 @@
+use super::serde_ext::{
+    lossy_string_vec_from_array_or_scalar, optional_string_from_any, string_from_any,
+    string_from_any_or_default, u32_from_any,
+};
 use serde::{Deserialize, Serialize};
 
 // ============ API Response Models ============
@@ -112,57 +116,12 @@ pub(crate) struct ComicPayload {
     pub description: String,
     #[serde(default, deserialize_with = "string_from_any_or_default")]
     pub image: String,
-    #[serde(default, deserialize_with = "string_vec_from_any")]
+    #[serde(default, deserialize_with = "lossy_string_vec_from_array_or_scalar")]
     pub tags: Vec<String>,
     #[serde(default, deserialize_with = "u32_from_any")]
     pub likes: u32,
     #[serde(default, deserialize_with = "u32_from_any", rename = "total_views")]
     pub views: u32,
-}
-
-// Helper to deserialize with default fallback
-fn string_from_any_or_default<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(string_from_value(value))
-}
-
-fn optional_string_from_any<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    let value = string_from_value(value).trim().to_string();
-    Ok((!value.is_empty()).then_some(value))
-}
-
-fn string_vec_from_any<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    let values = match value {
-        serde_json::Value::Null => Vec::new(),
-        serde_json::Value::Array(values) => values,
-        value => vec![value],
-    };
-    Ok(values
-        .into_iter()
-        .map(string_from_value)
-        .filter(|value| !value.is_empty())
-        .collect())
-}
-
-fn string_from_value(value: serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => String::new(),
-        serde_json::Value::String(value) => value,
-        serde_json::Value::Number(value) => value.to_string(),
-        serde_json::Value::Bool(value) => value.to_string(),
-        _ => String::new(),
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -178,82 +137,6 @@ pub(crate) struct HomeSectionPayload {
     pub content: Vec<ComicPayload>,
 }
 
-// Helper to deserialize any type to String
-fn string_from_any<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::{self, Visitor};
-    use std::fmt;
-
-    struct StringVisitor;
-
-    impl<'de> Visitor<'de> for StringVisitor {
-        type Value = String;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, number, or boolean")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value)
-        }
-
-        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-
-        fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(value.to_string())
-        }
-    }
-
-    deserializer.deserialize_any(StringVisitor)
-}
-
-// Helper to deserialize any type to u32
-fn u32_from_any<'de, D>(deserializer: D) -> Result<u32, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(value
-        .as_u64()
-        .map(|value| value as u32)
-        .or_else(|| value.as_str()?.parse().ok())
-        .unwrap_or_default())
-}
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct ComicDetailPayload {
     #[serde(deserialize_with = "string_from_any")]
@@ -263,13 +146,13 @@ pub(crate) struct ComicDetailPayload {
     pub description: String,
     #[serde(default)]
     pub image: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lossy_string_vec_from_array_or_scalar")]
     pub author: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lossy_string_vec_from_array_or_scalar")]
     pub tags: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lossy_string_vec_from_array_or_scalar")]
     pub actors: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lossy_string_vec_from_array_or_scalar")]
     pub works: Vec<String>,
     #[serde(default, deserialize_with = "u32_from_any")]
     pub total_views: u32,

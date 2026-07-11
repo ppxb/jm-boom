@@ -1,6 +1,12 @@
 use crate::{
     api::home::cover_url,
-    jm::{ComicDetail, JmResult},
+    jm::{
+        serde_ext::{
+            optional_string_from_any as optional_string_from_value,
+            string_from_any as string_from_value, u32_from_any as u32_from_value,
+        },
+        ComicDetail, JmResult,
+    },
     AppState,
 };
 use axum::{
@@ -194,40 +200,6 @@ where
     D: Deserializer<'de>,
 {
     serde_json::Value::deserialize(deserializer)
-}
-
-fn string_from_value<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = value_from(deserializer)?;
-    Ok(match value {
-        serde_json::Value::Null => String::new(),
-        serde_json::Value::String(value) => value,
-        serde_json::Value::Number(value) => value.to_string(),
-        serde_json::Value::Bool(value) => value.to_string(),
-        value => value.to_string(),
-    })
-}
-
-fn optional_string_from_value<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = string_from_value(deserializer)?;
-    Ok((!value.is_empty()).then_some(value))
-}
-
-fn u32_from_value<'de, D>(deserializer: D) -> Result<u32, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = value_from(deserializer)?;
-    Ok(value
-        .as_u64()
-        .map(|value| value as u32)
-        .or_else(|| value.as_str()?.parse().ok())
-        .unwrap_or_default())
 }
 
 fn bool_from_value<'de, D>(deserializer: D) -> Result<bool, D::Error>
