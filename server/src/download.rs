@@ -89,6 +89,12 @@ pub struct DownloadTaskList {
     pub tasks: Vec<DownloadTask>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedChapterList {
+    pub chapter_ids: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OfflineChapterManifest {
     pub task_id: String,
@@ -234,6 +240,16 @@ impl DownloadManager {
         payload
             .map(|payload| serde_json::from_str(&payload).map_err(Into::into))
             .transpose()
+    }
+
+    pub async fn downloaded_chapters(&self) -> Result<DownloadedChapterList> {
+        let chapter_ids = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT chapter_id FROM download_manifests \
+             WHERE completed = 1 ORDER BY chapter_id",
+        )
+        .fetch_all(&self.db)
+        .await?;
+        Ok(DownloadedChapterList { chapter_ids })
     }
 
     pub async fn offline_page(
@@ -482,6 +498,8 @@ impl DownloadManager {
                     }
                 }
             }
+            self.mark_offline_manifest_completed(task_id, &chapter_request.chapter_id)
+                .await?;
         }
 
         if !self
@@ -628,11 +646,11 @@ impl DownloadManager {
         };
         sqlx::query(
             "INSERT INTO download_manifests \
-             (task_id, album_id, chapter_id, title, payload, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?) \
+             (task_id, album_id, chapter_id, title, payload, updated_at, completed) \
+             VALUES (?, ?, ?, ?, ?, ?, 0) \
              ON CONFLICT(task_id, chapter_id) DO UPDATE SET \
              album_id = excluded.album_id, title = excluded.title, \
-             payload = excluded.payload, updated_at = excluded.updated_at",
+             payload = excluded.payload, updated_at = excluded.updated_at, completed = 0",
         )
         .bind(&manifest.task_id)
         .bind(&manifest.album_id)
@@ -640,6 +658,19 @@ impl DownloadManager {
         .bind(&manifest.title)
         .bind(serde_json::to_string(&manifest)?)
         .bind(manifest.updated_at)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    async fn mark_offline_manifest_completed(&self, task_id: &str, chapter_id: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE download_manifests SET completed = 1, updated_at = ? \
+             WHERE task_id = ? AND chapter_id = ?",
+        )
+        .bind(chrono::Utc::now().timestamp_millis())
+        .bind(task_id)
+        .bind(chapter_id)
         .execute(&self.db)
         .await?;
         Ok(())

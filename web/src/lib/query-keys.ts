@@ -4,6 +4,7 @@ export const queryKeys = {
   comicComments: (comicId: string) => ['jm-comic-comments', comicId] as const,
   comicDetail: (comicId: string) => ['jm-comic-detail', comicId] as const,
   downloadTasks: () => ['jm-download-tasks'] as const,
+  downloadedChapters: () => ['jm-downloaded-chapters'] as const,
   homeFeed: () => ['jm-home-feed'] as const,
   homeSectionList: (search: unknown) => ['jm-home-section-list', search] as const,
   ranking: (page: number, category: string, order: string) =>

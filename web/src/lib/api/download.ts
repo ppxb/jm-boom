@@ -42,6 +42,10 @@ export type DownloadTaskListResult = {
   tasks: DownloadTask[]
 }
 
+export type DownloadedChapterListResult = {
+  chapterIds: string[]
+}
+
 export async function enqueueComicDownload(
   request: EnqueueDownloadRequest
 ): Promise<DownloadTaskListResult> {
@@ -50,6 +54,10 @@ export async function enqueueComicDownload(
 
 export async function listDownloadTasks(): Promise<DownloadTaskListResult> {
   return apiClient.get('/api/downloads')
+}
+
+export async function listDownloadedChapters(): Promise<DownloadedChapterListResult> {
+  return apiClient.get('/api/downloads/chapters')
 }
 
 export async function cancelDownloadTask(taskId: string): Promise<DownloadTaskListResult> {

@@ -24,6 +24,7 @@ pub fn routes() -> Router<AppState> {
         // 服务端离线缓存任务
         .route("/downloads", get(downloads::list))
         .route("/downloads", post(downloads::enqueue))
+        .route("/downloads/chapters", get(downloads::downloaded_chapters))
         .route("/downloads/:id/pause", post(downloads::pause))
         .route("/downloads/:id/resume", post(downloads::resume))
         .route("/downloads/:id/cancel", post(downloads::cancel))

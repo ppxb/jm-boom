@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Drawer,
   DrawerContent,
@@ -11,6 +13,8 @@ import {
   DrawerTitle
 } from '@/components/ui/drawer'
 import { cn } from '@/lib/utils'
+import { listDownloadedChapters } from '@/lib/api/download'
+import { queryKeys } from '@/lib/query-keys'
 import { toReaderChapterSearch } from './reader-chapter-link'
 import type { ReaderChapterItem } from './types'
 
@@ -31,6 +35,19 @@ export function ReaderChapterDrawer({
 }) {
   const listRef = useRef<HTMLDivElement | null>(null)
   const displayChapters = useMemo(() => [...chapters].reverse(), [chapters])
+  const downloadedChapters = useQuery({
+    queryKey: queryKeys.downloadedChapters(),
+    queryFn: listDownloadedChapters,
+    enabled: open,
+    staleTime: 5000,
+    refetchInterval: open ? 2000 : false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false
+  })
+  const downloadedChapterIds = useMemo(
+    () => new Set(downloadedChapters.data?.chapterIds ?? []),
+    [downloadedChapters.data?.chapterIds]
+  )
 
   useEffect(() => {
     if (!open) {
@@ -71,6 +88,7 @@ export function ReaderChapterDrawer({
           <div ref={listRef} className="space-y-2">
             {displayChapters.map(chapter => {
               const isCurrent = chapter.id === currentReadId
+              const isDownloaded = downloadedChapterIds.has(chapter.id)
 
               return (
                 <Link
@@ -88,8 +106,21 @@ export function ReaderChapterDrawer({
                   onClick={() => onOpenChange(false)}
                 >
                   <span className="min-w-0 truncate font-medium">{chapter.title}</span>
-                  <span className="shrink-0 rounded-md border border-white/10 px-1.5 py-0.5 text-[11px] text-neutral-400">
-                    {isCurrent ? '当前' : `JM ${chapter.id}`}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {isDownloaded ? (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                      >
+                        已下载
+                      </Badge>
+                    ) : null}
+                    <Badge
+                      variant="outline"
+                      className="border-white/10 bg-white/5 text-neutral-400"
+                    >
+                      {isCurrent ? '当前' : `JM ${chapter.id}`}
+                    </Badge>
                   </span>
                 </Link>
               )

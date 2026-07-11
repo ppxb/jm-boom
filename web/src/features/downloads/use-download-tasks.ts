@@ -68,6 +68,7 @@ function useTaskMutation<TVariables>(
     mutationFn,
     onSuccess: result => {
       queryClient.setQueryData(queryKeys.downloadTasks(), result)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.downloadedChapters() })
       toast.success(message)
     },
     onError: showError
