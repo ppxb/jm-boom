@@ -5,7 +5,6 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { grantAccessGate, hasAccessGateGrant, loadAccessGateConfig } from '@/lib/access-gate'
 import { loginAccessGate } from '@/lib/api/auth'
 
@@ -80,7 +79,6 @@ function LoginPage() {
           ) : (
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
-                <Label htmlFor="access-password">访问密码</Label>
                 <Input
                   id="access-password"
                   type="password"

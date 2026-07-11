@@ -7,10 +7,14 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - "./jm-boom/data:/app/data"
+      - jm-boom-data:/app/data
     environment:
       RUST_LOG: info,jm_boom_server=info
       JM_BOOM_ACCESS_PASSWORD: "change-this-password"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+
+volumes:
+  jm-boom-data:
+    name: jm-boom-data

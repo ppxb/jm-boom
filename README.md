@@ -27,14 +27,7 @@ docker compose ps
 docker compose logs -f jm-boom
 ```
 
-默认使用 Compose 文件同级的 `./jm-boom/data` 目录持久化 SQLite、图片缓存和离线下载。升级或重建容器不会删除该目录。
-
-镜像使用 UID `10001` 的非 root 用户运行。Linux/NAS 如果提示数据目录没有写入权限，可执行：
-
-```bash
-mkdir -p ./jm-boom/data
-sudo chown -R 10001:10001 ./jm-boom/data
-```
+默认使用名为 `jm-boom-data` 的 Docker 命名卷持久化 SQLite、图片缓存和离线下载。升级或重建容器不会删除该命名卷。
 
 升级：
 
