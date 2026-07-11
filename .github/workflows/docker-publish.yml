@@ -74,7 +74,11 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
             REVISION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=jm-boom
+            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: |
+            type=gha,scope=jm-boom,mode=max
+            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
           provenance: false
           sbom: false

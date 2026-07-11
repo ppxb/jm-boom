@@ -1,13 +1,23 @@
-FROM rust:1.96-slim-bookworm AS server-builder
+FROM rust:1.96-slim-bookworm AS server-chef
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential cmake pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && cargo install cargo-chef --locked
 
 WORKDIR /build/server
-COPY server/Cargo.toml server/Cargo.lock ./
-COPY server/migrations ./migrations
-COPY server/src ./src
+
+FROM server-chef AS server-planner
+
+COPY server/ ./
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM server-chef AS server-builder
+
+COPY --from=server-planner /build/server/recipe.json recipe.json
+RUN cargo chef cook --release --locked --recipe-path recipe.json
+
+COPY server/ ./
 RUN cargo build --release --locked
 
 FROM oven/bun:1.3.14 AS web-builder
