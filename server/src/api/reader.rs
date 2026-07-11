@@ -1,11 +1,12 @@
 use crate::cache::{reader_page_cache_key, READER_CACHE_VERSION};
 use crate::endpoint::request_with_failover;
+use crate::image_work::ImageWorkPriority;
 use crate::jm::invalidate_img_host;
 use crate::reader::{page_name_from_image, prepare_page_image};
 use crate::AppState;
 use axum::{
     extract::{Path, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -92,9 +93,11 @@ pub async fn get_manifest(
 pub async fn get_page(
     State(app): State<AppState>,
     Path((chapter_id, page)): Path<(String, u32)>,
+    headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     validate_chapter_id(&chapter_id)?;
-    let image = materialize_page(&app, &chapter_id, page).await?;
+    let priority = request_priority(&headers);
+    let image = materialize_page(&app, &chapter_id, page, priority).await?;
     prewarm_pages(app, chapter_id, page.saturating_add(1), PAGE_PREWARM_COUNT);
     Ok(image_response(image.content_type, image.data))
 }
@@ -108,6 +111,7 @@ async fn materialize_page(
     app: &AppState,
     chapter_id: &str,
     page: u32,
+    priority: ImageWorkPriority,
 ) -> Result<MaterializedImage, ApiError> {
     let materialize_started = Instant::now();
     let comic_id = validate_chapter_id(chapter_id)?;
@@ -144,6 +148,7 @@ async fn materialize_page(
         &cache_key,
         materialize_started,
         lock_wait_ms,
+        priority,
     )
     .await;
     drop(guard);
@@ -159,6 +164,7 @@ async fn materialize_page_with_lock(
     cache_key: &str,
     materialize_started: Instant,
     lock_wait_ms: u128,
+    priority: ImageWorkPriority,
 ) -> Result<MaterializedImage, ApiError> {
     if let Some(cached) = app
         .cache
@@ -200,6 +206,7 @@ async fn materialize_page_with_lock(
         });
     }
 
+    let _work_permit = app.image_work.acquire(priority).await;
     let request_chapter_id = chapter_id.to_string();
     let chapter_started = Instant::now();
     let chapter = app
@@ -259,12 +266,27 @@ fn prewarm_pages(app: AppState, chapter_id: String, start_page: u32, count: u32)
                 return;
             };
 
-            if let Err(error) = materialize_page(&app, &chapter_id, page).await {
+            if let Err(error) =
+                materialize_page(&app, &chapter_id, page, ImageWorkPriority::Prefetch).await
+            {
                 if !matches!(error, ApiError::NotFound(_)) {
                     tracing::debug!(chapter_id, page, error = ?error, "reader page prewarm failed");
                 }
             }
         });
+    }
+}
+
+fn request_priority(headers: &HeaderMap) -> ImageWorkPriority {
+    let is_prefetch = headers
+        .get("x-jm-boom-image-priority")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("prefetch"));
+
+    if is_prefetch {
+        ImageWorkPriority::Prefetch
+    } else {
+        ImageWorkPriority::Foreground
     }
 }
 

@@ -82,18 +82,32 @@ async function preloadReaderImage(path: string) {
     return
   }
 
+  const response = await fetch(path, {
+    headers: {
+      'x-jm-boom-image-priority': 'prefetch'
+    }
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to preload reader image: HTTP ${response.status}`)
+  }
+
+  const objectUrl = URL.createObjectURL(await response.blob())
   const image = new Image()
   image.decoding = 'async'
 
-  if (typeof image.decode === 'function') {
-    image.src = path
-    await image.decode()
-    return
-  }
+  try {
+    if (typeof image.decode === 'function') {
+      image.src = objectUrl
+      await image.decode()
+      return
+    }
 
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve()
-    image.onerror = () => reject(new Error(`Failed to preload reader image: ${path}`))
-    image.src = path
-  })
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error(`Failed to decode reader image: ${path}`))
+      image.src = objectUrl
+    })
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
 }

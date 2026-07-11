@@ -1,6 +1,7 @@
 use crate::{
     cache::{reader_page_cache_key, CachedReaderPage, ImageCache},
     endpoint::{request_with_failover, EndpointManager},
+    image_work::{ImageWorkBudget, ImageWorkPriority},
     jm::{invalidate_img_host, JmClient, JmResult},
     reader::{page_name_from_image, prepare_page_image},
 };
@@ -29,7 +30,6 @@ static TASK_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 const PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 const DOWNLOAD_TASK_CONCURRENCY: usize = 2;
 const DOWNLOAD_PAGE_CONCURRENCY_PER_TASK: usize = 5;
-const DOWNLOAD_PAGE_CONCURRENCY_GLOBAL: usize = 8;
 
 fn default_generation() -> u64 {
     1
@@ -117,11 +117,11 @@ pub struct DownloadManager {
     jm: Arc<JmClient>,
     endpoints: Arc<EndpointManager>,
     cache: Arc<ImageCache>,
+    image_work: ImageWorkBudget,
     download_dir: PathBuf,
     tasks: Arc<RwLock<HashMap<String, DownloadTask>>>,
     workers: Arc<Mutex<HashMap<String, WorkerHandle>>>,
     task_semaphore: Arc<Semaphore>,
-    page_semaphore: Arc<Semaphore>,
     progress_persisted_at: Arc<Mutex<HashMap<String, Instant>>>,
 }
 
@@ -131,6 +131,7 @@ impl DownloadManager {
         jm: Arc<JmClient>,
         endpoints: Arc<EndpointManager>,
         cache: Arc<ImageCache>,
+        image_work: ImageWorkBudget,
     ) -> Result<Self> {
         let download_dir = PathBuf::from("data/downloads");
         fs::create_dir_all(&download_dir).await?;
@@ -157,11 +158,11 @@ impl DownloadManager {
             jm,
             endpoints,
             cache,
+            image_work,
             download_dir,
             tasks: Arc::new(RwLock::new(tasks)),
             workers: Arc::new(Mutex::new(HashMap::new())),
             task_semaphore: Arc::new(Semaphore::new(DOWNLOAD_TASK_CONCURRENCY)),
-            page_semaphore: Arc::new(Semaphore::new(DOWNLOAD_PAGE_CONCURRENCY_GLOBAL)),
             progress_persisted_at: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -554,15 +555,6 @@ impl DownloadManager {
             return Ok(None);
         }
 
-        let mut cancel_wait = cancelled.clone();
-        let permit = tokio::select! {
-            permit = self.page_semaphore.clone().acquire_owned() => permit.ok(),
-            _ = wait_for_cancel(&mut cancel_wait) => None,
-        };
-        let Some(_permit) = permit else {
-            return Ok(None);
-        };
-
         let offline = self.read_offline_page(task_id, chapter_id, page).await?;
         let was_offline = offline.is_some();
         let cache_key = reader_page_cache_key(chapter_id, page);
@@ -571,27 +563,41 @@ impl DownloadManager {
             None => match self.cache.get_reader_page(&cache_key).await? {
                 Some(cached) => cached,
                 None => {
-                    let data = self.download_page_image(chapter_id, image_path).await?;
-                    if !self
-                        .is_generation_active(task_id, generation, cancelled)
-                        .await
-                    {
+                    let mut cancel_wait = cancelled.clone();
+                    let work_permit = tokio::select! {
+                        permit = self.image_work.acquire(ImageWorkPriority::Download) => Some(permit),
+                        _ = wait_for_cancel(&mut cancel_wait) => None,
+                    };
+                    let Some(_work_permit) = work_permit else {
                         return Ok(None);
-                    }
-                    let page_name = page_name_from_image(image_path);
-                    let prepared = prepare_page_image(data, comic_id, page_name).await?;
-                    if !self
-                        .is_generation_active(task_id, generation, cancelled)
-                        .await
-                    {
-                        return Ok(None);
-                    }
-                    self.cache
-                        .put_reader_page(&cache_key, prepared.format, &prepared.data)
-                        .await?;
-                    CachedReaderPage {
-                        data: prepared.data,
-                        format: prepared.format,
+                    };
+
+                    match self.cache.get_reader_page(&cache_key).await? {
+                        Some(cached) => cached,
+                        None => {
+                            let data = self.download_page_image(chapter_id, image_path).await?;
+                            if !self
+                                .is_generation_active(task_id, generation, cancelled)
+                                .await
+                            {
+                                return Ok(None);
+                            }
+                            let page_name = page_name_from_image(image_path);
+                            let prepared = prepare_page_image(data, comic_id, page_name).await?;
+                            if !self
+                                .is_generation_active(task_id, generation, cancelled)
+                                .await
+                            {
+                                return Ok(None);
+                            }
+                            self.cache
+                                .put_reader_page(&cache_key, prepared.format, &prepared.data)
+                                .await?;
+                            CachedReaderPage {
+                                data: prepared.data,
+                                format: prepared.format,
+                            }
+                        }
                     }
                 }
             },

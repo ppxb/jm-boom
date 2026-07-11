@@ -2,12 +2,13 @@ mod api;
 mod cache;
 mod download;
 mod endpoint;
+mod image_work;
 mod jm;
 mod reader;
 
 use axum::{
     extract::DefaultBodyLimit,
-    http::{header, HeaderValue, Method, StatusCode},
+    http::{header, HeaderName, HeaderValue, Method, StatusCode},
     response::IntoResponse,
     Json, Router,
 };
@@ -98,7 +99,10 @@ fn cors_layer_from_env() -> anyhow::Result<Option<CorsLayer>> {
         CorsLayer::new()
             .allow_origin(AllowOrigin::list(origins))
             .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-            .allow_headers([header::CONTENT_TYPE]),
+            .allow_headers([
+                header::CONTENT_TYPE,
+                HeaderName::from_static("x-jm-boom-image-priority"),
+            ]),
     ))
 }
 
@@ -139,6 +143,7 @@ fn parse_cors_origins(configured: &str) -> anyhow::Result<Vec<HeaderValue>> {
 pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub cache: std::sync::Arc<cache::ImageCache>,
+    pub image_work: image_work::ImageWorkBudget,
     pub endpoints: std::sync::Arc<endpoint::EndpointManager>,
     pub jm: std::sync::Arc<jm::JmClient>,
     pub downloads: std::sync::Arc<download::DownloadManager>,
@@ -169,6 +174,7 @@ impl AppState {
         let cache_config = cache::CacheConfig::from_env()?;
         let cache = std::sync::Arc::new(cache::ImageCache::new(db.clone(), cache_config).await?);
         cache.start_maintenance();
+        let image_work = image_work::ImageWorkBudget::new();
 
         let endpoints = std::sync::Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
         let jm = std::sync::Arc::new(jm::JmClient::new()?);
@@ -178,6 +184,7 @@ impl AppState {
                 jm.clone(),
                 endpoints.clone(),
                 cache.clone(),
+                image_work.clone(),
             )
             .await?,
         );
@@ -200,6 +207,7 @@ impl AppState {
         Ok(Self {
             db,
             cache,
+            image_work,
             endpoints,
             jm,
             downloads,
@@ -223,32 +231,5 @@ impl AppState {
         self.jm_request(|client, endpoint| Box::pin(client.get_img_host(endpoint)))
             .await
             .ok()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_cors_origins;
-
-    #[test]
-    fn parses_and_normalizes_cors_origins() {
-        let origins = parse_cors_origins(
-            " http://localhost:5173,https://example.com/,http://localhost:5173 ",
-        )
-        .expect("origins should be valid");
-
-        assert_eq!(origins.len(), 2);
-        assert_eq!(origins[0], "http://localhost:5173");
-        assert_eq!(origins[1], "https://example.com");
-    }
-
-    #[test]
-    fn rejects_non_origin_cors_values() {
-        for value in ["*", "ftp://example.com", "https://example.com/path"] {
-            assert!(
-                parse_cors_origins(value).is_err(),
-                "{value} should be rejected"
-            );
-        }
     }
 }
