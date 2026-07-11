@@ -126,5 +126,19 @@ export async function getComicComments({
 }
 
 function normalizeTextList(items: string[]) {
-  return items.map(item => item.trim()).filter(item => item.length > 0)
+  const seen = new Set<string>()
+  const normalizedItems: string[] = []
+
+  for (const item of items) {
+    const normalized = item.trim()
+
+    if (normalized.length === 0 || seen.has(normalized)) {
+      continue
+    }
+
+    seen.add(normalized)
+    normalizedItems.push(normalized)
+  }
+
+  return normalizedItems
 }
