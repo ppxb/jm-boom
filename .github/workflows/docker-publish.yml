@@ -9,7 +9,7 @@ on:
       version:
         description: Image version without the v prefix
         required: true
-        default: "0.5.0"
+        default: "0.5.1"
 
 permissions:
   contents: read
@@ -76,5 +76,5 @@ jobs:
             REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
+          provenance: false
+          sbom: false
