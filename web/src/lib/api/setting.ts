@@ -19,6 +19,7 @@ export type EndpointState = {
 export type ServerCacheStats = {
   sizeBytes: number
   entryCount: number
+  maxSizeBytes: number
 }
 
 export type SystemInfo = {

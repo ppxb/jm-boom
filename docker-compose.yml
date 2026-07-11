@@ -11,6 +11,7 @@ services:
     environment:
       RUST_LOG: info,jm_boom_server=info
       JM_BOOM_ACCESS_PASSWORD: "change-this-password"
+      JM_BOOM_CACHE_MAX_MB: "5120"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

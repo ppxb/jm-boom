@@ -40,6 +40,7 @@ docker compose up -d
 
 - `RUST_LOG`：服务端日志过滤，默认 `info,jm_boom_server=info`。
 - `JM_BOOM_ACCESS_PASSWORD`：进入 Web 界面前使用的轻量访问密码；部署前必须修改 Compose 中的默认值。
+- `JM_BOOM_CACHE_MAX_MB`：封面与阅读图片共享的服务端缓存容量上限，单位 MB，默认 `5120`；达到上限后按 LRU 自动清理至容量的一半。
 - `JM_BOOM_STATIC_DIR`：前端静态资源目录，镜像内默认为 `/app/static`。
 - `JM_BOOM_CORS_ORIGINS`：可选的逗号分隔跨域 Origin；同源部署不需要设置。
 

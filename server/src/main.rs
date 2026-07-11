@@ -166,7 +166,9 @@ impl AppState {
         sqlx::migrate!("./migrations").run(&db).await?;
 
         // 初始化缓存
-        let cache = std::sync::Arc::new(cache::ImageCache::new(db.clone()).await?);
+        let cache_config = cache::CacheConfig::from_env()?;
+        let cache = std::sync::Arc::new(cache::ImageCache::new(db.clone(), cache_config).await?);
+        cache.start_maintenance();
 
         let endpoints = std::sync::Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
         let jm = std::sync::Arc::new(jm::JmClient::new()?);
