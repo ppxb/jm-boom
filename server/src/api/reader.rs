@@ -134,12 +134,35 @@ async fn materialize_page(
 
     let materialize_lock = page_materialize_lock(&cache_key).await;
     let lock_started = Instant::now();
-    let _guard = materialize_lock.lock().await;
+    let guard = materialize_lock.lock().await;
     let lock_wait_ms = lock_started.elapsed().as_millis();
+    let result = materialize_page_with_lock(
+        app,
+        chapter_id,
+        page,
+        comic_id,
+        &cache_key,
+        materialize_started,
+        lock_wait_ms,
+    )
+    .await;
+    drop(guard);
+    remove_page_materialize_lock(&cache_key, &materialize_lock).await;
+    result
+}
 
+async fn materialize_page_with_lock(
+    app: &AppState,
+    chapter_id: &str,
+    page: u32,
+    comic_id: u32,
+    cache_key: &str,
+    materialize_started: Instant,
+    lock_wait_ms: u128,
+) -> Result<MaterializedImage, ApiError> {
     if let Some(cached) = app
         .cache
-        .get_reader_page(&cache_key)
+        .get_reader_page(cache_key)
         .await
         .map_err(ApiError::Cache)?
     {
@@ -191,7 +214,6 @@ async fn materialize_page(
         .images
         .get(page as usize)
         .ok_or_else(|| ApiError::NotFound("Page index out of range".into()))?;
-
     let page_name = page_name_from_image(image_path);
 
     let download_started = Instant::now();
@@ -205,7 +227,7 @@ async fn materialize_page(
     let image_process_ms = image_process_started.elapsed().as_millis();
     let cache_write_started = Instant::now();
     app.cache
-        .put_reader_page(&cache_key, prepared.format, &prepared.data)
+        .put_reader_page(cache_key, prepared.format, &prepared.data)
         .await
         .map_err(ApiError::Cache)?;
     tracing::debug!(
@@ -248,10 +270,22 @@ fn prewarm_pages(app: AppState, chapter_id: String, start_page: u32, count: u32)
 
 async fn page_materialize_lock(cache_key: &str) -> Arc<Mutex<()>> {
     let mut locks = PAGE_MATERIALIZE_LOCKS.lock().await;
+    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
     locks
         .entry(cache_key.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
+}
+
+async fn remove_page_materialize_lock(cache_key: &str, materialize_lock: &Arc<Mutex<()>>) {
+    let mut locks = PAGE_MATERIALIZE_LOCKS.lock().await;
+    let should_remove = locks.get(cache_key).is_some_and(|current| {
+        Arc::ptr_eq(current, materialize_lock) && Arc::strong_count(materialize_lock) == 2
+    });
+
+    if should_remove {
+        locks.remove(cache_key);
+    }
 }
 
 fn validate_chapter_id(chapter_id: &str) -> Result<u32, ApiError> {

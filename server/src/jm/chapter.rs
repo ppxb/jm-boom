@@ -13,6 +13,7 @@ use tokio::sync::{Mutex, RwLock};
 
 const JM_API_SECRET: &str = "185Hcomic3PAPP7R";
 const CHAPTER_CACHE_TTL: Duration = Duration::from_secs(20 * 60);
+const CHAPTER_CACHE_MAX_ENTRIES: usize = 256;
 
 #[derive(Clone)]
 struct CachedChapter {
@@ -71,20 +72,20 @@ impl JmClient {
         }
 
         let fetch_lock = chapter_fetch_lock(&cache_key).await;
-        let _guard = fetch_lock.lock().await;
-        if let Some(chapter) = cached_chapter(&cache_key).await {
-            return Ok(chapter);
-        }
+        let guard = fetch_lock.lock().await;
+        let result = async {
+            if let Some(chapter) = cached_chapter(&cache_key).await {
+                return Ok(chapter);
+            }
 
-        let chapter = self.fetch_chapter(endpoint, chapter_id).await?;
-        CHAPTER_CACHE.write().await.insert(
-            cache_key,
-            CachedChapter {
-                chapter: chapter.clone(),
-                expires_at: Instant::now() + CHAPTER_CACHE_TTL,
-            },
-        );
-        Ok(chapter)
+            let chapter = self.fetch_chapter(endpoint, chapter_id).await?;
+            insert_cached_chapter(&cache_key, chapter.clone()).await;
+            Ok(chapter)
+        }
+        .await;
+        drop(guard);
+        remove_chapter_fetch_lock(&cache_key, &fetch_lock).await;
+        result
     }
 
     async fn fetch_chapter(&self, endpoint: &str, chapter_id: &str) -> JmResult<Chapter> {
@@ -136,21 +137,54 @@ impl JmClient {
 }
 
 async fn cached_chapter(cache_key: &str) -> Option<Chapter> {
-    let cached = CHAPTER_CACHE.read().await.get(cache_key).cloned()?;
-    if Instant::now() < cached.expires_at {
-        return Some(cached.chapter);
-    }
+    let now = Instant::now();
+    let mut cache = CHAPTER_CACHE.write().await;
+    cache.retain(|_, cached| now < cached.expires_at);
+    cache.get(cache_key).map(|cached| cached.chapter.clone())
+}
 
-    CHAPTER_CACHE.write().await.remove(cache_key);
-    None
+async fn insert_cached_chapter(cache_key: &str, chapter: Chapter) {
+    let now = Instant::now();
+    let mut cache = CHAPTER_CACHE.write().await;
+    cache.retain(|_, cached| now < cached.expires_at);
+    cache.insert(
+        cache_key.to_string(),
+        CachedChapter {
+            chapter,
+            expires_at: now + CHAPTER_CACHE_TTL,
+        },
+    );
+
+    while cache.len() > CHAPTER_CACHE_MAX_ENTRIES {
+        let Some(oldest_key) = cache
+            .iter()
+            .min_by_key(|(_, cached)| cached.expires_at)
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        cache.remove(&oldest_key);
+    }
 }
 
 async fn chapter_fetch_lock(cache_key: &str) -> Arc<Mutex<()>> {
     let mut locks = CHAPTER_FETCH_LOCKS.lock().await;
+    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
     locks
         .entry(cache_key.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
+}
+
+async fn remove_chapter_fetch_lock(cache_key: &str, fetch_lock: &Arc<Mutex<()>>) {
+    let mut locks = CHAPTER_FETCH_LOCKS.lock().await;
+    let should_remove = locks.get(cache_key).is_some_and(|current| {
+        Arc::ptr_eq(current, fetch_lock) && Arc::strong_count(fetch_lock) == 2
+    });
+
+    if should_remove {
+        locks.remove(cache_key);
+    }
 }
 
 fn ensure_chapter_images(chapter: Chapter) -> JmResult<Chapter> {

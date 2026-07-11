@@ -9,6 +9,7 @@ use std::{
 use tokio::sync::{Mutex, RwLock};
 
 const IMG_HOST_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+const IMG_HOST_CACHE_MAX_ENTRIES: usize = 32;
 const SETTING_AES_SEEDS: [&str; 2] = [API_SECRET, "18comicAPPContent"];
 
 #[derive(Clone)]
@@ -48,22 +49,21 @@ impl super::client::JmClient {
         }
 
         let fetch_lock = endpoint_fetch_lock(endpoint).await;
-        let _guard = fetch_lock.lock().await;
+        let guard = fetch_lock.lock().await;
+        let result = async {
+            if let Some(host) = cached_img_host(endpoint).await {
+                return Ok(host);
+            }
 
-        if let Some(host) = cached_img_host(endpoint).await {
-            return Ok(host);
+            let host = self.fetch_img_host(endpoint).await?;
+            insert_cached_img_host(endpoint, host.clone()).await;
+            tracing::debug!(endpoint, img_host = %host, "cached image host");
+            Ok(host)
         }
-
-        let host = self.fetch_img_host(endpoint).await?;
-        IMG_HOST_CACHE.write().await.insert(
-            endpoint.to_string(),
-            CachedImgHost {
-                host: host.clone(),
-                expires_at: Instant::now() + IMG_HOST_CACHE_TTL,
-            },
-        );
-        tracing::debug!(endpoint, img_host = %host, "cached image host");
-        Ok(host)
+        .await;
+        drop(guard);
+        remove_endpoint_fetch_lock(endpoint, &fetch_lock).await;
+        result
     }
 
     async fn fetch_img_host(&self, endpoint: &str) -> JmResult<String> {
@@ -171,19 +171,52 @@ pub async fn invalidate_img_host(endpoint: &str) {
 }
 
 async fn cached_img_host(endpoint: &str) -> Option<String> {
-    let cached = IMG_HOST_CACHE.read().await.get(endpoint).cloned()?;
-    if Instant::now() < cached.expires_at {
-        return Some(cached.host);
-    }
+    let now = Instant::now();
+    let mut cache = IMG_HOST_CACHE.write().await;
+    cache.retain(|_, cached| now < cached.expires_at);
+    cache.get(endpoint).map(|cached| cached.host.clone())
+}
 
-    IMG_HOST_CACHE.write().await.remove(endpoint);
-    None
+async fn insert_cached_img_host(endpoint: &str, host: String) {
+    let now = Instant::now();
+    let mut cache = IMG_HOST_CACHE.write().await;
+    cache.retain(|_, cached| now < cached.expires_at);
+    cache.insert(
+        endpoint.to_string(),
+        CachedImgHost {
+            host,
+            expires_at: now + IMG_HOST_CACHE_TTL,
+        },
+    );
+
+    while cache.len() > IMG_HOST_CACHE_MAX_ENTRIES {
+        let Some(oldest_endpoint) = cache
+            .iter()
+            .min_by_key(|(_, cached)| cached.expires_at)
+            .map(|(endpoint, _)| endpoint.clone())
+        else {
+            break;
+        };
+        cache.remove(&oldest_endpoint);
+    }
 }
 
 async fn endpoint_fetch_lock(endpoint: &str) -> Arc<Mutex<()>> {
     let mut locks = IMG_HOST_FETCH_LOCKS.lock().await;
+    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
     locks
         .entry(endpoint.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
+}
+
+async fn remove_endpoint_fetch_lock(endpoint: &str, fetch_lock: &Arc<Mutex<()>>) {
+    let mut locks = IMG_HOST_FETCH_LOCKS.lock().await;
+    let should_remove = locks.get(endpoint).is_some_and(|current| {
+        Arc::ptr_eq(current, fetch_lock) && Arc::strong_count(fetch_lock) == 2
+    });
+
+    if should_remove {
+        locks.remove(endpoint);
+    }
 }

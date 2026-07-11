@@ -98,6 +98,7 @@ async fn download_cover(app: &AppState, comic_id: &str) -> crate::jm::JmResult<V
 
 async fn cover_fetch_lock(cache_key: &str) -> Arc<Mutex<()>> {
     let mut locks = COVER_FETCH_LOCKS.lock().await;
+    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
     locks
         .entry(cache_key.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(())))
