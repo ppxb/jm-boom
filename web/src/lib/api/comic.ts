@@ -26,9 +26,6 @@ export type ComicDetail = {
   works: string[]
   relatedList: RelatedComic[]
   series: ComicChapter[]
-  seriesId: string
-  price: number
-  purchased: boolean
   image: string
 }
 
@@ -107,9 +104,6 @@ export async function getComicDetail(comicId: string): Promise<ComicDetailResult
         title: s.name,
         sort: s.sort
       })),
-      seriesId: '',
-      price: 0,
-      purchased: true,
       image: result.image
     }
   }

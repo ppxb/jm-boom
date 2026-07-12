@@ -73,10 +73,6 @@ export async function getComicReadPage({
   }
 }
 
-export function readerFileSrc(path: string) {
-  return path
-}
-
 async function preloadReaderImage(path: string) {
   if (typeof Image === 'undefined') {
     return

@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState, type RefObject, type WheelEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { readerFileSrc } from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { ReaderPageImage } from './reader-image'
@@ -195,7 +194,7 @@ function ReaderStripImage({
     refetchOnMount: false,
     refetchOnWindowFocus: false
   })
-  const src = page.data?.index === index ? readerFileSrc(page.data.path) : ''
+  const src = page.data?.index === index ? page.data.path : ''
 
   const registerElement = useCallback(
     (node: HTMLElement | null) => {

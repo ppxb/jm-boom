@@ -4,8 +4,7 @@ import { useCallback, useMemo } from 'react'
 import {
   type ComicReadManifestPage,
   type ComicReadPageResult,
-  getComicReadPage,
-  readerFileSrc
+  getComicReadPage
 } from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
@@ -61,10 +60,7 @@ export function useReaderPageQuery({
     refetchOnWindowFocus: false
   })
   const isPageReady = page.data?.index === pageIndex
-  const pageSrc = useMemo(
-    () => (isPageReady && page.data ? readerFileSrc(page.data.path) : ''),
-    [isPageReady, page.data]
-  )
+  const pageSrc = isPageReady && page.data ? page.data.path : ''
 
   return {
     page,
@@ -120,7 +116,7 @@ export function useAdjacentReaderPageQueries({
           return []
         }
 
-        return [{ index, src: readerFileSrc(data.path) }]
+        return [{ index, src: data.path }]
       }),
     [adjacentIndexes, adjacentQueries]
   )

@@ -247,7 +247,9 @@ impl EndpointManager {
             .collect::<String>();
         let key = format!("{:x}", md5::compute(HOST_CONFIG_AES_SEED));
         let encrypted = BASE64.decode(encoded)?;
-        let decrypted = Decryptor::<Aes256>::new_from_slice(key.as_bytes())?
+        let decryptor = Decryptor::<Aes256>::new_from_slice(key.as_bytes())
+            .map_err(|_| anyhow::anyhow!("invalid endpoint config key length"))?;
+        let decrypted = decryptor
             .decrypt_padded_vec_mut::<Pkcs7>(&encrypted)
             .map_err(|error| anyhow::anyhow!("failed to decrypt endpoint config: {error}"))?;
         let payload: HostConfigPayload = serde_json::from_slice(&decrypted)?;

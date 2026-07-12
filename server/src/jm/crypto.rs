@@ -8,7 +8,7 @@ type Aes256EcbDec = ecb::Decryptor<Aes256>;
 /// Decrypt JM API response data
 pub fn decrypt_data(data: &str, ts: &str) -> JmResult<String> {
     let key = md5_hex(&format!("{ts}{API_SECRET}"));
-    decrypt_base64(&data, &key)
+    decrypt_base64(data, &key)
 }
 
 /// Decrypt base64-encoded data with AES-256-ECB

@@ -368,7 +368,7 @@ impl DownloadManager {
                 _ = wait_for_cancel(&mut cancelled) => None,
             };
             if let Some(_permit) = permit {
-                if let Err(error) = manager.run_task(&task_id, generation, &mut cancelled).await {
+                if let Err(error) = manager.run_task(&task_id, generation, &cancelled).await {
                     let _ = manager
                         .fail_generation(&task_id, generation, error.to_string())
                         .await;

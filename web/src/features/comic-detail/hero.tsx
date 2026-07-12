@@ -16,11 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import type { ComicDetail } from '@/lib/api/comic'
-import {
-  getComicDisplayChapterCount,
-  resolveComicAlbumId,
-  resolveComicStartReadingId
-} from '@/lib/comic'
+import { getComicDisplayChapterCount, resolveComicStartReadingId } from '@/lib/comic'
 import { formatNumber } from '@/lib/format'
 import { ComicCover } from './shared'
 
@@ -41,7 +37,6 @@ export function ComicHero({
   onCoverSettled: () => void
   downloadBusy?: boolean
 }) {
-  const albumId = resolveComicAlbumId(comic)
   const startReadingId = resolveComicStartReadingId(comic)
 
   return (
@@ -82,7 +77,7 @@ export function ComicHero({
               to="/reader/$comicId"
               params={{ comicId: startReadingId }}
               search={{
-                albumId
+                albumId: comic.id
               }}
             >
               <BookOpenIcon className="size-4" />

@@ -13,7 +13,6 @@ import { PageBackButton } from '@/components/page-back-button'
 import { getComicComments, getComicDetail, type ComicDetail } from '@/lib/api/comic'
 import {
   SINGLE_CHAPTER_TITLE,
-  resolveComicAlbumId,
   resolveComicStartReadingId,
   sortComicChapters
 } from '@/lib/comic'
@@ -89,7 +88,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
   const [settledCoverUrl, setSettledCoverUrl] = useState('')
-  const albumId = resolveComicAlbumId(comic)
+  const albumId = comic.id
   const startReadingId = useMemo(() => resolveComicStartReadingId(comic), [comic])
   const isCoverSettled = hideCovers || comic.image.length === 0 || settledCoverUrl === comic.image
   const downloadChapters = useMemo(() => {

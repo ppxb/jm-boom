@@ -29,12 +29,6 @@ export function getComicDisplayChapterCount(chapters: ComicChapter[]) {
   return Math.max(chapters.length, 1)
 }
 
-export function resolveComicAlbumId(comic: { id: string; seriesId?: string | null }) {
-  const seriesId = comic.seriesId?.trim() ?? ''
-
-  return seriesId.length > 0 && seriesId !== '0' ? seriesId : comic.id
-}
-
 export function resolveComicStartReadingId(comic: ComicDetail) {
   const sortedChapters = sortComicChapters(comic.series)
   return sortedChapters[sortedChapters.length - 1]?.id ?? comic.id

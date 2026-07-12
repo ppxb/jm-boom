@@ -22,7 +22,6 @@ pub fn routes() -> Router<AppState> {
         .route("/search", get(search::search_comics))
         // 漫画详情
         .route("/comics/:id", get(comics::get_comic_detail))
-        .route("/comics/:id/chapters", get(comics::get_comic_chapters))
         .route("/comics/:id/comments", get(comics::get_comments))
         .route("/covers/:id", get(covers::get_cover))
         // 服务端离线缓存任务

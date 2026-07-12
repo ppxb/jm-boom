@@ -32,19 +32,6 @@ pub async fn get_comic_detail(
     Ok(Json(detail))
 }
 
-pub async fn get_comic_chapters(
-    State(app): State<AppState>,
-    Path(comic_id): Path<String>,
-) -> JmResult<Json<Vec<crate::jm::Chapter>>> {
-    let detail = app
-        .jm_request(move |client, endpoint| {
-            let comic_id = comic_id.clone();
-            Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
-        })
-        .await?;
-    Ok(Json(detail.series))
-}
-
 #[derive(Deserialize)]
 pub struct CommentsQuery {
     #[serde(default = "default_page")]
