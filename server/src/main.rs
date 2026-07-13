@@ -200,11 +200,7 @@ impl AppState {
             .map(std::sync::Arc::<str>::from);
         tracing::info!(enabled = access_password.is_some(), "轻量访问门禁配置完成");
 
-        let endpoint_manager = endpoints.clone();
-        tokio::spawn(async move {
-            let state = endpoint_manager.refresh().await;
-            tracing::info!(endpoint = %state.current_endpoint, "endpoint probe completed");
-        });
+        endpoints.start_maintenance();
         let download_manager = downloads.clone();
         tokio::spawn(async move {
             download_manager.resume_pending().await;

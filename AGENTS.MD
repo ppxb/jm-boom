@@ -17,6 +17,7 @@
 - 读取或写入中文文件时显式使用 UTF-8。
 - 文件编辑使用 `apply_patch`，保留用户已有的无关改动。
 - 服务端默认不启用 CORS，生产与 Vite 开发代理均按同源访问；确需跨域时使用逗号分隔的 `JM_BOOM_CORS_ORIGINS` 显式配置完整 `http(s)` Origin。
+- 服务启动后立即在后台探测内置兜底与动态发现端点，完成前使用两个兜底故障切换，完成后自动模式选择最优端点；后台每 2 小时刷新一次，设置页手动探测与定时探测串行执行，手动选择优先保留。
 - Docker 使用单容器同源部署：Axum 托管 `web/dist` 并提供 SPA fallback，`/api` 未知路由保持 JSON 404；运行数据统一持久化到 `/app/data`。
 - Docker 通过 `JM_BOOM_ACCESS_PASSWORD` 启用轻量前端访问门禁；服务端仅校验登录请求，前端使用 `sessionStorage` 控制页面进入，业务 API 暂不鉴权，后续再升级为正式 Session/JWT。
 - 公开镜像发布到 `ghcr.io/ppxb/jm-boom`，首个容器版本为 `0.5.0`；Git tag `v*.*.*` 触发 GitHub Actions 构建 AMD64/ARM64 镜像并发布版本、`latest` 与 `sha-*` 标签。

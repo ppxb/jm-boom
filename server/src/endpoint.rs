@@ -6,10 +6,22 @@ use ecb::Decryptor;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::{collections::HashSet, future::Future, pin::Pin, sync::Arc, time::Instant};
-use tokio::{sync::RwLock, task::JoinSet};
+use std::{
+    collections::HashSet,
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinSet,
+    time::MissedTickBehavior,
+};
 
 const FALLBACK_ENDPOINTS: [&str; 2] = ["https://www.cdnhjk.net", "https://www.cdnhth.club"];
+const ENDPOINT_REFRESH_INTERVAL: Duration = Duration::from_secs(2 * 60 * 60);
+const MAX_REQUEST_ENDPOINT_ATTEMPTS: usize = 4;
 const HOST_CONFIG_AES_SEED: &str = "diosfjckwpqpdfjkvnqQjsik";
 const HOST_CONFIG_URLS: [&str; 2] = [
     "https://rup4a04-c02.tos-cn-hongkong.bytepluses.com/newsvr-2025.txt",
@@ -45,6 +57,7 @@ pub struct EndpointState {
 #[derive(Debug)]
 struct EndpointInner {
     mode: EndpointMode,
+    probe_completed: bool,
     selected_endpoint: Option<String>,
     current_endpoint: String,
     endpoints: Vec<EndpointProbe>,
@@ -55,6 +68,7 @@ pub struct EndpointManager {
     client: Client,
     db: SqlitePool,
     inner: Arc<RwLock<EndpointInner>>,
+    refresh_lock: Arc<Mutex<()>>,
 }
 
 impl EndpointManager {
@@ -86,15 +100,44 @@ impl EndpointManager {
             db,
             inner: Arc::new(RwLock::new(EndpointInner {
                 mode,
+                probe_completed: false,
                 selected_endpoint,
                 current_endpoint,
                 endpoints,
             })),
+            refresh_lock: Arc::new(Mutex::new(())),
         })
     }
 
-    pub async fn current_endpoint(&self) -> String {
-        self.inner.read().await.current_endpoint.clone()
+    pub fn start_maintenance(self: &Arc<Self>) {
+        let manager = Arc::downgrade(self);
+        tokio::spawn(async move {
+            let Some(endpoint_manager) = manager.upgrade() else {
+                return;
+            };
+            let state = endpoint_manager.refresh().await;
+            tracing::info!(
+                endpoint = %state.current_endpoint,
+                "initial endpoint probe completed"
+            );
+            drop(endpoint_manager);
+
+            let mut interval = tokio::time::interval(ENDPOINT_REFRESH_INTERVAL);
+            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            interval.tick().await;
+
+            loop {
+                interval.tick().await;
+                let Some(endpoint_manager) = manager.upgrade() else {
+                    break;
+                };
+                let state = endpoint_manager.refresh().await;
+                tracing::info!(
+                    endpoint = %state.current_endpoint,
+                    "periodic endpoint probe completed"
+                );
+            }
+        });
     }
 
     pub async fn state(&self) -> EndpointState {
@@ -108,6 +151,7 @@ impl EndpointManager {
     }
 
     pub async fn refresh(&self) -> EndpointState {
+        let _refresh = self.refresh_lock.lock().await;
         let mut candidates = self.discover_candidates().await;
         if let Some(selected) = self.inner.read().await.selected_endpoint.clone() {
             if !candidates.contains(&selected) {
@@ -131,11 +175,13 @@ impl EndpointManager {
 
         let mut inner = self.inner.write().await;
         inner.endpoints = probes;
+        inner.probe_completed = true;
         select_current_endpoint(&mut inner);
         endpoint_state(&inner)
     }
 
     pub async fn set_selected(&self, endpoint: Option<String>) -> anyhow::Result<EndpointState> {
+        let _refresh = self.refresh_lock.lock().await;
         let endpoint = endpoint
             .map(|value| normalize_endpoint(&value))
             .transpose()?;
@@ -205,6 +251,58 @@ impl EndpointManager {
         }
 
         select_current_endpoint(&mut inner);
+    }
+
+    pub async fn report_success(&self, endpoint: &str, latency_ms: u64) {
+        let mut inner = self.inner.write().await;
+        if let Some(probe) = inner
+            .endpoints
+            .iter_mut()
+            .find(|probe| probe.endpoint == endpoint)
+        {
+            probe.available = true;
+            probe.latency_ms = Some(latency_ms);
+            probe.error = None;
+        } else {
+            inner.endpoints.push(EndpointProbe {
+                endpoint: endpoint.to_string(),
+                available: true,
+                latency_ms: Some(latency_ms),
+                error: None,
+            });
+        }
+        inner.current_endpoint = endpoint.to_string();
+    }
+
+    async fn request_candidates(&self) -> Vec<String> {
+        let inner = self.inner.read().await;
+        let mut candidates = Vec::new();
+
+        if inner.mode == EndpointMode::Manual {
+            if let Some(selected) = inner.selected_endpoint.as_ref() {
+                let selected_available = inner
+                    .endpoints
+                    .iter()
+                    .find(|probe| probe.endpoint == *selected)
+                    .map(|probe| probe.available);
+                if selected_available != Some(false) {
+                    push_unique(&mut candidates, selected);
+                }
+            }
+        }
+
+        push_unique(&mut candidates, &inner.current_endpoint);
+
+        if inner.probe_completed {
+            for probe in inner.endpoints.iter().filter(|probe| probe.available) {
+                push_unique(&mut candidates, &probe.endpoint);
+            }
+        }
+
+        for endpoint in FALLBACK_ENDPOINTS {
+            push_unique(&mut candidates, endpoint);
+        }
+        candidates
     }
 
     async fn discover_candidates(&self) -> Vec<String> {
@@ -297,33 +395,43 @@ pub async fn request_with_failover<T, F>(
 where
     F: for<'a> Fn(&'a JmClient, &'a str) -> Pin<Box<dyn Future<Output = JmResult<T>> + Send + 'a>>,
 {
-    let endpoint = endpoints.current_endpoint().await;
+    let mut attempted = HashSet::new();
+    let mut last_error = None;
 
-    match operation(jm, &endpoint).await {
-        Ok(value) => Ok((endpoint, value)),
-        Err(error) if error.is_retryable() => {
-            endpoints
-                .report_failure(&endpoint, &error.to_string())
-                .await;
-            let next_endpoint = endpoints.current_endpoint().await;
-
-            if next_endpoint == endpoint {
-                return Err(error);
+    for _ in 0..2 {
+        for endpoint in endpoints.request_candidates().await {
+            if attempted.len() >= MAX_REQUEST_ENDPOINT_ATTEMPTS {
+                break;
+            }
+            if !attempted.insert(endpoint.clone()) {
+                continue;
             }
 
-            tracing::warn!(from = %endpoint, to = %next_endpoint, "retrying with next endpoint");
-            match operation(jm, &next_endpoint).await {
-                Ok(value) => Ok((next_endpoint, value)),
-                Err(error) => {
+            let started = Instant::now();
+            match operation(jm, &endpoint).await {
+                Ok(value) => {
                     endpoints
-                        .report_failure(&next_endpoint, &error.to_string())
+                        .report_success(&endpoint, started.elapsed().as_millis() as u64)
                         .await;
-                    Err(error)
+                    return Ok((endpoint, value));
                 }
+                Err(error) if error.is_retryable() => {
+                    tracing::warn!(endpoint, %error, "endpoint request failed, trying next candidate");
+                    endpoints
+                        .report_failure(&endpoint, &error.to_string())
+                        .await;
+                    last_error = Some(error);
+                }
+                Err(error) => return Err(error),
             }
         }
-        Err(error) => Err(error),
+
+        if attempted.len() >= MAX_REQUEST_ENDPOINT_ATTEMPTS {
+            break;
+        }
     }
+
+    Err(last_error.unwrap_or(crate::jm::JmError::Empty))
 }
 
 #[derive(Deserialize)]
@@ -354,6 +462,12 @@ fn select_current_endpoint(inner: &mut EndpointInner) {
         .min_by_key(|probe| probe.latency_ms.unwrap_or(u64::MAX))
     {
         inner.current_endpoint = fastest.endpoint.clone();
+    }
+}
+
+fn push_unique(values: &mut Vec<String>, value: &str) {
+    if !values.iter().any(|current| current == value) {
+        values.push(value.to_string());
     }
 }
 
