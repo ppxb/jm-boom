@@ -31,11 +31,33 @@ impl DownloadStorage {
         page: usize,
         page_image: &CachedReaderPage,
     ) -> anyhow::Result<()> {
-        let path = self.page_path(task_id, chapter_id, page, page_image.format.extension());
+        anyhow::ensure!(
+            page_image.format.is_complete(&page_image.data),
+            "拒绝写入不完整的下载页面"
+        );
+        let extension = page_image.format.extension();
+        let path = self.page_path(task_id, chapter_id, page, extension);
+        let temporary_path = self.page_path(task_id, chapter_id, page, &format!("{extension}.tmp"));
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;
         }
-        fs::write(path, &page_image.data).await?;
+        let result = async {
+            fs::write(&temporary_path, &page_image.data).await?;
+            fs::rename(&temporary_path, &path).await?;
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+
+        if let Err(error) = result {
+            if let Err(cleanup_error) = remove_file_if_exists(&temporary_path).await {
+                tracing::warn!(
+                    path = %temporary_path.display(),
+                    %cleanup_error,
+                    "下载页面临时文件清理失败"
+                );
+            }
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -47,8 +69,21 @@ impl DownloadStorage {
     ) -> anyhow::Result<Option<CachedReaderPage>> {
         for format in PageImageFormat::supported() {
             let path = self.page_path(task_id, chapter_id, page, format.extension());
-            match fs::read(path).await {
-                Ok(data) => return Ok(Some(CachedReaderPage { data, format })),
+            match fs::read(&path).await {
+                Ok(data) if format.is_complete(&data) => {
+                    return Ok(Some(CachedReaderPage { data, format }));
+                }
+                Ok(data) => {
+                    tracing::warn!(
+                        task_id,
+                        chapter_id,
+                        page,
+                        bytes = data.len(),
+                        path = %path.display(),
+                        "删除损坏或格式不匹配的下载页面"
+                    );
+                    remove_file_if_exists(&path).await?;
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
@@ -101,5 +136,120 @@ impl DownloadStorage {
             .join(task_id)
             .join(chapter_id)
             .join(format!("{page}.{extension}"))
+    }
+}
+
+async fn remove_file_if_exists(path: &std::path::Path) -> anyhow::Result<()> {
+    match fs::remove_file(path).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DownloadStorage;
+    use crate::{cache::CachedReaderPage, reader::PageImageFormat};
+    use std::{
+        io::Cursor,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    use tokio::fs;
+
+    static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    #[tokio::test]
+    async fn stores_page_via_temporary_file_and_ignores_uncommitted_file() {
+        let root = test_root("atomic");
+        let storage = DownloadStorage::new(root.clone())
+            .await
+            .expect("create download storage");
+        let data = png_data();
+        let temporary_path = storage.page_path("task", "1001", 0, "png.tmp");
+        fs::create_dir_all(temporary_path.parent().expect("temporary parent"))
+            .await
+            .expect("create temporary parent");
+        fs::write(&temporary_path, &data)
+            .await
+            .expect("write interrupted temporary file");
+
+        assert!(storage
+            .read_page("task", "1001", 0)
+            .await
+            .expect("read page before commit")
+            .is_none());
+
+        storage
+            .store_page(
+                "task",
+                "1001",
+                0,
+                &CachedReaderPage {
+                    data: data.clone(),
+                    format: PageImageFormat::Png,
+                },
+            )
+            .await
+            .expect("store page atomically");
+
+        assert!(!temporary_path.exists());
+        let stored = storage
+            .read_page("task", "1001", 0)
+            .await
+            .expect("read committed page")
+            .expect("committed page should exist");
+        assert_eq!(stored.format, PageImageFormat::Png);
+        assert_eq!(stored.data, data);
+
+        fs::remove_dir_all(root).await.expect("remove test storage");
+    }
+
+    #[tokio::test]
+    async fn removes_truncated_page_instead_of_reusing_it() {
+        let root = test_root("truncated");
+        let storage = DownloadStorage::new(root.clone())
+            .await
+            .expect("create download storage");
+        let path = storage.page_path("task", "1001", 0, "png");
+        let mut truncated = png_data();
+        truncated.truncate(truncated.len() - 12);
+        fs::create_dir_all(path.parent().expect("page parent"))
+            .await
+            .expect("create page parent");
+        fs::write(&path, truncated)
+            .await
+            .expect("write truncated page");
+
+        assert!(storage
+            .read_page("task", "1001", 0)
+            .await
+            .expect("read truncated page")
+            .is_none());
+        assert!(!path.exists());
+
+        fs::remove_dir_all(root).await.expect("remove test storage");
+    }
+
+    fn png_data() -> Vec<u8> {
+        let image = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            1,
+            1,
+            image::Rgb([1, 2, 3]),
+        ));
+        let mut bytes = Cursor::new(Vec::new());
+        image
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .expect("encode png");
+        bytes.into_inner()
+    }
+
+    fn test_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "jm-boom-download-storage-{name}-{}-{}",
+            std::process::id(),
+            TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ))
     }
 }

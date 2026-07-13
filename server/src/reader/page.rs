@@ -32,6 +32,31 @@ impl PageImageFormat {
     pub fn supported() -> [Self; 4] {
         [Self::WebP, Self::Gif, Self::Jpeg, Self::Png]
     }
+
+    pub fn detect(data: &[u8]) -> Result<Self> {
+        match image::guess_format(data).context("无法识别图片格式")? {
+            ImageFormat::Gif => Ok(Self::Gif),
+            ImageFormat::Jpeg => Ok(Self::Jpeg),
+            ImageFormat::Png => Ok(Self::Png),
+            ImageFormat::WebP => Ok(Self::WebP),
+            format => bail!("暂不支持的阅读图片格式: {format:?}"),
+        }
+    }
+
+    pub fn is_complete(self, data: &[u8]) -> bool {
+        if Self::detect(data).ok() != Some(self) {
+            return false;
+        }
+
+        match self {
+            Self::Gif => data.last() == Some(&0x3b),
+            Self::Jpeg => data.ends_with(&[0xff, 0xd9]),
+            Self::Png => data.ends_with(&[
+                0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xae, 0x42, 0x60, 0x82,
+            ]),
+            Self::WebP => webp_size_matches(data),
+        }
+    }
 }
 
 pub struct PreparedPageImage {
@@ -45,7 +70,7 @@ pub async fn prepare_page_image(
     comic_id: u32,
     page_name: String,
 ) -> Result<PreparedPageImage> {
-    let format = detect_page_image_format(&data)?;
+    let format = PageImageFormat::detect(&data)?;
     if !needs_decoding(comic_id, &page_name, format == PageImageFormat::Gif) {
         return Ok(PreparedPageImage {
             data,
@@ -69,12 +94,13 @@ pub async fn prepare_page_image(
     })
 }
 
-fn detect_page_image_format(data: &[u8]) -> Result<PageImageFormat> {
-    match image::guess_format(data).context("无法识别图片格式")? {
-        ImageFormat::Gif => Ok(PageImageFormat::Gif),
-        ImageFormat::Jpeg => Ok(PageImageFormat::Jpeg),
-        ImageFormat::Png => Ok(PageImageFormat::Png),
-        ImageFormat::WebP => Ok(PageImageFormat::WebP),
-        format => bail!("暂不支持的阅读图片格式: {format:?}"),
-    }
+fn webp_size_matches(data: &[u8]) -> bool {
+    let Some(size_bytes) = data.get(4..8).and_then(|bytes| bytes.try_into().ok()) else {
+        return false;
+    };
+    let declared_size = u32::from_le_bytes(size_bytes) as usize;
+
+    declared_size
+        .checked_add(8)
+        .is_some_and(|expected_size| expected_size == data.len())
 }
