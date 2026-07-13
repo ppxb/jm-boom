@@ -1,9 +1,8 @@
+use crate::http_error::HttpError;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
-use serde::Serialize;
 
 pub type JmResult<T> = Result<T, JmError>;
 
@@ -44,30 +43,19 @@ impl JmError {
     pub fn is_retryable(&self) -> bool {
         matches!(self, Self::Network(_) | Self::Http(_) | Self::Empty)
     }
-}
 
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
-    retryable: bool,
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Network(_) | Self::Http(_) => StatusCode::BAD_GATEWAY,
+            Self::Api(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 }
 
 impl IntoResponse for JmError {
     fn into_response(self) -> Response {
         let retryable = self.is_retryable();
-        let status = match &self {
-            Self::Network(_) | Self::Http(_) => StatusCode::BAD_GATEWAY,
-            Self::Api(_) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-
-        (
-            status,
-            Json(ErrorResponse {
-                error: self.to_string(),
-                retryable,
-            }),
-        )
-            .into_response()
+        HttpError::new(self.status_code(), self.to_string(), retryable).into_response()
     }
 }

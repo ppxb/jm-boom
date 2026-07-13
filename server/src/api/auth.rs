@@ -1,4 +1,4 @@
-use crate::AppState;
+use crate::{http_error::HttpError, AppState};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +26,7 @@ pub async fn config(State(app): State<AppState>) -> Json<AccessGateConfig> {
 pub async fn login(
     State(app): State<AppState>,
     Json(payload): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<LoginResponse>, HttpError> {
     let valid = app.access_password.as_deref().is_none_or(|expected| {
         constant_time_equals(expected.as_bytes(), payload.password.as_bytes())
     });
@@ -35,9 +35,10 @@ pub async fn login(
         return Ok(Json(LoginResponse { success: true }));
     }
 
-    Err((
+    Err(HttpError::new(
         StatusCode::UNAUTHORIZED,
-        Json(serde_json::json!({ "error": "访问密码错误" })),
+        "访问密码错误",
+        false,
     ))
 }
 

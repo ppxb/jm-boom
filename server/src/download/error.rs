@@ -1,8 +1,7 @@
-use crate::jm::JmError;
+use crate::{http_error::HttpError, jm::JmError};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 
 pub type DownloadResult<T> = Result<T, DownloadError>;
@@ -35,13 +34,6 @@ impl IntoResponse for DownloadError {
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
-        (
-            status,
-            Json(serde_json::json!({
-                "error": self.to_string(),
-                "retryable": retryable,
-            })),
-        )
-            .into_response()
+        HttpError::new(status, self.to_string(), retryable).into_response()
     }
 }

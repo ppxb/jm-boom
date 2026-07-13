@@ -1,4 +1,4 @@
-use crate::{cache::CacheStats, endpoint::EndpointState, AppState};
+use crate::{cache::CacheStats, endpoint::EndpointState, http_error::HttpError, AppState};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
@@ -25,28 +25,24 @@ pub async fn probe_endpoints(State(app): State<AppState>) -> Json<EndpointState>
 pub async fn set_endpoint(
     State(app): State<AppState>,
     Json(payload): Json<EndpointSelection>,
-) -> Result<Json<EndpointState>, (StatusCode, String)> {
+) -> Result<Json<EndpointState>, HttpError> {
     app.endpoints
         .set_selected(payload.endpoint)
         .await
         .map(Json)
-        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))
+        .map_err(|error| HttpError::new(StatusCode::BAD_REQUEST, error.to_string(), false))
 }
 
-pub async fn get_system_info(
-    State(app): State<AppState>,
-) -> Result<Json<SystemInfo>, (StatusCode, String)> {
+pub async fn get_system_info(State(app): State<AppState>) -> Result<Json<SystemInfo>, HttpError> {
     system_info(&app).await.map(Json)
 }
 
-pub async fn clear_cache(
-    State(app): State<AppState>,
-) -> Result<Json<SystemInfo>, (StatusCode, String)> {
+pub async fn clear_cache(State(app): State<AppState>) -> Result<Json<SystemInfo>, HttpError> {
     app.cache.clear().await.map_err(internal_error)?;
     system_info(&app).await.map(Json)
 }
 
-async fn system_info(app: &AppState) -> Result<SystemInfo, (StatusCode, String)> {
+async fn system_info(app: &AppState) -> Result<SystemInfo, HttpError> {
     let cache = app.cache.stats().await.map_err(internal_error)?;
 
     Ok(SystemInfo {
@@ -55,6 +51,6 @@ async fn system_info(app: &AppState) -> Result<SystemInfo, (StatusCode, String)>
     })
 }
 
-fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+fn internal_error(error: anyhow::Error) -> HttpError {
+    HttpError::internal(error.to_string())
 }

@@ -1,4 +1,5 @@
 use crate::cache::READER_CACHE_VERSION;
+use crate::http_error::HttpError;
 use crate::image_work::ImageWorkPriority;
 use crate::page_materializer::{PageMaterializeError, PageMaterializeRequest};
 use crate::reader::page_name_from_image;
@@ -257,13 +258,17 @@ impl From<PageMaterializeError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
-            ApiError::Jm(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::Cache(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+        let (status, message, retryable) = match self {
+            ApiError::Jm(error) => {
+                let status = error.status_code();
+                let retryable = error.is_retryable();
+                (status, error.to_string(), retryable)
+            }
+            ApiError::BadRequest(message) => (StatusCode::BAD_REQUEST, message, false),
+            ApiError::Cache(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), false),
+            ApiError::NotFound(message) => (StatusCode::NOT_FOUND, message, false),
         };
 
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
+        HttpError::new(status, message, retryable).into_response()
     }
 }

@@ -2,6 +2,7 @@ mod api;
 mod cache;
 mod download;
 mod endpoint;
+mod http_error;
 mod image_work;
 mod jm;
 mod page_materializer;
@@ -11,7 +12,7 @@ use axum::{
     extract::DefaultBodyLimit,
     http::{header, HeaderName, HeaderValue, Method, StatusCode},
     response::IntoResponse,
-    Json, Router,
+    Router,
 };
 use std::net::SocketAddr;
 use std::{future::Future, pin::Pin};
@@ -77,10 +78,7 @@ async fn health_check() -> &'static str {
 }
 
 async fn api_not_found() -> impl IntoResponse {
-    (
-        StatusCode::NOT_FOUND,
-        Json(serde_json::json!({ "error": "API 路由不存在" })),
-    )
+    http_error::HttpError::new(StatusCode::NOT_FOUND, "API 路由不存在", false)
 }
 
 fn cors_layer_from_env() -> anyhow::Result<Option<CorsLayer>> {

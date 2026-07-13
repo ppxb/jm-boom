@@ -42,6 +42,15 @@ function isRetryableQueryError(error: unknown) {
   if (
     typeof error === 'object' &&
     error !== null &&
+    'name' in error &&
+    error.name === 'AbortError'
+  ) {
+    return false
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
     'retryable' in error &&
     typeof error.retryable === 'boolean'
   ) {

@@ -18,7 +18,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status?: number,
-    public data?: any
+    public data?: unknown,
+    public retryable = false
   ) {
     super(message)
     this.name = 'ApiError'
@@ -38,14 +39,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     })
 
     if (!response.ok) {
-      let errorData: any
-      try {
-        errorData = await response.json()
-      } catch {
-        errorData = { error: response.statusText }
-      }
-
-      throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status, errorData)
+      const error = await readErrorResponse(response)
+      throw new ApiError(error.message, response.status, error.data, error.retryable)
     }
 
     // 如果是图片响应，返回 blob
@@ -59,12 +54,69 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       throw error
     }
 
-    throw new ApiError(error instanceof Error ? error.message : 'Network error', undefined, error)
+    if (isAbortError(error)) {
+      throw error
+    }
+
+    throw new ApiError(
+      error instanceof Error ? error.message : 'Network error',
+      undefined,
+      error,
+      true
+    )
   }
 }
 
+async function readErrorResponse(response: Response) {
+  const fallbackMessage = response.statusText || `HTTP ${response.status}`
+  const rawBody = await response.text()
+  let data: unknown = rawBody
+
+  if (rawBody.length > 0) {
+    try {
+      data = JSON.parse(rawBody)
+    } catch {
+      return {
+        message: rawBody,
+        data,
+        retryable: isRetryableStatus(response.status)
+      }
+    }
+  }
+
+  if (isRecord(data)) {
+    return {
+      message:
+        typeof data.error === 'string' && data.error.length > 0 ? data.error : fallbackMessage,
+      data,
+      retryable:
+        typeof data.retryable === 'boolean'
+          ? data.retryable
+          : isRetryableStatus(response.status)
+    }
+  }
+
+  return {
+    message: fallbackMessage,
+    data,
+    retryable: isRetryableStatus(response.status)
+  }
+}
+
+function isRetryableStatus(status: number) {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isAbortError(error: unknown) {
+  return isRecord(error) && error.name === 'AbortError'
+}
+
 export const apiClient = {
-  get: <T>(path: string, params?: Record<string, any>) => {
+  get: <T>(path: string, params?: Record<string, unknown>) => {
     const query = params
       ? '?' +
         new URLSearchParams(
@@ -83,13 +135,13 @@ export const apiClient = {
     return request<T>(`${path}${query}`)
   },
 
-  post: <T>(path: string, data?: any) =>
+  post: <T>(path: string, data?: unknown) =>
     request<T>(path, {
       method: 'POST',
       body: JSON.stringify(data)
     }),
 
-  put: <T>(path: string, data?: any) =>
+  put: <T>(path: string, data?: unknown) =>
     request<T>(path, {
       method: 'PUT',
       body: JSON.stringify(data)
