@@ -128,7 +128,13 @@ impl DownloadRepository {
              VALUES (?, ?, ?, ?, ?, ?, 0) \
              ON CONFLICT(task_id, chapter_id) DO UPDATE SET \
              album_id = excluded.album_id, title = excluded.title, \
-             payload = excluded.payload, updated_at = excluded.updated_at, completed = 0",
+             payload = excluded.payload, updated_at = excluded.updated_at, \
+             completed = CASE \
+                 WHEN download_manifests.completed = 1 \
+                  AND json_extract(download_manifests.payload, '$.images') = \
+                      json_extract(excluded.payload, '$.images') \
+                 THEN 1 ELSE 0 \
+             END",
         )
         .bind(&manifest.task_id)
         .bind(&manifest.album_id)
@@ -153,5 +159,96 @@ impl DownloadRepository {
         .execute(&self.db)
         .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DownloadRepository;
+    use crate::download::model::{DownloadChapter, DownloadStatus, DownloadTask};
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn preserves_completed_manifest_only_when_images_are_unchanged() {
+        let repository = test_repository().await;
+        let task = test_task();
+        let chapter = DownloadChapter {
+            chapter_id: "1001".into(),
+            title: "第一章".into(),
+            order: 1,
+        };
+        let images = vec!["001.jpg".into(), "002.jpg".into()];
+
+        repository
+            .persist_manifest(&task, &chapter, &images)
+            .await
+            .expect("persist initial manifest");
+        repository
+            .complete_manifest(&task.task_id, &chapter.chapter_id)
+            .await
+            .expect("complete initial manifest");
+
+        let renamed_chapter = DownloadChapter {
+            title: "第一章（更新标题）".into(),
+            ..chapter.clone()
+        };
+        repository
+            .persist_manifest(&task, &renamed_chapter, &images)
+            .await
+            .expect("persist unchanged manifest");
+
+        let preserved = repository
+            .offline_manifest(&chapter.chapter_id)
+            .await
+            .expect("load preserved manifest")
+            .expect("completed manifest should stay available");
+        assert_eq!(preserved.title, renamed_chapter.title);
+        assert_eq!(preserved.images, images);
+
+        let changed_images = vec!["001.jpg".into(), "002-new.jpg".into()];
+        repository
+            .persist_manifest(&task, &renamed_chapter, &changed_images)
+            .await
+            .expect("persist changed manifest");
+
+        assert!(repository
+            .offline_manifest(&chapter.chapter_id)
+            .await
+            .expect("load changed manifest")
+            .is_none());
+    }
+
+    async fn test_repository() -> DownloadRepository {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        sqlx::migrate!("./migrations")
+            .run(&db)
+            .await
+            .expect("run migrations");
+        DownloadRepository::new(db)
+    }
+
+    fn test_task() -> DownloadTask {
+        DownloadTask {
+            task_id: "task-1".into(),
+            album_id: "album-1".into(),
+            comic_title: "测试漫画".into(),
+            chapters: Vec::new(),
+            status: DownloadStatus::Running,
+            current_chapter_title: String::new(),
+            total_pages: 0,
+            completed_pages: 0,
+            eta_seconds: None,
+            speed_bytes_per_second: 0,
+            error: None,
+            created_at: 1,
+            started_at: Some(1),
+            updated_at: 1,
+            completed_at: None,
+            generation: 1,
+        }
     }
 }
