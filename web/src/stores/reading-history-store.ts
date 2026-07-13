@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { HISTORY } from '@/lib/constants'
+
 export type ReadingHistoryItem = {
   comicId: string
   albumId: string
@@ -33,7 +35,10 @@ export const useReadingHistoryStore = create<ReadingHistoryState>()(
         }
 
         set(state => {
-          const items = [nextItem, ...state.items.filter(entry => entry.comicId !== item.comicId)]
+          const items = [
+            nextItem,
+            ...state.items.filter(entry => entry.comicId !== item.comicId)
+          ].slice(0, HISTORY.MAX_ITEMS)
 
           return { items }
         })
@@ -55,7 +60,27 @@ export const useReadingHistoryStore = create<ReadingHistoryState>()(
       }
     }),
     {
-      name: 'jm-boom-reading-history'
+      name: 'jm-boom-reading-history',
+      version: 1,
+      partialize: state => ({ items: state.items }),
+      migrate: persistedState => ({ items: persistedHistoryItems(persistedState) }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        items: persistedHistoryItems(persistedState)
+      })
     }
   )
 )
+
+function persistedHistoryItems(persistedState: unknown) {
+  if (
+    typeof persistedState !== 'object' ||
+    persistedState === null ||
+    !('items' in persistedState) ||
+    !Array.isArray(persistedState.items)
+  ) {
+    return []
+  }
+
+  return (persistedState.items as ReadingHistoryItem[]).slice(0, HISTORY.MAX_ITEMS)
+}

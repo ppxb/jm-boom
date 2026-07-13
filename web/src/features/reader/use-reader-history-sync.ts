@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
-import { READER } from '@/lib/constants'
+import { HISTORY, READER } from '@/lib/constants'
 import { useReadingHistoryStore } from '@/stores/reading-history-store'
 
 interface UseReaderHistorySyncProps {
@@ -26,6 +26,7 @@ export function useReaderHistorySync({
 }: UseReaderHistorySyncProps) {
   const upsertReadingHistory = useReadingHistoryStore(state => state.upsert)
   const pendingHistoryRef = useRef<Parameters<typeof upsertReadingHistory>[0] | null>(null)
+  const lastPersistedAtRef = useRef(0)
   const historyItem = useMemo(
     () =>
       comicId && pageCount > 0
@@ -44,32 +45,38 @@ export function useReaderHistorySync({
     [albumId, author, chapter, comicId, coverUrl, currentIndex, pageCount, title]
   )
 
-  pendingHistoryRef.current = historyItem
+  const flushPendingHistory = useCallback(() => {
+    const pendingHistory = pendingHistoryRef.current
+
+    if (!pendingHistory) {
+      return
+    }
+
+    pendingHistoryRef.current = null
+    lastPersistedAtRef.current = Date.now()
+    upsertReadingHistory(pendingHistory)
+  }, [upsertReadingHistory])
 
   useEffect(() => {
+    pendingHistoryRef.current = historyItem
+
     if (!historyItem) {
       return
     }
 
-    const timeout = window.setTimeout(() => upsertReadingHistory(historyItem), 400)
+    const elapsed = Date.now() - lastPersistedAtRef.current
+    const delay = Math.max(HISTORY.PERSIST_INTERVAL - elapsed, 0)
+    const timeout = window.setTimeout(flushPendingHistory, delay)
 
     return () => window.clearTimeout(timeout)
-  }, [historyItem, upsertReadingHistory])
+  }, [flushPendingHistory, historyItem])
 
   useEffect(() => {
-    const flushPendingHistory = () => {
-      const pendingHistory = pendingHistoryRef.current
-
-      if (pendingHistory) {
-        upsertReadingHistory(pendingHistory)
-      }
-    }
-
     window.addEventListener('pagehide', flushPendingHistory)
 
     return () => {
       window.removeEventListener('pagehide', flushPendingHistory)
       flushPendingHistory()
     }
-  }, [upsertReadingHistory])
+  }, [flushPendingHistory])
 }
