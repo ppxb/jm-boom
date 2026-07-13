@@ -1,10 +1,17 @@
 import { LoaderCircleIcon } from 'lucide-react'
 
-export function ReaderLoading({ label }: { label: string }) {
+import { cn } from '@/lib/utils'
+
+export function ReaderLoading({ label, className }: { label: string; className?: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm text-neutral-300">
-      <LoaderCircleIcon className="size-4 animate-spin" />
-      {label}
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 text-neutral-400',
+        className
+      )}
+    >
+      <LoaderCircleIcon className="size-6 animate-spin" />
+      <span className="text-xs">{label}</span>
     </div>
   )
 }

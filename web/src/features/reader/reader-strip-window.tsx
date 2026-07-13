@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { LoaderCircleIcon } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -13,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { CACHE } from '@/lib/constants'
 import { ReaderPageImage } from './reader-image'
+import { ReaderLoading } from './reader-state'
 import type { ReaderPageQueryKeyFactory, ReaderPageRequester } from './use-reader-page-query'
 
 const DEFAULT_PAGE_HEIGHT_RATIO = 1.45
@@ -419,10 +419,10 @@ function ReaderStripImage({
         </div>
       ) : (
         isActive ? (
-          <div className="fixed inset-0 z-10 flex flex-col items-center justify-center gap-3 text-neutral-400">
-            <LoaderCircleIcon className="size-6 animate-spin" />
-            <span className="text-xs">正在加载第 {index + 1} 页</span>
-          </div>
+          <ReaderLoading
+            label={`正在加载第 ${index + 1} 页`}
+            className="fixed inset-0 z-10"
+          />
         ) : null
       )}
     </article>

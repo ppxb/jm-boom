@@ -251,7 +251,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
             onScrollPastEnd={goToNextChapter}
           />
         ) : isPageLoading ? (
-          <ReaderLoading label="正在准备图片" />
+          <ReaderLoading label={`正在加载第 ${currentIndex + 1} 页`} />
         ) : pageError ? (
           <ReaderError title="图片加载失败" description={pageError.message} />
         ) : pageSrc.length > 0 ? (

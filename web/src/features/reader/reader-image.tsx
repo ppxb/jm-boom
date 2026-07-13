@@ -1,8 +1,9 @@
-import { LoaderCircleIcon, RotateCwIcon } from 'lucide-react'
+import { RotateCwIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import type { ReaderPageDirection } from '@/stores/settings-store'
+import { ReaderLoading } from './reader-state'
 import type { ReaderWindowPage } from './types'
 
 export function ReaderImageWindow({
@@ -93,13 +94,13 @@ function ReaderDoublePageWindow({
         <ReaderDoublePageSlot
           page={leftPage}
           isCurrent={leftIndex === currentIndex}
-          label={`第 ${leftIndex + 1} 张`}
+          label={`第 ${leftIndex + 1} 页`}
         />
         {showNextSlot ? (
           <ReaderDoublePageSlot
             page={rightPage}
             isCurrent={rightIndex === currentIndex}
-            label={`第 ${rightIndex + 1} 张`}
+            label={`第 ${rightIndex + 1} 页`}
           />
         ) : null}
       </div>
@@ -160,9 +161,7 @@ function ReaderDoublePageSlot({
           decoding={isCurrent ? 'sync' : 'async'}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-xs text-neutral-500">
-          正在准备{label}
-        </div>
+        <ReaderLoading label={`正在加载${label}`} />
       )}
     </div>
   )
@@ -206,15 +205,10 @@ export function ReaderPageImage({
       )}
     >
       {status === 'loading' && showLoadingIndicator ? (
-        <div
-          className={cn(
-            'absolute inset-0 flex flex-col items-center justify-center gap-3 text-neutral-400',
-            loadingIndicatorClassName
-          )}
-        >
-          <LoaderCircleIcon className="size-6 animate-spin" />
-          <span className="text-xs">正在加载{label}</span>
-        </div>
+        <ReaderLoading
+          label={`正在加载${label}`}
+          className={cn('absolute inset-0', loadingIndicatorClassName)}
+        />
       ) : null}
 
       {status === 'error' ? (
