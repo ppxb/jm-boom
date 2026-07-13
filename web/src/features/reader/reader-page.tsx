@@ -239,6 +239,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
         ) : isStripMode ? (
           <ReaderStripWindow
             key={comicId}
+            cacheKey={comicId}
             containerRef={stripScrollRef}
             pageCount={pageCount}
             currentIndex={currentIndex}
@@ -246,6 +247,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
             pageQueryKey={pageQueryKey}
             requestPage={requestPage}
             onCurrentIndexChange={setObservedPage}
+            onUserScroll={hideToolbar}
             onScrollPastEnd={goToNextChapter}
           />
         ) : isPageLoading ? (

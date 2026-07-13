@@ -175,6 +175,8 @@ export function ReaderPageImage({
   imageClassName,
   loading = 'eager',
   decoding = 'async',
+  showLoadingIndicator = true,
+  loadingIndicatorClassName,
   onLoad
 }: {
   src: string
@@ -183,7 +185,9 @@ export function ReaderPageImage({
   imageClassName?: string
   loading?: 'eager' | 'lazy'
   decoding?: 'sync' | 'async' | 'auto'
-  onLoad?: () => void
+  showLoadingIndicator?: boolean
+  loadingIndicatorClassName?: string
+  onLoad?: (image: HTMLImageElement) => void
 }) {
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
@@ -201,8 +205,13 @@ export function ReaderPageImage({
         wrapperClassName
       )}
     >
-      {status === 'loading' ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-neutral-400">
+      {status === 'loading' && showLoadingIndicator ? (
+        <div
+          className={cn(
+            'absolute inset-0 flex flex-col items-center justify-center gap-3 text-neutral-400',
+            loadingIndicatorClassName
+          )}
+        >
           <LoaderCircleIcon className="size-6 animate-spin" />
           <span className="text-xs">正在加载{label}</span>
         </div>
@@ -237,9 +246,9 @@ export function ReaderPageImage({
         draggable={false}
         loading={loading}
         decoding={decoding}
-        onLoad={() => {
+        onLoad={event => {
           setStatus('loaded')
-          onLoad?.()
+          onLoad?.(event.currentTarget)
         }}
         onError={() => setStatus('error')}
       />

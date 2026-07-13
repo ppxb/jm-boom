@@ -10,7 +10,7 @@ import { ReaderSettingsMenu } from './reader-settings-menu'
 import type { ReaderChapterItem } from './types'
 
 const CHAPTER_BUTTON_CLASS =
-  'h-11 w-11 rounded-md px-0 text-xs text-neutral-200 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50 disabled:text-neutral-500 sm:h-8 sm:w-auto sm:px-2 sm:text-xs'
+  'h-11 w-11 rounded-md px-0 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:text-muted-foreground/50 sm:h-8 sm:w-auto sm:px-2 sm:text-xs'
 
 export function ReaderChapterControls({
   title,
@@ -79,7 +79,7 @@ export function ReaderChapterControls({
           <ReaderSettingsMenu />
         </div>
 
-        <div className="shrink-0 text-sm text-neutral-300 tabular-nums sm:min-w-20 sm:text-right sm:text-xs">
+        <div className="shrink-0 text-sm text-muted-foreground tabular-nums sm:min-w-20 sm:text-right sm:text-xs">
           {pageLabel}
         </div>
       </div>

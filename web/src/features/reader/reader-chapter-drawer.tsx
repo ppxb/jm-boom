@@ -66,10 +66,10 @@ export function ReaderChapterDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="h-full w-[82vw] max-w-[280px] overflow-hidden rounded-l-xl border-l border-white/10 bg-neutral-950/90 p-0 text-neutral-50 shadow-2xl backdrop-blur-xl before:hidden data-[vaul-drawer-direction=right]:w-[82vw] data-[vaul-drawer-direction=right]:max-w-[280px] data-[vaul-drawer-direction=right]:sm:w-[420px] data-[vaul-drawer-direction=right]:sm:max-w-[420px]">
-        <DrawerHeader className="relative border-b border-white/10 pr-12">
-          <DrawerTitle className="text-neutral-50">章节目录</DrawerTitle>
-          <DrawerDescription className="line-clamp-1 text-neutral-400">
+      <DrawerContent className="h-full w-[82vw] max-w-[280px] overflow-hidden rounded-l-xl border-l border-border bg-background/90 p-0 text-foreground shadow-2xl backdrop-blur-xl before:hidden data-[vaul-drawer-direction=right]:w-[82vw] data-[vaul-drawer-direction=right]:max-w-[280px] data-[vaul-drawer-direction=right]:sm:w-[420px] data-[vaul-drawer-direction=right]:sm:max-w-[420px]">
+        <DrawerHeader className="relative border-b border-border pr-12">
+          <DrawerTitle className="text-foreground">章节目录</DrawerTitle>
+          <DrawerDescription className="line-clamp-1 text-muted-foreground">
             {title || '当前作品'}
           </DrawerDescription>
           <Button
@@ -77,7 +77,7 @@ export function ReaderChapterDrawer({
             variant="ghost"
             size="icon-sm"
             aria-label="关闭章节目录"
-            className="absolute top-4 right-4 text-neutral-300 hover:bg-white/10 hover:text-neutral-50 focus-visible:text-neutral-50"
+            className="absolute top-4 right-4 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={() => onOpenChange(false)}
           >
             <XIcon className="size-4" />
@@ -100,8 +100,8 @@ export function ReaderChapterDrawer({
                   aria-current={isCurrent ? 'page' : undefined}
                   data-current-chapter={isCurrent ? 'true' : undefined}
                   className={cn(
-                    'flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-neutral-200 transition-colors hover:bg-white/10 hover:text-neutral-50 focus-visible:ring-[3px] focus-visible:ring-white/20 focus-visible:outline-none',
-                    isCurrent && 'border-neutral-50/35 bg-white/10 text-neutral-50'
+                    'flex items-center justify-between gap-3 rounded-md border border-border bg-card/60 px-3 py-2.5 text-sm text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+                    isCurrent && 'border-primary/40 bg-accent text-accent-foreground'
                   )}
                   onClick={() => onOpenChange(false)}
                 >
@@ -110,14 +110,14 @@ export function ReaderChapterDrawer({
                     {isDownloaded ? (
                       <Badge
                         variant="outline"
-                        className="border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                        className="border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-300"
                       >
                         已下载
                       </Badge>
                     ) : null}
                     <Badge
                       variant="outline"
-                      className="border-white/10 bg-white/5 text-neutral-400"
+                      className="border-border bg-muted/60 text-muted-foreground"
                     >
                       {isCurrent ? '当前' : `JM ${chapter.id}`}
                     </Badge>

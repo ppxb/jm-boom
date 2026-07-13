@@ -53,7 +53,7 @@ export function useReaderPrefetch({
       prefetchIndexes.map(index =>
         queryClient.prefetchQuery({
           queryKey: pageQueryKey(index),
-          queryFn: () => requestPage(index, 'prefetch'),
+          queryFn: ({ signal }) => requestPage(index, 'prefetch', signal),
           staleTime: CACHE.READER_STALE_TIME,
           gcTime: CACHE.READER_GC_TIME,
           retry: false

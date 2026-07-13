@@ -49,17 +49,23 @@ export async function getComicReadPage({
   readId,
   index,
   path,
-  requestOrigin = 'visible'
+  requestOrigin = 'visible',
+  signal
 }: {
   readId: string
   index: number
   path: string
   requestOrigin?: ReaderPageRequestOrigin
+  signal?: AbortSignal
 }): Promise<ComicReadPageResult> {
   if (requestOrigin === 'prefetch') {
     try {
-      await preloadReaderImage(path)
+      await preloadReaderImage(path, signal)
     } catch (error) {
+      if (signal?.aborted) {
+        throw error
+      }
+
       if (import.meta.env.DEV) {
         console.debug('Reader image preload failed', { path, error })
       }
@@ -73,12 +79,13 @@ export async function getComicReadPage({
   }
 }
 
-async function preloadReaderImage(path: string) {
+async function preloadReaderImage(path: string, signal?: AbortSignal) {
   if (typeof Image === 'undefined') {
     return
   }
 
   const response = await fetch(path, {
+    signal,
     headers: {
       'x-jm-boom-image-priority': 'prefetch'
     }

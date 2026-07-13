@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { Progress } from '@/components/ui/progress'
-import { cn } from '@/lib/utils'
+import { Slider } from '@/components/ui/slider'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 export function ReaderProgressSlider({
   currentIndex,
@@ -13,84 +13,88 @@ export function ReaderProgressSlider({
   onPageChange: (index: number) => void
 }) {
   const rangeMax = Math.max(pageCount - 1, 0)
-  const progress = rangeMax > 0 ? (currentIndex / rangeMax) * 100 : 0
-  const [isHovered, setIsHovered] = useState(false)
   const [isScrubbing, setIsScrubbing] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(currentIndex)
-  const safePreviewIndex = Math.min(Math.max(previewIndex, 0), rangeMax)
-  const previewPercent = rangeMax > 0 ? (safePreviewIndex / rangeMax) * 100 : 0
-  const showKnob = pageCount > 1 && (isHovered || isScrubbing || isFocused)
-  const showTooltip = pageCount > 1 && (isScrubbing || isFocused)
+  const previewIndexRef = useRef(currentIndex)
+  const isInteracting = isScrubbing || isFocused
+  const safePreviewIndex = clampIndex(previewIndex, rangeMax)
+  const displayIndex = isInteracting ? safePreviewIndex : currentIndex
+  const showTooltip = pageCount > 1 && isScrubbing
 
   useEffect(() => {
+    if (isInteracting) {
+      return
+    }
+
+    previewIndexRef.current = currentIndex
     setPreviewIndex(currentIndex)
-  }, [currentIndex])
+  }, [currentIndex, isInteracting])
+
+  const updatePreview = (index: number) => {
+    const nextIndex = clampIndex(index, rangeMax)
+    previewIndexRef.current = nextIndex
+    setPreviewIndex(nextIndex)
+  }
+
+  const commitPreview = (index: number) => {
+    const nextIndex = clampIndex(index, rangeMax)
+    previewIndexRef.current = nextIndex
+    setPreviewIndex(nextIndex)
+
+    if (nextIndex !== currentIndex) {
+      onPageChange(nextIndex)
+    }
+  }
+
+  const cancelPreview = () => {
+    previewIndexRef.current = currentIndex
+    setPreviewIndex(currentIndex)
+  }
 
   return (
-    <div
-      className="relative flex h-8 w-full items-center sm:h-7"
-      onPointerEnter={() => setIsHovered(true)}
-      onPointerLeave={() => setIsHovered(false)}
-    >
+    <Tooltip open={showTooltip}>
       <div
-        className={cn(
-          'pointer-events-none absolute -top-9 z-10 min-w-14 rounded-md bg-neutral-50 px-2 py-1 text-xs font-medium text-neutral-950 shadow-lg transition-opacity duration-150 after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-neutral-50',
-          'whitespace-nowrap tabular-nums',
-          showTooltip ? 'opacity-100' : 'opacity-0'
-        )}
-        style={{
-          left: `${previewPercent}%`,
-          transform: 'translateX(-50%)'
-        }}
+        className="flex h-5 w-full items-center"
       >
-        第{safePreviewIndex + 1}张
+        <Slider
+          aria-label="阅读进度"
+          aria-valuetext={`第 ${displayIndex + 1} 张，共 ${pageCount} 张`}
+          min={0}
+          max={rangeMax}
+          step={1}
+          value={[displayIndex]}
+          disabled={pageCount <= 1}
+          className="h-full cursor-pointer"
+          trackClassName="bg-black/40 data-horizontal:h-1"
+          rangeClassName="bg-primary"
+          thumbClassName="size-2 border-0 bg-primary shadow-none ring-0 hover:ring-0 focus-visible:ring-0"
+          renderThumb={thumb => <TooltipTrigger asChild>{thumb}</TooltipTrigger>}
+          onValueChange={values => updatePreview(values[0] ?? currentIndex)}
+          onValueCommit={values => commitPreview(values[0] ?? currentIndex)}
+          onPointerDown={() => setIsScrubbing(true)}
+          onPointerUp={() => setIsScrubbing(false)}
+          onPointerCancel={() => {
+            cancelPreview()
+            setIsScrubbing(false)
+          }}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => {
+            setIsFocused(false)
+            setIsScrubbing(false)
+          }}
+        />
       </div>
-      <Progress
-        value={progress}
-        className="h-1 bg-white/20 [&_[data-slot=progress-indicator]]:bg-neutral-50"
-      />
-      <input
-        type="range"
-        aria-label="阅读进度"
-        aria-valuetext={`第 ${currentIndex + 1} 张，共 ${pageCount} 张`}
-        min={0}
-        max={rangeMax}
-        step={1}
-        value={currentIndex}
-        disabled={pageCount <= 1}
-        className={cn(
-          'absolute inset-x-0 top-1/2 h-8 -translate-y-1/2 cursor-pointer appearance-none bg-transparent disabled:cursor-default disabled:opacity-60 sm:h-7',
-          '[&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-track]:bg-transparent',
-          '[&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-transparent',
-          '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full',
-          isScrubbing
-            ? '[&::-moz-range-thumb]:size-4 sm:[&::-moz-range-thumb]:size-2.5 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:size-4 sm:[&::-webkit-slider-thumb]:mt-[-4px] sm:[&::-webkit-slider-thumb]:size-2.5'
-            : '[&::-moz-range-thumb]:size-2.5 sm:[&::-moz-range-thumb]:size-1.5 [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:size-2.5 sm:[&::-webkit-slider-thumb]:mt-[-2px] sm:[&::-webkit-slider-thumb]:size-1.5',
-          showKnob
-            ? '[&::-moz-range-thumb]:bg-neutral-50 [&::-webkit-slider-thumb]:bg-neutral-50 [&::-webkit-slider-thumb]:shadow'
-            : '[&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:bg-transparent [&::-webkit-slider-thumb]:shadow-none'
-        )}
-        onPointerDown={event => {
-          event.currentTarget.setPointerCapture(event.pointerId)
-          setIsScrubbing(true)
-        }}
-        onPointerUp={event => {
-          event.currentTarget.releasePointerCapture(event.pointerId)
-          setIsScrubbing(false)
-        }}
-        onPointerCancel={() => setIsScrubbing(false)}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => {
-          setIsFocused(false)
-          setIsScrubbing(false)
-        }}
-        onChange={event => {
-          const nextIndex = Number(event.currentTarget.value)
-          setPreviewIndex(nextIndex)
-          onPageChange(nextIndex)
-        }}
-      />
-    </div>
+      <TooltipContent
+        side="top"
+        sideOffset={6}
+      >
+        第 {safePreviewIndex + 1} 页
+      </TooltipContent>
+    </Tooltip>
   )
+}
+
+function clampIndex(index: number, rangeMax: number) {
+  return Math.min(Math.max(index, 0), rangeMax)
 }

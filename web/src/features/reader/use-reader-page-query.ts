@@ -14,7 +14,8 @@ export type ReaderPageRequestOrigin = 'visible' | 'prefetch'
 export type ReaderPageQueryKeyFactory = (index: number) => ReturnType<typeof queryKeys.readerPage>
 export type ReaderPageRequester = (
   index: number,
-  requestOrigin: ReaderPageRequestOrigin
+  requestOrigin: ReaderPageRequestOrigin,
+  signal?: AbortSignal
 ) => Promise<ComicReadPageResult>
 
 export function useReaderPageQuery({
@@ -33,7 +34,7 @@ export function useReaderPageQuery({
     [comicId, manifestPages]
   )
   const requestPage = useCallback<ReaderPageRequester>(
-    async (index: number, requestOrigin: ReaderPageRequestOrigin) => {
+    async (index: number, requestOrigin: ReaderPageRequestOrigin, signal?: AbortSignal) => {
       const manifestPage = manifestPages[index]
 
       if (!manifestPage) {
@@ -44,14 +45,15 @@ export function useReaderPageQuery({
         readId: comicId,
         index,
         path: manifestPage.path,
-        requestOrigin
+        requestOrigin,
+        signal
       })
     },
     [comicId, manifestPages]
   )
   const page = useQuery({
     queryKey: pageQueryKey(pageIndex),
-    queryFn: () => requestPage(pageIndex, 'visible'),
+    queryFn: ({ signal }) => requestPage(pageIndex, 'visible', signal),
     enabled,
     staleTime: CACHE.READER_STALE_TIME,
     gcTime: CACHE.READER_GC_TIME,
@@ -97,7 +99,7 @@ export function useAdjacentReaderPageQueries({
   const adjacentQueries = useQueries({
     queries: adjacentIndexes.map(index => ({
       queryKey: pageQueryKey(index),
-      queryFn: () => requestPage(index, 'prefetch'),
+      queryFn: ({ signal }) => requestPage(index, 'prefetch', signal),
       enabled: enabled && eagerIndexSet.has(index),
       staleTime: CACHE.READER_STALE_TIME,
       gcTime: CACHE.READER_GC_TIME,
