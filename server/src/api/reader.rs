@@ -1,8 +1,7 @@
-use crate::cache::{reader_page_cache_key, READER_CACHE_VERSION};
-use crate::endpoint::request_with_failover;
+use crate::cache::READER_CACHE_VERSION;
 use crate::image_work::ImageWorkPriority;
-use crate::jm::invalidate_img_host;
-use crate::reader::{page_name_from_image, prepare_page_image};
+use crate::page_materializer::{PageMaterializeError, PageMaterializeRequest};
+use crate::reader::page_name_from_image;
 use crate::AppState;
 use axum::{
     extract::{Path, State},
@@ -10,19 +9,16 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use once_cell::sync::Lazy;
 use serde::Serialize;
-use std::{collections::HashMap, sync::Arc, time::Instant};
-use tokio::sync::{Mutex, Semaphore};
+use std::{sync::Arc, time::Instant};
+use tokio::sync::Semaphore;
 
 const MANIFEST_PREWARM_COUNT: u32 = 5;
 const PAGE_PREWARM_COUNT: u32 = 3;
 const PAGE_PREWARM_CONCURRENCY: usize = 2;
 
-static PAGE_MATERIALIZE_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-static PAGE_PREWARM_SEMAPHORE: Lazy<Arc<Semaphore>> =
-    Lazy::new(|| Arc::new(Semaphore::new(PAGE_PREWARM_CONCURRENCY)));
+static PAGE_PREWARM_SEMAPHORE: std::sync::LazyLock<Arc<Semaphore>> =
+    std::sync::LazyLock::new(|| Arc::new(Semaphore::new(PAGE_PREWARM_CONCURRENCY)));
 
 #[derive(Serialize)]
 pub struct ManifestResponse {
@@ -57,7 +53,7 @@ pub async fn get_manifest(
             .downloads
             .offline_manifest(&chapter_id)
             .await
-            .map_err(ApiError::Cache)?
+            .map_err(|error| ApiError::Cache(anyhow::anyhow!(error.to_string())))?
         {
             Some(manifest) => {
                 tracing::debug!(chapter_id, "上游章节不可用，使用离线 manifest");
@@ -115,11 +111,10 @@ async fn materialize_page(
 ) -> Result<MaterializedImage, ApiError> {
     let materialize_started = Instant::now();
     let comic_id = validate_chapter_id(chapter_id)?;
-    let cache_key = reader_page_cache_key(chapter_id, page as usize);
 
     if let Some(cached) = app
-        .cache
-        .get_reader_page(&cache_key)
+        .page_materializer
+        .cached_page(chapter_id, page as usize)
         .await
         .map_err(ApiError::Cache)?
     {
@@ -136,66 +131,15 @@ async fn materialize_page(
         });
     }
 
-    let materialize_lock = page_materialize_lock(&cache_key).await;
-    let lock_started = Instant::now();
-    let guard = materialize_lock.lock().await;
-    let lock_wait_ms = lock_started.elapsed().as_millis();
-    let result = materialize_page_with_lock(
-        app,
-        chapter_id,
-        page,
-        comic_id,
-        &cache_key,
-        materialize_started,
-        lock_wait_ms,
-        priority,
-    )
-    .await;
-    drop(guard);
-    remove_page_materialize_lock(&cache_key, &materialize_lock).await;
-    result
-}
-
-async fn materialize_page_with_lock(
-    app: &AppState,
-    chapter_id: &str,
-    page: u32,
-    comic_id: u32,
-    cache_key: &str,
-    materialize_started: Instant,
-    lock_wait_ms: u128,
-    priority: ImageWorkPriority,
-) -> Result<MaterializedImage, ApiError> {
-    if let Some(cached) = app
-        .cache
-        .get_reader_page(cache_key)
-        .await
-        .map_err(ApiError::Cache)?
-    {
-        tracing::debug!(
-            chapter_id,
-            page,
-            lock_wait_ms,
-            elapsed_ms = materialize_started.elapsed().as_millis(),
-            bytes = cached.data.len(),
-            "阅读页等待并复用物化结果"
-        );
-        return Ok(MaterializedImage {
-            content_type: cached.format.content_type(),
-            data: cached.data,
-        });
-    }
-
     if let Some(offline) = app
         .downloads
         .offline_page(chapter_id, page as usize)
         .await
-        .map_err(ApiError::Cache)?
+        .map_err(|error| ApiError::Cache(anyhow::anyhow!(error.to_string())))?
     {
         tracing::debug!(
             chapter_id,
             page,
-            lock_wait_ms,
             elapsed_ms = materialize_started.elapsed().as_millis(),
             bytes = offline.data.len(),
             "阅读页命中离线下载"
@@ -206,54 +150,29 @@ async fn materialize_page_with_lock(
         });
     }
 
-    let _work_permit = app.image_work.acquire(priority).await;
-    let request_chapter_id = chapter_id.to_string();
-    let chapter_started = Instant::now();
-    let chapter = app
-        .jm_request(move |client, endpoint| {
-            let chapter_id = request_chapter_id.clone();
-            Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
+    let materialized = app
+        .page_materializer
+        .materialize(PageMaterializeRequest {
+            chapter_id,
+            page: page as usize,
+            comic_id,
+            image_path: None,
+            priority,
+            cancelled: None,
         })
-        .await?;
-    let chapter_fetch_ms = chapter_started.elapsed().as_millis();
-
-    let image_path = chapter
-        .images
-        .get(page as usize)
-        .ok_or_else(|| ApiError::NotFound("Page index out of range".into()))?;
-    let page_name = page_name_from_image(image_path);
-
-    let download_started = Instant::now();
-    let image_data = download_page_image(app, chapter_id, image_path).await?;
-    let download_ms = download_started.elapsed().as_millis();
-
-    let image_process_started = Instant::now();
-    let prepared = prepare_page_image(image_data, comic_id, page_name)
         .await
-        .map_err(|error| ApiError::ImageProcessing(error.to_string()))?;
-    let image_process_ms = image_process_started.elapsed().as_millis();
-    let cache_write_started = Instant::now();
-    app.cache
-        .put_reader_page(cache_key, prepared.format, &prepared.data)
-        .await
-        .map_err(ApiError::Cache)?;
+        .map_err(ApiError::from)?;
     tracing::debug!(
         chapter_id,
         page,
-        lock_wait_ms,
-        chapter_fetch_ms,
-        download_ms,
-        image_process_ms,
-        cache_write_ms = cache_write_started.elapsed().as_millis(),
         elapsed_ms = materialize_started.elapsed().as_millis(),
-        bytes = prepared.data.len(),
-        decoded = prepared.decoded,
+        bytes = materialized.data.len(),
         "阅读页物化完成"
     );
 
     Ok(MaterializedImage {
-        content_type: prepared.format.content_type(),
-        data: prepared.data,
+        content_type: materialized.format.content_type(),
+        data: materialized.data,
     })
 }
 
@@ -290,57 +209,10 @@ fn request_priority(headers: &HeaderMap) -> ImageWorkPriority {
     }
 }
 
-async fn page_materialize_lock(cache_key: &str) -> Arc<Mutex<()>> {
-    let mut locks = PAGE_MATERIALIZE_LOCKS.lock().await;
-    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
-    locks
-        .entry(cache_key.to_string())
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone()
-}
-
-async fn remove_page_materialize_lock(cache_key: &str, materialize_lock: &Arc<Mutex<()>>) {
-    let mut locks = PAGE_MATERIALIZE_LOCKS.lock().await;
-    let should_remove = locks.get(cache_key).is_some_and(|current| {
-        Arc::ptr_eq(current, materialize_lock) && Arc::strong_count(materialize_lock) == 2
-    });
-
-    if should_remove {
-        locks.remove(cache_key);
-    }
-}
-
 fn validate_chapter_id(chapter_id: &str) -> Result<u32, ApiError> {
     chapter_id
         .parse::<u32>()
         .map_err(|_| ApiError::BadRequest("Chapter id must be numeric".into()))
-}
-
-async fn download_page_image(
-    app: &AppState,
-    chapter_id: &str,
-    image_path: &str,
-) -> crate::jm::JmResult<Vec<u8>> {
-    let (endpoint, img_host) =
-        request_with_failover(&app.jm, &app.endpoints, |client, endpoint| {
-            Box::pin(client.get_img_host(endpoint))
-        })
-        .await?;
-    let image_url = format!("{img_host}/media/photos/{chapter_id}/{image_path}");
-
-    match app.jm.download_image(&image_url).await {
-        Ok(data) => Ok(data),
-        Err(_) => {
-            invalidate_img_host(&endpoint).await;
-            let (_, refreshed_host) =
-                request_with_failover(&app.jm, &app.endpoints, |client, endpoint| {
-                    Box::pin(client.get_img_host(endpoint))
-                })
-                .await?;
-            let refreshed_url = format!("{refreshed_host}/media/photos/{chapter_id}/{image_path}");
-            app.jm.download_image(&refreshed_url).await
-        }
-    }
 }
 
 fn image_response(content_type: &'static str, body: Vec<u8>) -> Response {
@@ -360,7 +232,6 @@ fn image_response(content_type: &'static str, body: Vec<u8>) -> Response {
 pub enum ApiError {
     Jm(crate::jm::JmError),
     BadRequest(String),
-    ImageProcessing(String),
     Cache(anyhow::Error),
     NotFound(String),
 }
@@ -371,12 +242,24 @@ impl From<crate::jm::JmError> for ApiError {
     }
 }
 
+impl From<PageMaterializeError> for ApiError {
+    fn from(error: PageMaterializeError) -> Self {
+        match error {
+            PageMaterializeError::Upstream(error) => Self::Jm(error),
+            PageMaterializeError::PageNotFound => Self::NotFound("Page index out of range".into()),
+            PageMaterializeError::Cancelled => {
+                Self::Cache(anyhow::anyhow!("Page materialization was cancelled"))
+            }
+            PageMaterializeError::Internal(error) => Self::Cache(error),
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             ApiError::Jm(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::ImageProcessing(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             ApiError::Cache(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
         };

@@ -4,6 +4,7 @@ mod download;
 mod endpoint;
 mod image_work;
 mod jm;
+mod page_materializer;
 mod reader;
 
 use axum::{
@@ -143,7 +144,7 @@ fn parse_cors_origins(configured: &str) -> anyhow::Result<Vec<HeaderValue>> {
 pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub cache: std::sync::Arc<cache::ImageCache>,
-    pub image_work: image_work::ImageWorkBudget,
+    pub page_materializer: std::sync::Arc<page_materializer::PageMaterializer>,
     pub endpoints: std::sync::Arc<endpoint::EndpointManager>,
     pub jm: std::sync::Arc<jm::JmClient>,
     pub downloads: std::sync::Arc<download::DownloadManager>,
@@ -178,13 +179,18 @@ impl AppState {
 
         let endpoints = std::sync::Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
         let jm = std::sync::Arc::new(jm::JmClient::new()?);
+        let page_materializer = std::sync::Arc::new(page_materializer::PageMaterializer::new(
+            jm.clone(),
+            endpoints.clone(),
+            cache.clone(),
+            image_work,
+        ));
         let downloads = std::sync::Arc::new(
             download::DownloadManager::new(
                 db.clone(),
                 jm.clone(),
                 endpoints.clone(),
-                cache.clone(),
-                image_work.clone(),
+                page_materializer.clone(),
             )
             .await?,
         );
@@ -207,7 +213,7 @@ impl AppState {
         Ok(Self {
             db,
             cache,
-            image_work,
+            page_materializer,
             endpoints,
             jm,
             downloads,
