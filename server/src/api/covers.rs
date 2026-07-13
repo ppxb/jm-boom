@@ -83,7 +83,7 @@ async fn download_cover(app: &AppState, comic_id: &str) -> crate::jm::JmResult<V
 
     match app.jm.download_image(&cover_url).await {
         Ok(data) => Ok(data),
-        Err(_) => {
+        Err(error) if error.is_retryable() => {
             invalidate_img_host(&endpoint).await;
             let (_, refreshed_host) =
                 request_with_failover(&app.jm, &app.endpoints, |client, endpoint| {
@@ -93,6 +93,7 @@ async fn download_cover(app: &AppState, comic_id: &str) -> crate::jm::JmResult<V
             let refreshed_url = format!("{refreshed_host}/media/albums/{comic_id}_3x4.jpg");
             app.jm.download_image(&refreshed_url).await
         }
+        Err(error) => Err(error),
     }
 }
 

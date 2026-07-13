@@ -35,6 +35,9 @@ pub enum JmError {
     #[error("Missing data in response")]
     MissingData,
 
+    #[error("Upstream image is too large ({actual_bytes} bytes, limit {limit_bytes} bytes)")]
+    ImageTooLarge { actual_bytes: u64, limit_bytes: u64 },
+
     #[error("{0}")]
     Other(String),
 }
@@ -46,7 +49,9 @@ impl JmError {
 
     pub fn status_code(&self) -> StatusCode {
         match self {
-            Self::Network(_) | Self::Http(_) => StatusCode::BAD_GATEWAY,
+            Self::Network(_) | Self::Http(_) | Self::ImageTooLarge { .. } => {
+                StatusCode::BAD_GATEWAY
+            }
             Self::Api(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }

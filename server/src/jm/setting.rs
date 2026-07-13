@@ -10,6 +10,7 @@ use tokio::sync::{Mutex, RwLock};
 
 const IMG_HOST_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 const IMG_HOST_CACHE_MAX_ENTRIES: usize = 32;
+const MAX_IMAGE_DOWNLOAD_BYTES: usize = 64 * 1024 * 1024;
 const SETTING_AES_SEEDS: [&str; 2] = [API_SECRET, "18comicAPPContent"];
 
 #[derive(Clone)]
@@ -118,7 +119,7 @@ impl super::client::JmClient {
     }
 
     pub async fn download_image(&self, url: &str) -> JmResult<Vec<u8>> {
-        let response = self
+        let mut response = self
             .client
             .get(url)
             .header("referer", "https://18comic.vip/")
@@ -130,12 +131,47 @@ impl super::client::JmClient {
             return Err(JmError::Http(format!("HTTP {}: {url}", response.status())));
         }
 
-        response
-            .bytes()
+        let content_length = response.content_length();
+        if let Some(content_length) = content_length {
+            ensure_image_size(content_length, MAX_IMAGE_DOWNLOAD_BYTES)?;
+        }
+        let capacity = content_length
+            .and_then(|length| usize::try_from(length).ok())
+            .unwrap_or_default();
+        let mut data = Vec::with_capacity(capacity);
+
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .map(|bytes| bytes.to_vec())
-            .map_err(|error| JmError::Network(error.to_string()))
+            .map_err(|error| JmError::Network(error.to_string()))?
+        {
+            append_image_chunk(&mut data, &chunk, MAX_IMAGE_DOWNLOAD_BYTES)?;
+        }
+
+        Ok(data)
     }
+}
+
+fn append_image_chunk(data: &mut Vec<u8>, chunk: &[u8], limit: usize) -> JmResult<()> {
+    let next_size = data
+        .len()
+        .checked_add(chunk.len())
+        .map(|size| size as u64)
+        .unwrap_or(u64::MAX);
+    ensure_image_size(next_size, limit)?;
+    data.extend_from_slice(chunk);
+    Ok(())
+}
+
+fn ensure_image_size(actual_bytes: u64, limit: usize) -> JmResult<()> {
+    if actual_bytes > limit as u64 {
+        return Err(JmError::ImageTooLarge {
+            actual_bytes,
+            limit_bytes: limit as u64,
+        });
+    }
+
+    Ok(())
 }
 
 fn decrypt_setting_data(data: &str, ts: &str) -> JmResult<String> {
@@ -218,5 +254,31 @@ async fn remove_endpoint_fetch_lock(endpoint: &str, fetch_lock: &Arc<Mutex<()>>)
 
     if should_remove {
         locks.remove(endpoint);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{append_image_chunk, ensure_image_size};
+    use crate::jm::JmError;
+
+    #[test]
+    fn enforces_declared_and_streamed_image_size_limits() {
+        assert!(ensure_image_size(8, 8).is_ok());
+        assert!(matches!(
+            ensure_image_size(9, 8),
+            Err(JmError::ImageTooLarge {
+                actual_bytes: 9,
+                limit_bytes: 8
+            })
+        ));
+
+        let mut data = vec![1, 2, 3, 4];
+        append_image_chunk(&mut data, &[5, 6, 7, 8], 8).expect("append within limit");
+        assert_eq!(data.len(), 8);
+        let error = append_image_chunk(&mut data, &[9], 8).expect_err("reject oversized chunk");
+        assert!(matches!(error, JmError::ImageTooLarge { .. }));
+        assert!(!error.is_retryable());
+        assert_eq!(data.len(), 8);
     }
 }

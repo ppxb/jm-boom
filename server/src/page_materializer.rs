@@ -175,7 +175,7 @@ impl PageMaterializer {
 
         match self.jm.download_image(&image_url).await {
             Ok(data) => Ok(data),
-            Err(_) => {
+            Err(error) if error.is_retryable() => {
                 invalidate_img_host(&endpoint).await;
                 let (_, refreshed_host) =
                     request_with_failover(&self.jm, &self.endpoints, |client, endpoint| {
@@ -186,6 +186,7 @@ impl PageMaterializer {
                     format!("{refreshed_host}/media/photos/{chapter_id}/{image_path}");
                 self.jm.download_image(&refreshed_url).await
             }
+            Err(error) => Err(error),
         }
     }
 }
