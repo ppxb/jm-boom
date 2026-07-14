@@ -34,7 +34,9 @@ export const CACHE = {
 
 // Reader configuration
 export const READER = {
-  PREFETCH_RADIUS: 4,
+  PREFETCH_AHEAD_PAGES: 6,
+  PREFETCH_BEHIND_PAGES: 1,
+  PREFETCH_CONCURRENCY: 4,
   STRIP_SCROLL_THRESHOLD: 24,
   DEFAULT_CHAPTER_TITLE: '正文'
 } as const

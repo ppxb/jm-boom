@@ -13,6 +13,7 @@ import { useReaderChapterInfo } from './use-reader-chapter-info'
 import { useReaderHistorySync } from './use-reader-history-sync'
 import { useReaderKeyboardNavigation } from './use-reader-keyboard-navigation'
 import { useNextChapterPrefetch } from './use-next-chapter-prefetch'
+import { useReaderPreload } from './use-reader-preload'
 import { useReaderSession } from './use-reader-session'
 import { useReaderToolbarVisibility } from './use-reader-toolbar-visibility'
 import { READER } from '@/lib/constants'
@@ -59,6 +60,8 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     retry
   } = useReaderSession({ comicId, initialIndex: initialPageIndex, pageStep })
   const availableNextChapter = nextChapter
+
+  useReaderPreload({ readId: comicId, pages, currentIndex })
 
   useReaderHistorySync({
     comicId,
@@ -166,8 +169,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   useNextChapterPrefetch({
     currentIndex,
     pageCount,
-    nextChapter: availableNextChapter,
-    pageStep
+    nextChapter: availableNextChapter
   })
 
   const showReaderTopBar = isToolbarVisible

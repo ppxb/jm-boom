@@ -223,7 +223,7 @@ export function ReaderStripWindow({
                 label={`第 ${virtualPage.index + 1} 页`}
                 wrapperClassName="min-h-[64vh] w-full"
                 imageClassName="block h-auto w-full object-contain"
-                loading="eager"
+                loading={isActive ? 'eager' : 'lazy'}
                 decoding={isActive ? 'sync' : 'async'}
                 showLoadingIndicator={isActive}
               />

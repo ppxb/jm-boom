@@ -1,43 +1,41 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
-import { getComicReadManifest, preloadComicReadPage } from '@/lib/api/reader'
-import { CACHE } from '@/lib/constants'
+import { getComicReadManifest } from '@/lib/api/reader'
+import { CACHE, READER } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
+import { clearReaderPreloadScope, setReaderPreloadScope } from '@/lib/reader-preload'
 import type { ReaderChapterItem } from './types'
 
-const NEXT_CHAPTER_PREFETCH_REMAINING_PAGES = 6
 const NEXT_CHAPTER_PREFETCH_PROGRESS = 0.8
-const NEXT_CHAPTER_PREFETCH_INITIAL_PAGES = 2
-
 export function useNextChapterPrefetch({
   currentIndex,
   pageCount,
-  nextChapter,
-  pageStep
+  nextChapter
 }: {
   currentIndex: number
   pageCount: number
   nextChapter: ReaderChapterItem | null
-  pageStep: number
 }) {
   const queryClient = useQueryClient()
   const prefetchedChapterRef = useRef('')
+  const nextReadId = nextChapter?.id ?? ''
+  const preloadScope = `next-chapter:${nextReadId}`
+  const shouldPrefetch =
+    nextReadId.length > 0 &&
+    pageCount > 0 &&
+    shouldPrefetchNextChapter(currentIndex, pageCount)
 
   useEffect(() => {
-    const nextReadId = nextChapter?.id ?? ''
-
-    if (!nextReadId || pageCount <= 0 || !shouldPrefetchNextChapter(currentIndex, pageCount)) {
+    if (!shouldPrefetch) {
       return
     }
 
-    const prefetchKey = [nextReadId, pageStep].join('|')
-
-    if (prefetchedChapterRef.current === prefetchKey) {
+    if (prefetchedChapterRef.current === nextReadId) {
       return
     }
 
-    prefetchedChapterRef.current = prefetchKey
+    prefetchedChapterRef.current = nextReadId
     let isActive = true
 
     void queryClient
@@ -53,25 +51,21 @@ export function useNextChapterPrefetch({
           return
         }
 
-        const manifest = queryClient.getQueryData<Awaited<ReturnType<typeof getComicReadManifest>>>(
-          queryKeys.readerManifest(nextReadId)
-        )
-        const initialPageCount = Math.min(
-          manifest?.pageCount ?? 0,
-          Math.max(NEXT_CHAPTER_PREFETCH_INITIAL_PAGES, pageStep)
-        )
-
-        if (initialPageCount <= 0) {
-          return
-        }
-
-        return Promise.allSettled(
+        const manifest = queryClient.getQueryData<
+          Awaited<ReturnType<typeof getComicReadManifest>>
+        >(queryKeys.readerManifest(nextReadId))
+        setReaderPreloadScope(
+          preloadScope,
           manifest?.pages
-            .slice(0, initialPageCount)
-            .map(page => preloadComicReadPage(page.path)) ?? []
+            .slice(0, READER.PREFETCH_AHEAD_PAGES)
+            .map(page => page.path) ?? []
         )
       })
       .catch(error => {
+        if (isActive && prefetchedChapterRef.current === nextReadId) {
+          prefetchedChapterRef.current = ''
+        }
+
         if (import.meta.env.DEV) {
           console.debug('Reader next chapter prefetch failed', error)
         }
@@ -80,7 +74,16 @@ export function useNextChapterPrefetch({
     return () => {
       isActive = false
     }
-  }, [currentIndex, nextChapter, pageCount, pageStep, queryClient])
+  }, [nextReadId, preloadScope, queryClient, shouldPrefetch])
+
+  useEffect(
+    () => () => {
+      if (nextReadId) {
+        clearReaderPreloadScope(preloadScope)
+      }
+    },
+    [nextReadId, preloadScope]
+  )
 }
 
 function shouldPrefetchNextChapter(currentIndex: number, pageCount: number) {
@@ -88,7 +91,7 @@ function shouldPrefetchNextChapter(currentIndex: number, pageCount: number) {
   const progress = pageCount > 0 ? (currentIndex + 1) / pageCount : 0
 
   return (
-    remainingPages <= NEXT_CHAPTER_PREFETCH_REMAINING_PAGES ||
+    remainingPages <= READER.PREFETCH_AHEAD_PAGES ||
     progress >= NEXT_CHAPTER_PREFETCH_PROGRESS
   )
 }

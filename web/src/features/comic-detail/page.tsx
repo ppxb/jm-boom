@@ -12,13 +12,10 @@ import { PageBackButton } from '@/components/page-back-button'
 import type { ComicDetail } from '@/domain/comic'
 import { getComicComments, getComicDetail } from '@/lib/api/comic'
 import { SINGLE_CHAPTER_TITLE, sortComicChapters } from '@/lib/comic'
-import {
-  getComicReadManifest,
-  preloadComicReadPage,
-  type ComicReadManifestResult
-} from '@/lib/api/reader'
-import { CACHE } from '@/lib/constants'
+import { getComicReadManifest } from '@/lib/api/reader'
+import { CACHE, READER } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
+import { clearReaderPreloadScope, setReaderPreloadScope } from '@/lib/reader-preload'
 import { ChaptersSection } from './chapters'
 import { CommentsDrawer } from './comments'
 import { ComicHero } from './hero'
@@ -36,9 +33,6 @@ import { useLocalFavoritesStore } from '@/stores/local-favorites-store'
 import { useReadingHistoryStore } from '@/stores/reading-history-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { resolveComicReadingTarget } from './reading-target'
-
-const DETAIL_READER_PRELOAD_COUNT = 4
-const DETAIL_READER_PRELOAD_CONCURRENCY = 2
 
 export function ComicDetailPage({ comicId }: { comicId: string }) {
   const detail = useQuery({
@@ -77,7 +71,6 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
     </main>
   )
 }
-
 function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const queryClient = useQueryClient()
   const isFavorite = useLocalFavoritesStore(state => state.items.some(item => item.id === comic.id))
@@ -94,6 +87,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     () => resolveComicReadingTarget(comic, readingHistory),
     [comic, readingHistory]
   )
+  const readerPreloadScope = `detail:${comic.id}`
   const isCoverSettled = hideCovers || comic.image.length === 0 || settledCoverUrl === comic.image
   const downloadChapters = useMemo(() => {
     const chapters = sortComicChapters(comic.chapters)
@@ -131,9 +125,18 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         staleTime: CACHE.READER_STALE_TIME,
         gcTime: CACHE.READER_GC_TIME
       })
-      .then(manifest =>
-        prefetchReaderStartPages(manifest, Math.max((readingTarget.page ?? 1) - 1, 0))
-      )
+      .then(manifest => {
+        if (!isActive) {
+          return
+        }
+
+        const initialPageIndex = Math.max((readingTarget.page ?? 1) - 1, 0)
+        const startIndex = Math.min(initialPageIndex, Math.max(manifest.pages.length - 1, 0))
+        const paths = manifest.pages
+          .slice(startIndex, startIndex + READER.PREFETCH_AHEAD_PAGES)
+          .map(page => page.path)
+        setReaderPreloadScope(readerPreloadScope, paths)
+      })
       .catch(error => {
         if (isActive && import.meta.env.DEV) {
           console.debug('Comic detail reader manifest prefetch failed', error)
@@ -142,8 +145,15 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
 
     return () => {
       isActive = false
+      clearReaderPreloadScope(readerPreloadScope)
     }
-  }, [isCoverSettled, queryClient, readingTarget.page, readingTarget.readId])
+  }, [
+    isCoverSettled,
+    queryClient,
+    readerPreloadScope,
+    readingTarget.page,
+    readingTarget.readId
+  ])
 
   function handleFavoriteToggle() {
     const favorited = toggleFavorite({
@@ -247,30 +257,5 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         onConfirm={chapters => downloadMutation.mutate(chapters)}
       />
     </div>
-  )
-}
-
-async function prefetchReaderStartPages(
-  manifest: ComicReadManifestResult,
-  initialPageIndex: number
-) {
-  const startIndex = Math.min(initialPageIndex, Math.max(manifest.pages.length - 1, 0))
-  const pages = manifest.pages.slice(startIndex, startIndex + DETAIL_READER_PRELOAD_COUNT)
-  let nextPageIndex = 0
-
-  async function prefetchWorker() {
-    while (nextPageIndex < pages.length) {
-      const page = pages[nextPageIndex]
-      nextPageIndex += 1
-
-      await preloadComicReadPage(page.path)
-    }
-  }
-
-  await Promise.all(
-    Array.from(
-      { length: Math.min(DETAIL_READER_PRELOAD_CONCURRENCY, pages.length) },
-      prefetchWorker
-    )
   )
 }
