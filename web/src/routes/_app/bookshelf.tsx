@@ -160,9 +160,7 @@ function BookshelfPage() {
                     <p className="line-clamp-1 text-xs text-muted-foreground">
                       {item.chapterTitle}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.pageIndex + 1}/{item.pageCount} • {formatDate(item.lastReadAt)}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{formatDate(item.lastReadAt)}</p>
                   </>
                 }
               />
