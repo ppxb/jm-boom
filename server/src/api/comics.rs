@@ -1,32 +1,25 @@
 use crate::{
     api::comic_dto::{map_comic_detail, ComicDetailResponse},
-    jm::{
-        serde_ext::{
-            optional_string_from_any as optional_string_from_value,
-            string_from_any as string_from_value, u32_from_any as u32_from_value,
-        },
-        JmResult,
-    },
+    application::ComicComments,
+    domain::comic::ComicComment as DomainComicComment,
+    jm::JmResult,
     AppState,
 };
 use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 pub async fn get_comic_detail(
     State(app): State<AppState>,
     Path(comic_id): Path<String>,
 ) -> JmResult<Json<ComicDetailResponse>> {
-    let detail = app
-        .comics
-        .request(move |client, endpoint| {
-            let comic_id = comic_id.clone();
-            Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
-        })
-        .await?;
-    Ok(Json(map_comic_detail(detail)))
+    app.comics
+        .get_comic_detail(comic_id)
+        .await
+        .map(map_comic_detail)
+        .map(Json)
 }
 
 #[derive(Deserialize)]
@@ -66,136 +59,43 @@ pub async fn get_comments(
     Path(comic_id): Path<String>,
     Query(query): Query<CommentsQuery>,
 ) -> JmResult<Json<ComicCommentsResult>> {
-    let page = query.page.max(1);
-    let payload: CommentListPayload = app
-        .comics
-        .request(move |client, endpoint| {
-            let comic_id = comic_id.clone();
-            Box::pin(async move {
-                client
-                    .get(
-                        endpoint,
-                        "forum",
-                        &[
-                            ("page", page.to_string()),
-                            ("aid", comic_id),
-                            ("mode", "manhua".to_string()),
-                        ],
-                    )
-                    .await
-            })
-        })
-        .await?;
-    let img_host = app.comics.img_host().await;
-    Ok(Json(ComicCommentsResult {
-        page,
-        total: payload.total,
-        comments: payload
-            .list
-            .into_iter()
-            .map(|comment| map_comment(comment, img_host.as_deref()))
-            .collect(),
-    }))
+    app.comics
+        .get_comments(comic_id, query.page)
+        .await
+        .map(ComicCommentsResult::from)
+        .map(Json)
 }
 
-#[derive(Deserialize)]
-struct CommentListPayload {
-    #[serde(default, deserialize_with = "u32_from_value")]
-    total: u32,
-    #[serde(default)]
-    list: Vec<CommentPayload>,
+impl From<ComicComments> for ComicCommentsResult {
+    fn from(result: ComicComments) -> Self {
+        Self {
+            page: result.page,
+            total: result.total,
+            comments: result.comments.into_iter().map(Into::into).collect(),
+        }
+    }
 }
 
-#[derive(Deserialize)]
-struct CommentPayload {
-    #[serde(
-        default,
-        rename = "AID",
-        deserialize_with = "optional_string_from_value"
-    )]
-    aid: Option<String>,
-    #[serde(default, rename = "CID", deserialize_with = "string_from_value")]
-    cid: String,
-    #[serde(default, rename = "UID", deserialize_with = "string_from_value")]
-    uid: String,
-    #[serde(default)]
-    username: String,
-    #[serde(default)]
-    nickname: String,
-    #[serde(default, deserialize_with = "u32_from_value")]
-    likes: u32,
-    #[serde(default)]
-    update_at: String,
-    #[serde(default)]
-    addtime: String,
-    #[serde(default, rename = "parent_CID", deserialize_with = "string_from_value")]
-    parent_cid: String,
-    #[serde(default)]
-    content: String,
-    #[serde(default)]
-    photo: String,
-    #[serde(default, deserialize_with = "bool_from_value")]
-    spoiler: bool,
-    #[serde(default)]
-    replys: Vec<CommentPayload>,
-}
-
-fn map_comment(payload: CommentPayload, img_host: Option<&str>) -> ComicComment {
-    let avatar = if payload.photo.starts_with("http") {
-        payload.photo.clone()
-    } else {
-        img_host
-            .filter(|_| !payload.photo.is_empty())
-            .map(|host| {
-                format!(
-                    "{}/media/users/{}",
-                    host.trim_end_matches('/'),
-                    payload.photo.trim_start_matches('/')
-                )
-            })
-            .unwrap_or_default()
-    };
-    ComicComment {
-        id: payload.cid,
-        comic_id: payload.aid,
-        user_id: payload.uid,
-        username: payload.username,
-        nickname: payload.nickname,
-        content: payload.content,
-        like_count: payload.likes,
-        time: payload.addtime,
-        updated_at: payload.update_at,
-        avatar,
-        parent_id: payload.parent_cid,
-        spoiler: payload.spoiler,
-        replies: payload
-            .replys
-            .into_iter()
-            .map(|reply| map_comment(reply, img_host))
-            .collect(),
+impl From<DomainComicComment> for ComicComment {
+    fn from(comment: DomainComicComment) -> Self {
+        Self {
+            id: comment.id,
+            comic_id: comment.comic_id,
+            user_id: comment.user_id,
+            username: comment.username,
+            nickname: comment.nickname,
+            content: comment.content,
+            like_count: comment.like_count,
+            time: comment.time,
+            updated_at: comment.updated_at,
+            avatar: comment.avatar,
+            parent_id: comment.parent_id,
+            spoiler: comment.spoiler,
+            replies: comment.replies.into_iter().map(Into::into).collect(),
+        }
     }
 }
 
 fn default_page() -> u32 {
     1
-}
-
-fn value_from<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    serde_json::Value::deserialize(deserializer)
-}
-
-fn bool_from_value<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = value_from(deserializer)?;
-    Ok(match value {
-        serde_json::Value::Bool(value) => value,
-        serde_json::Value::Number(value) => value.as_i64().unwrap_or_default() != 0,
-        serde_json::Value::String(value) => matches!(value.as_str(), "1" | "true"),
-        _ => false,
-    })
 }

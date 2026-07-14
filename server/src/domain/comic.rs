@@ -16,6 +16,64 @@ pub struct ComicDetail {
 }
 
 #[derive(Debug, Clone)]
+pub struct ComicSummary {
+    pub id: String,
+    pub title: String,
+    pub author: String,
+    pub description: String,
+    pub image: String,
+    pub tags: Vec<String>,
+}
+
+impl ComicSummary {
+    pub fn new(
+        id: String,
+        title: String,
+        author: String,
+        description: String,
+        image: String,
+        tags: Vec<String>,
+    ) -> Self {
+        Self {
+            id,
+            title,
+            author,
+            description,
+            image,
+            tags,
+        }
+    }
+
+    pub fn from_detail(detail: ComicDetail) -> Self {
+        Self::new(
+            detail.id,
+            detail.title,
+            detail.authors.join(" / "),
+            detail.description,
+            detail.image,
+            detail.tags,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ComicComment {
+    pub id: String,
+    pub comic_id: Option<String>,
+    pub user_id: String,
+    pub username: String,
+    pub nickname: String,
+    pub content: String,
+    pub like_count: u32,
+    pub time: String,
+    pub updated_at: String,
+    pub avatar: String,
+    pub parent_id: String,
+    pub spoiler: bool,
+    pub replies: Vec<ComicComment>,
+}
+
+#[derive(Debug, Clone)]
 pub struct RelatedComic {
     pub id: String,
     pub title: String,

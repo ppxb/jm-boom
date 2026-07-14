@@ -31,13 +31,7 @@ impl ReaderService {
     }
 
     pub async fn chapter(&self, chapter_id: &str) -> JmResult<ChapterManifest> {
-        let chapter_id = chapter_id.to_string();
-        self.comics
-            .request(move |client, endpoint| {
-                let chapter_id = chapter_id.clone();
-                Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
-            })
-            .await
+        self.comics.get_chapter(chapter_id.to_string()).await
     }
 
     pub async fn cached_page(

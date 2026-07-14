@@ -1,4 +1,4 @@
-use crate::api::media::cover_url;
+use crate::{api::media::cover_url, domain::comic::ComicSummary};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -29,6 +29,19 @@ impl ComicSummaryResponse {
             description,
             tags,
         }
+    }
+}
+
+impl From<ComicSummary> for ComicSummaryResponse {
+    fn from(comic: ComicSummary) -> Self {
+        Self::new(
+            comic.id,
+            comic.title,
+            comic.author,
+            comic.description,
+            comic.image,
+            comic.tags,
+        )
     }
 }
 
