@@ -67,29 +67,48 @@ impl PageMaterializer {
 
     pub async fn materialize(
         &self,
-        mut request: PageMaterializeRequest<'_>,
+        request: PageMaterializeRequest<'_>,
     ) -> Result<CachedReaderPage, PageMaterializeError> {
         let cache_key = reader_page_cache_key(request.chapter_id, request.page);
         if let Some(cached) = self.cache.get_reader_page(&cache_key).await? {
             return Ok(cached);
         }
 
-        let materialize_lock = page_materialize_lock(&cache_key).await;
+        self.materialize_after_cache_miss_with_key(&cache_key, request)
+            .await
+    }
+
+    /// Continue materialization after the caller checked `cached_page` for the same page.
+    pub async fn materialize_after_cache_miss(
+        &self,
+        request: PageMaterializeRequest<'_>,
+    ) -> Result<CachedReaderPage, PageMaterializeError> {
+        let cache_key = reader_page_cache_key(request.chapter_id, request.page);
+        self.materialize_after_cache_miss_with_key(&cache_key, request)
+            .await
+    }
+
+    async fn materialize_after_cache_miss_with_key(
+        &self,
+        cache_key: &str,
+        mut request: PageMaterializeRequest<'_>,
+    ) -> Result<CachedReaderPage, PageMaterializeError> {
+        let materialize_lock = page_materialize_lock(cache_key).await;
         let guard = match request.cancelled.as_mut() {
             Some(cancelled) => {
                 tokio::select! {
                     guard = materialize_lock.lock() => guard,
                     _ = wait_for_cancel(cancelled) => {
-                        remove_page_materialize_lock(&cache_key, &materialize_lock).await;
+                        remove_page_materialize_lock(cache_key, &materialize_lock).await;
                         return Err(PageMaterializeError::Cancelled);
                     }
                 }
             }
             None => materialize_lock.lock().await,
         };
-        let result = self.materialize_with_lock(&cache_key, request).await;
+        let result = self.materialize_with_lock(cache_key, request).await;
         drop(guard);
-        remove_page_materialize_lock(&cache_key, &materialize_lock).await;
+        remove_page_materialize_lock(cache_key, &materialize_lock).await;
         result
     }
 

@@ -95,7 +95,9 @@ pub async fn get_page(
     validate_chapter_id(&chapter_id)?;
     let priority = request_priority(&headers);
     let image = materialize_page(&app, &chapter_id, page, priority).await?;
-    prewarm_pages(app, chapter_id, page.saturating_add(1), PAGE_PREWARM_COUNT);
+    if should_expand_prewarm_window(priority) {
+        prewarm_pages(app, chapter_id, page.saturating_add(1), PAGE_PREWARM_COUNT);
+    }
     Ok(image_response(image.content_type, image.data))
 }
 
@@ -153,7 +155,7 @@ async fn materialize_page(
 
     let materialized = app
         .page_materializer
-        .materialize(PageMaterializeRequest {
+        .materialize_after_cache_miss(PageMaterializeRequest {
             chapter_id,
             page: page as usize,
             comic_id,
@@ -208,6 +210,10 @@ fn request_priority(headers: &HeaderMap) -> ImageWorkPriority {
     } else {
         ImageWorkPriority::Foreground
     }
+}
+
+fn should_expand_prewarm_window(priority: ImageWorkPriority) -> bool {
+    priority == ImageWorkPriority::Foreground
 }
 
 fn validate_chapter_id(chapter_id: &str) -> Result<u32, ApiError> {
@@ -270,5 +276,17 @@ impl IntoResponse for ApiError {
         };
 
         HttpError::new(status, message, retryable).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_expand_prewarm_window;
+    use crate::image_work::ImageWorkPriority;
+
+    #[test]
+    fn prefetch_requests_do_not_expand_the_server_prewarm_window() {
+        assert!(should_expand_prewarm_window(ImageWorkPriority::Foreground));
+        assert!(!should_expand_prewarm_window(ImageWorkPriority::Prefetch));
     }
 }
