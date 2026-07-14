@@ -5,7 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicI64, Ordering},
+        atomic::{AtomicI64, AtomicU64, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -20,6 +20,7 @@ pub const READER_CACHE_VERSION: u8 = 3;
 const COVER_CACHE_VERSION: u8 = 1;
 const DEFAULT_CACHE_MAX_MB: u64 = 5 * 1024;
 const ACCESS_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
+static CACHE_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 pub fn reader_page_cache_key(chapter_id: &str, page: usize) -> String {
     format!("{chapter_id}:{page}-v{READER_CACHE_VERSION}")
@@ -85,6 +86,43 @@ struct RepairSummary {
     removed_index_entries: usize,
     removed_orphan_files: usize,
     corrected_index_entries: usize,
+}
+
+struct PendingCacheFile {
+    path: PathBuf,
+    active: bool,
+}
+
+impl PendingCacheFile {
+    fn new(path: PathBuf) -> Self {
+        Self { path, active: true }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn commit(mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for PendingCacheFile {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+
+        match std::fs::remove_file(&self.path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => tracing::warn!(
+                path = %self.path.display(),
+                %error,
+                "图片缓存临时文件清理失败"
+            ),
+        }
+    }
 }
 
 impl ImageCache {
@@ -238,7 +276,10 @@ impl ImageCache {
         }
 
         let file_write_started = Instant::now();
-        fs::write(&path, data).await?;
+        let pending_file = PendingCacheFile::new(cache_temporary_path(&path)?);
+        fs::write(pending_file.path(), data).await?;
+        fs::rename(pending_file.path(), &path).await?;
+        pending_file.commit();
         let file_write_ms = file_write_started.elapsed().as_millis();
 
         let now = chrono::Utc::now().timestamp();
@@ -574,6 +615,18 @@ fn cache_index_key(key: &str, extension: &str) -> String {
     }
 }
 
+fn cache_temporary_path(path: &Path) -> Result<PathBuf> {
+    let file_name = path
+        .file_name()
+        .context("cache path must have a file name")?
+        .to_string_lossy();
+    let sequence = CACHE_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    Ok(path.with_file_name(format!(
+        ".{file_name}.tmp-{}-{sequence}",
+        std::process::id()
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CacheConfig, ImageCache};
@@ -601,6 +654,10 @@ mod tests {
             .await
             .expect("replace cache entry");
         assert_eq!(cache.current_size_bytes.load(Ordering::Relaxed), 8);
+        assert_eq!(
+            cache.get_cover("cover").await.expect("read replacement"),
+            Some(vec![2; 8])
+        );
         let stats = cache.stats().await.expect("load cache stats");
         assert_eq!(stats.size_bytes, 8);
         assert_eq!(stats.entry_count, 1);
@@ -669,6 +726,55 @@ mod tests {
 
         assert_eq!(cache.current_size_bytes.load(Ordering::Relaxed), 7);
         assert_eq!(cache.stats().await.expect("load cache stats").size_bytes, 7);
+        fs::remove_dir_all(cache_dir)
+            .await
+            .expect("remove test cache");
+    }
+
+    #[tokio::test]
+    async fn ignores_and_repairs_an_uncommitted_cache_file() {
+        let db = test_db().await;
+        let cache_dir = test_cache_dir("uncommitted");
+        let cache = ImageCache::new_with_cache_dir(
+            db.clone(),
+            CacheConfig {
+                max_size_bytes: 100,
+            },
+            cache_dir.clone(),
+        )
+        .await
+        .expect("create initial cache");
+        let final_path = cache.get_path("cover", "img");
+        let temporary_path =
+            super::cache_temporary_path(&final_path).expect("create temporary cache path");
+        fs::write(&temporary_path, [1; 7])
+            .await
+            .expect("write interrupted cache file");
+
+        assert!(cache
+            .get_cover("cover")
+            .await
+            .expect("read cache before repair")
+            .is_none());
+        drop(cache);
+
+        let repaired = ImageCache::new_with_cache_dir(
+            db,
+            CacheConfig {
+                max_size_bytes: 100,
+            },
+            cache_dir.clone(),
+        )
+        .await
+        .expect("repair cache");
+        assert!(!temporary_path.exists());
+        assert!(repaired
+            .get_cover("cover")
+            .await
+            .expect("read repaired cache")
+            .is_none());
+
+        drop(repaired);
         fs::remove_dir_all(cache_dir)
             .await
             .expect("remove test cache");
