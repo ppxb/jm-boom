@@ -4,7 +4,10 @@ use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 use tokio::{
@@ -59,6 +62,7 @@ pub struct ImageCache {
     cache_dir: PathBuf,
     db: sqlx::SqlitePool,
     max_size_bytes: i64,
+    current_size_bytes: AtomicI64,
     operation_lock: RwLock<()>,
     pending_accesses: Mutex<HashMap<String, i64>>,
 }
@@ -86,12 +90,21 @@ struct RepairSummary {
 impl ImageCache {
     pub async fn new(db: sqlx::SqlitePool, config: CacheConfig) -> Result<Self> {
         let cache_dir = std::env::current_dir()?.join("data/cache/images");
+        Self::new_with_cache_dir(db, config, cache_dir).await
+    }
+
+    async fn new_with_cache_dir(
+        db: sqlx::SqlitePool,
+        config: CacheConfig,
+        cache_dir: PathBuf,
+    ) -> Result<Self> {
         fs::create_dir_all(&cache_dir).await?;
 
         let cache = Self {
             cache_dir,
             db,
             max_size_bytes: config.max_size_bytes,
+            current_size_bytes: AtomicI64::new(0),
             operation_lock: RwLock::new(()),
             pending_accesses: Mutex::new(HashMap::new()),
         };
@@ -105,6 +118,7 @@ impl ImageCache {
         );
         tracing::info!(
             max_size_bytes = cache.max_size_bytes,
+            current_size_bytes = cache.current_size_bytes.load(Ordering::Relaxed),
             "图片缓存容量管理已启用"
         );
 
@@ -202,6 +216,13 @@ impl ImageCache {
         let lock_wait_ms = lock_started.elapsed().as_millis();
         let cache_key = cache_index_key(key, extension);
         let path = self.get_path(key, extension);
+        let previous_size =
+            sqlx::query_scalar::<_, i64>("SELECT size FROM cache_index WHERE key = ?")
+                .bind(&cache_key)
+                .fetch_optional(&self.db)
+                .await?
+                .unwrap_or(0)
+                .max(0);
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;
@@ -213,7 +234,7 @@ impl ImageCache {
 
         let now = chrono::Utc::now().timestamp();
         let path_str = path.to_string_lossy();
-        let size = data.len() as i64;
+        let size = i64::try_from(data.len()).context("cache entry is too large")?;
         let index_write_started = Instant::now();
         sqlx::query(
             "INSERT INTO cache_index (key, path, size, created_at, accessed_at) VALUES (?, ?, ?, ?, ?) \
@@ -228,8 +249,13 @@ impl ImageCache {
         .execute(&self.db)
         .await?;
         self.pending_accesses.lock().await.remove(&cache_key);
+        let current_size = self.adjust_current_size(size.saturating_sub(previous_size));
         drop(operation);
-        let evicted_entries = self.evict_if_needed().await?;
+        let evicted_entries = if current_size > self.max_size_bytes {
+            self.evict_if_needed().await?
+        } else {
+            0
+        };
         tracing::debug!(
             cache_key,
             lock_wait_ms,
@@ -273,6 +299,7 @@ impl ImageCache {
         sqlx::query("DELETE FROM cache_index")
             .execute(&self.db)
             .await?;
+        self.current_size_bytes.store(0, Ordering::Relaxed);
 
         Ok(())
     }
@@ -392,6 +419,12 @@ impl ImageCache {
                 .await?;
         }
         transaction.commit().await?;
+        let size_bytes =
+            sqlx::query_scalar::<_, i64>("SELECT COALESCE(SUM(size), 0) FROM cache_index")
+                .fetch_one(&self.db)
+                .await?;
+        self.current_size_bytes
+            .store(size_bytes.max(0), Ordering::Relaxed);
 
         Ok(RepairSummary {
             removed_index_entries: removed_keys.len(),
@@ -402,6 +435,9 @@ impl ImageCache {
 
     async fn evict_if_needed(&self) -> Result<usize> {
         let _operation = self.operation_lock.write().await;
+        if self.current_size_bytes.load(Ordering::Relaxed) <= self.max_size_bytes {
+            return Ok(0);
+        }
         self.evict_if_needed_locked().await
     }
 
@@ -410,6 +446,8 @@ impl ImageCache {
             sqlx::query_scalar::<_, i64>("SELECT COALESCE(SUM(size), 0) FROM cache_index")
                 .fetch_one(&self.db)
                 .await?;
+        size_bytes = size_bytes.max(0);
+        self.current_size_bytes.store(size_bytes, Ordering::Relaxed);
         if size_bytes <= self.max_size_bytes {
             return Ok(0);
         }
@@ -449,6 +487,7 @@ impl ImageCache {
             size_bytes = size_bytes.saturating_sub(stored_size.max(0));
             evicted_entries += 1;
         }
+        self.current_size_bytes.store(size_bytes, Ordering::Relaxed);
 
         tracing::info!(
             initial_size_bytes = initial_size,
@@ -480,6 +519,16 @@ impl ImageCache {
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join(path)
         }
+    }
+
+    fn adjust_current_size(&self, delta: i64) -> i64 {
+        let previous = self
+            .current_size_bytes
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_add(delta).max(0))
+            })
+            .expect("cache size update always succeeds");
+        previous.saturating_add(delta).max(0)
     }
 }
 
@@ -513,5 +562,139 @@ fn cache_index_key(key: &str, extension: &str) -> String {
         key.to_string()
     } else {
         format!("{key}:{extension}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CacheConfig, ImageCache};
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::{
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    use tokio::fs;
+
+    static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    #[tokio::test]
+    async fn tracks_replacement_size_delta_and_resets_after_clear() {
+        let (cache, cache_dir) = test_cache("replace", 100).await;
+
+        cache
+            .put_cover("cover", &[1; 20])
+            .await
+            .expect("write initial cache entry");
+        assert_eq!(cache.current_size_bytes.load(Ordering::Relaxed), 20);
+
+        cache
+            .put_cover("cover", &[2; 8])
+            .await
+            .expect("replace cache entry");
+        assert_eq!(cache.current_size_bytes.load(Ordering::Relaxed), 8);
+        let stats = cache.stats().await.expect("load cache stats");
+        assert_eq!(stats.size_bytes, 8);
+        assert_eq!(stats.entry_count, 1);
+
+        cache.clear().await.expect("clear cache");
+        assert_eq!(cache.current_size_bytes.load(Ordering::Relaxed), 0);
+        fs::remove_dir_all(cache_dir)
+            .await
+            .expect("remove test cache");
+    }
+
+    #[tokio::test]
+    async fn evicts_to_half_capacity_only_after_limit_is_exceeded() {
+        let (cache, cache_dir) = test_cache("evict", 10).await;
+
+        cache.put_cover("one", &[1; 4]).await.expect("write one");
+        cache.put_cover("two", &[2; 4]).await.expect("write two");
+        let before = cache.stats().await.expect("load pre-eviction stats");
+        assert_eq!(before.size_bytes, 8);
+        assert_eq!(before.entry_count, 2);
+
+        cache
+            .put_cover("three", &[3; 4])
+            .await
+            .expect("write over capacity");
+        let after = cache.stats().await.expect("load post-eviction stats");
+        assert_eq!(after.size_bytes, 4);
+        assert_eq!(after.entry_count, 1);
+        assert_eq!(cache.current_size_bytes.load(Ordering::Relaxed), 4);
+
+        fs::remove_dir_all(cache_dir)
+            .await
+            .expect("remove test cache");
+    }
+
+    #[tokio::test]
+    async fn calibrates_size_from_repaired_index_on_startup() {
+        let db = test_db().await;
+        let cache_dir = test_cache_dir("calibrate");
+        fs::create_dir_all(&cache_dir)
+            .await
+            .expect("create test cache directory");
+        let path = cache_dir.join("seed.img");
+        fs::write(&path, [1; 7])
+            .await
+            .expect("write seeded cache file");
+        sqlx::query(
+            "INSERT INTO cache_index (key, path, size, created_at, accessed_at) VALUES (?, ?, ?, 1, 1)",
+        )
+        .bind("seed:img")
+        .bind(path.to_string_lossy().as_ref())
+        .bind(99_i64)
+        .execute(&db)
+        .await
+        .expect("seed cache index");
+
+        let cache = ImageCache::new_with_cache_dir(
+            db,
+            CacheConfig {
+                max_size_bytes: 100,
+            },
+            cache_dir.clone(),
+        )
+        .await
+        .expect("create calibrated cache");
+
+        assert_eq!(cache.current_size_bytes.load(Ordering::Relaxed), 7);
+        assert_eq!(cache.stats().await.expect("load cache stats").size_bytes, 7);
+        fs::remove_dir_all(cache_dir)
+            .await
+            .expect("remove test cache");
+    }
+
+    async fn test_cache(name: &str, max_size_bytes: i64) -> (ImageCache, PathBuf) {
+        let cache_dir = test_cache_dir(name);
+        let cache = ImageCache::new_with_cache_dir(
+            test_db().await,
+            CacheConfig { max_size_bytes },
+            cache_dir.clone(),
+        )
+        .await
+        .expect("create test cache");
+        (cache, cache_dir)
+    }
+
+    async fn test_db() -> sqlx::SqlitePool {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        sqlx::migrate!("./migrations")
+            .run(&db)
+            .await
+            .expect("run migrations");
+        db
+    }
+
+    fn test_cache_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "jm-boom-image-cache-{name}-{}-{}",
+            std::process::id(),
+            TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ))
     }
 }
