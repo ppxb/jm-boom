@@ -12,10 +12,12 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+const STATIC_DIR: &str = "./static";
+const STATIC_INDEX_FILE: &str = "./static/index.html";
+
 pub(crate) fn build(config: &AppConfig, state: AppState) -> anyhow::Result<Router> {
-    let index_file = config.static_dir.join("index.html");
     let static_service =
-        ServeDir::new(&config.static_dir).not_found_service(ServeFile::new(index_file));
+        ServeDir::new(STATIC_DIR).not_found_service(ServeFile::new(STATIC_INDEX_FILE));
 
     let mut app = Router::new()
         .nest("/api", api::routes().fallback(api_not_found))

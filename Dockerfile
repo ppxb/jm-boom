@@ -55,8 +55,7 @@ RUN mkdir -p /app/data && chown -R jm-boom:jm-boom /app
 
 USER jm-boom
 
-ENV RUST_LOG="info,jm_boom_server=info" \
-    JM_BOOM_STATIC_DIR="/app/static"
+ENV RUST_LOG="info,jm_boom_server=info"
 
 VOLUME ["/app/data"]
 EXPOSE 3000

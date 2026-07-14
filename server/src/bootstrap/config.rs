@@ -4,16 +4,12 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 pub struct AppConfig {
     pub data_dir: PathBuf,
-    pub static_dir: PathBuf,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
         Self {
             data_dir: PathBuf::from("./data"),
-            static_dir: std::env::var("JM_BOOM_STATIC_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| PathBuf::from("./static")),
         }
     }
 
