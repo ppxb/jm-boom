@@ -2,27 +2,17 @@ use super::{
     client::JmClient, crypto, error::JmError, models::Chapter, signature::JmRequestSignature,
     JmResult,
 };
-use crate::keyed_lock::KeyedLock;
+use crate::{expiring_cache::ExpiringCache, keyed_lock::KeyedLock};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    time::{Duration, Instant},
-};
-use tokio::sync::RwLock;
+use std::time::Duration;
 
 const JM_API_SECRET: &str = "185Hcomic3PAPP7R";
 const CHAPTER_CACHE_TTL: Duration = Duration::from_secs(20 * 60);
 const CHAPTER_CACHE_MAX_ENTRIES: usize = 256;
 
-#[derive(Clone)]
-struct CachedChapter {
-    chapter: Chapter,
-    expires_at: Instant,
-}
-
-static CHAPTER_CACHE: Lazy<RwLock<HashMap<String, CachedChapter>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+static CHAPTER_CACHE: Lazy<ExpiringCache<Chapter>> =
+    Lazy::new(|| ExpiringCache::new(CHAPTER_CACHE_TTL, CHAPTER_CACHE_MAX_ENTRIES));
 static CHAPTER_FETCH_LOCKS: Lazy<KeyedLock> = Lazy::new(KeyedLock::new);
 
 #[derive(Debug, Deserialize)]
@@ -129,34 +119,11 @@ impl JmClient {
 }
 
 async fn cached_chapter(cache_key: &str) -> Option<Chapter> {
-    let now = Instant::now();
-    let mut cache = CHAPTER_CACHE.write().await;
-    cache.retain(|_, cached| now < cached.expires_at);
-    cache.get(cache_key).map(|cached| cached.chapter.clone())
+    CHAPTER_CACHE.get(cache_key).await
 }
 
 async fn insert_cached_chapter(cache_key: &str, chapter: Chapter) {
-    let now = Instant::now();
-    let mut cache = CHAPTER_CACHE.write().await;
-    cache.retain(|_, cached| now < cached.expires_at);
-    cache.insert(
-        cache_key.to_string(),
-        CachedChapter {
-            chapter,
-            expires_at: now + CHAPTER_CACHE_TTL,
-        },
-    );
-
-    while cache.len() > CHAPTER_CACHE_MAX_ENTRIES {
-        let Some(oldest_key) = cache
-            .iter()
-            .min_by_key(|(_, cached)| cached.expires_at)
-            .map(|(key, _)| key.clone())
-        else {
-            break;
-        };
-        cache.remove(&oldest_key);
-    }
+    CHAPTER_CACHE.insert(cache_key, chapter).await;
 }
 
 fn ensure_chapter_images(chapter: Chapter) -> JmResult<Chapter> {

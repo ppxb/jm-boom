@@ -2,6 +2,7 @@ mod api;
 mod cache;
 mod download;
 mod endpoint;
+mod expiring_cache;
 mod http_error;
 mod image_work;
 mod jm;

@@ -1,26 +1,16 @@
 use super::{crypto, error::JmError, JmResult, SettingRequestSignature, API_SECRET};
-use crate::keyed_lock::KeyedLock;
+use crate::{expiring_cache::ExpiringCache, keyed_lock::KeyedLock};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    time::{Duration, Instant},
-};
-use tokio::sync::RwLock;
+use std::time::Duration;
 
 const IMG_HOST_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 const IMG_HOST_CACHE_MAX_ENTRIES: usize = 32;
 const MAX_IMAGE_DOWNLOAD_BYTES: usize = 64 * 1024 * 1024;
 const SETTING_AES_SEEDS: [&str; 2] = [API_SECRET, "18comicAPPContent"];
 
-#[derive(Clone)]
-struct CachedImgHost {
-    host: String,
-    expires_at: Instant,
-}
-
-static IMG_HOST_CACHE: Lazy<RwLock<HashMap<String, CachedImgHost>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+static IMG_HOST_CACHE: Lazy<ExpiringCache<String>> =
+    Lazy::new(|| ExpiringCache::new(IMG_HOST_CACHE_TTL, IMG_HOST_CACHE_MAX_ENTRIES));
 static IMG_HOST_FETCH_LOCKS: Lazy<KeyedLock> = Lazy::new(KeyedLock::new);
 
 #[derive(Debug, Deserialize)]
@@ -195,38 +185,15 @@ where
 }
 
 pub async fn invalidate_img_host(endpoint: &str) {
-    IMG_HOST_CACHE.write().await.remove(endpoint);
+    IMG_HOST_CACHE.remove(endpoint).await;
 }
 
 async fn cached_img_host(endpoint: &str) -> Option<String> {
-    let now = Instant::now();
-    let mut cache = IMG_HOST_CACHE.write().await;
-    cache.retain(|_, cached| now < cached.expires_at);
-    cache.get(endpoint).map(|cached| cached.host.clone())
+    IMG_HOST_CACHE.get(endpoint).await
 }
 
 async fn insert_cached_img_host(endpoint: &str, host: String) {
-    let now = Instant::now();
-    let mut cache = IMG_HOST_CACHE.write().await;
-    cache.retain(|_, cached| now < cached.expires_at);
-    cache.insert(
-        endpoint.to_string(),
-        CachedImgHost {
-            host,
-            expires_at: now + IMG_HOST_CACHE_TTL,
-        },
-    );
-
-    while cache.len() > IMG_HOST_CACHE_MAX_ENTRIES {
-        let Some(oldest_endpoint) = cache
-            .iter()
-            .min_by_key(|(_, cached)| cached.expires_at)
-            .map(|(endpoint, _)| endpoint.clone())
-        else {
-            break;
-        };
-        cache.remove(&oldest_endpoint);
-    }
+    IMG_HOST_CACHE.insert(endpoint, host).await;
 }
 
 #[cfg(test)]
