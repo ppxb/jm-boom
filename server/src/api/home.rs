@@ -115,7 +115,8 @@ pub struct WeekItemsQuery {
 
 pub async fn get_home_feed(State(app): State<AppState>) -> JmResult<Json<HomeFeedResult>> {
     let sections = app
-        .jm_request(|client, endpoint| Box::pin(client.get_home_feed(endpoint)))
+        .comics
+        .request(|client, endpoint| Box::pin(client.get_home_feed(endpoint)))
         .await?;
     let sections = sections
         .into_iter()
@@ -180,7 +181,8 @@ pub async fn get_home_section_list(
 
 pub async fn get_week_filters(State(app): State<AppState>) -> JmResult<Json<WeekFiltersResult>> {
     let payload: WeekPayload = app
-        .jm_request(|client, endpoint| Box::pin(client.get(endpoint, "week", &[])))
+        .comics
+        .request(|client, endpoint| Box::pin(client.get(endpoint, "week", &[])))
         .await?;
     let categories = payload
         .categories
@@ -221,7 +223,8 @@ pub async fn get_week_items(
     let category_id = query.category_id.clone();
     let type_id = query.type_id.clone();
     let payload: WeekComicsPayload = app
-        .jm_request(move |client, endpoint| {
+        .comics
+        .request(move |client, endpoint| {
             let category_id = category_id.clone();
             let type_id = type_id.clone();
             Box::pin(async move {
@@ -262,7 +265,8 @@ async fn request_section_list(
                 .unwrap_or_default();
             let source_page = page.saturating_sub(1);
             let payload: PromotePayload = app
-                .jm_request(move |client, endpoint| {
+                .comics
+                .request(move |client, endpoint| {
                     Box::pin(async move {
                         client
                             .get(
@@ -297,7 +301,8 @@ async fn request_section_list(
                 query.category.clone()
             };
             let payload: WeeklyPayload = app
-                .jm_request(move |client, endpoint| {
+                .comics
+                .request(move |client, endpoint| {
                     let category = category.clone();
                     Box::pin(async move {
                         client
@@ -331,7 +336,8 @@ async fn request_section_list(
             let request_page = (start / 80) as u32;
             let offset = start % 80;
             let items: Vec<ComicListPayload> = app
-                .jm_request(move |client, endpoint| {
+                .comics
+                .request(move |client, endpoint| {
                     Box::pin(async move {
                         client
                             .get(endpoint, "latest", &[("page", request_page.to_string())])
@@ -361,7 +367,8 @@ async fn request_section_list(
                 query.order.clone()
             };
             let payload: CategoryPayload = app
-                .jm_request(move |client, endpoint| {
+                .comics
+                .request(move |client, endpoint| {
                     let category = category.clone();
                     let order = order.clone();
                     Box::pin(async move {

@@ -15,19 +15,19 @@ pub struct SystemInfo {
 }
 
 pub async fn get_endpoints(State(app): State<AppState>) -> Json<EndpointState> {
-    Json(app.endpoints.state().await)
+    Json(app.settings.endpoints().await)
 }
 
 pub async fn probe_endpoints(State(app): State<AppState>) -> Json<EndpointState> {
-    Json(app.endpoints.refresh().await)
+    Json(app.settings.refresh_endpoints().await)
 }
 
 pub async fn set_endpoint(
     State(app): State<AppState>,
     Json(payload): Json<EndpointSelection>,
 ) -> Result<Json<EndpointState>, HttpError> {
-    app.endpoints
-        .set_selected(payload.endpoint)
+    app.settings
+        .set_endpoint(payload.endpoint)
         .await
         .map(Json)
         .map_err(|error| HttpError::new(StatusCode::BAD_REQUEST, error.to_string(), false))
@@ -38,12 +38,12 @@ pub async fn get_system_info(State(app): State<AppState>) -> Result<Json<SystemI
 }
 
 pub async fn clear_cache(State(app): State<AppState>) -> Result<Json<SystemInfo>, HttpError> {
-    app.cache.clear().await.map_err(internal_error)?;
+    app.settings.clear_cache().await.map_err(internal_error)?;
     system_info(&app).await.map(Json)
 }
 
 async fn system_info(app: &AppState) -> Result<SystemInfo, HttpError> {
-    let cache = app.cache.stats().await.map_err(internal_error)?;
+    let cache = app.settings.cache_stats().await.map_err(internal_error)?;
 
     Ok(SystemInfo {
         server_version: env!("CARGO_PKG_VERSION"),

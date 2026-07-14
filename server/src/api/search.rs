@@ -56,7 +56,8 @@ pub async fn search_comics(
     if page == 1 && is_comic_id(&keyword) {
         let comic_id = keyword.clone();
         if let Ok(detail) = app
-            .jm_request(move |client, endpoint| {
+            .comics
+            .request(move |client, endpoint| {
                 let comic_id = comic_id.clone();
                 Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
             })
@@ -78,7 +79,8 @@ pub async fn search_comics(
     }
     .to_string();
     let result = app
-        .jm_request(move |client, endpoint| {
+        .comics
+        .request(move |client, endpoint| {
             let keyword = keyword.clone();
             let order = order.clone();
             Box::pin(async move { client.search(endpoint, &keyword, page, &order).await })
@@ -88,7 +90,8 @@ pub async fn search_comics(
     if result.content.is_empty() {
         if let Some(redirect_id) = result.redirect_aid.filter(|id| is_comic_id(id)) {
             let detail = app
-                .jm_request(move |client, endpoint| {
+                .comics
+                .request(move |client, endpoint| {
                     let comic_id = redirect_id.clone();
                     Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
                 })

@@ -1,7 +1,7 @@
 use crate::cache::READER_CACHE_VERSION;
 use crate::http_error::HttpError;
 use crate::image_work::ImageWorkPriority;
-use crate::page_materializer::{PageMaterializeError, PageMaterializeRequest};
+use crate::page_materializer::PageMaterializeError;
 use crate::reader::page_name_from_image;
 use crate::AppState;
 use axum::{
@@ -40,20 +40,14 @@ pub async fn get_manifest(
     Path(chapter_id): Path<String>,
 ) -> Result<Json<ManifestResponse>, ApiError> {
     validate_chapter_id(&chapter_id)?;
-    let request_chapter_id = chapter_id.to_string();
-    let chapter = app
-        .jm_request(move |client, endpoint| {
-            let chapter_id = request_chapter_id.clone();
-            Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
-        })
-        .await;
+    let chapter = app.reader.chapter(&chapter_id).await;
 
     let offline_manifest = if chapter.is_err() {
-        app.downloads
+        app.reader
             .offline_manifest(&chapter_id)
             .await
             .map_err(|error| ApiError::Cache(anyhow::anyhow!(error.to_string())))?
-            .map(|manifest| (manifest.chapter_id, manifest.images))
+            .map(|manifest| (manifest.id, manifest.images))
     } else {
         None
     };
@@ -114,7 +108,7 @@ async fn materialize_page(
     let comic_id = validate_chapter_id(chapter_id)?;
 
     if let Some(cached) = app
-        .page_materializer
+        .reader
         .cached_page(chapter_id, page as usize)
         .await
         .map_err(ApiError::Cache)?
@@ -133,7 +127,7 @@ async fn materialize_page(
     }
 
     if let Some(offline) = app
-        .downloads
+        .reader
         .offline_page(chapter_id, page as usize)
         .await
         .map_err(|error| ApiError::Cache(anyhow::anyhow!(error.to_string())))?
@@ -152,15 +146,8 @@ async fn materialize_page(
     }
 
     let materialized = app
-        .page_materializer
-        .materialize_after_cache_miss(PageMaterializeRequest {
-            chapter_id,
-            page: page as usize,
-            comic_id,
-            image_path: None,
-            priority,
-            cancelled: None,
-        })
+        .reader
+        .materialize(chapter_id, page as usize, comic_id, priority)
         .await
         .map_err(ApiError::from)?;
     tracing::debug!(

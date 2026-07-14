@@ -23,9 +23,6 @@ pub enum JmError {
     #[error("Decoding failed: {0}")]
     Decode(String),
 
-    #[error("Crypto error: {0}")]
-    Crypto(String),
-
     #[error("Invalid payload: {0}")]
     Payload(String),
 

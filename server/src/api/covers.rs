@@ -1,97 +1,21 @@
-use crate::cache::cover_cache_key;
-use crate::endpoint::request_with_failover;
+use crate::application::CoverServiceError;
 use crate::http_error::HttpError;
-use crate::jm::invalidate_img_host;
-use crate::keyed_lock::KeyedLock;
 use crate::AppState;
 use axum::{
     extract::{Path, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
 };
-use once_cell::sync::Lazy;
-use std::sync::Arc;
-use tokio::sync::Semaphore;
-
-const COVER_FETCH_CONCURRENCY: usize = 6;
-
-static COVER_FETCH_LOCKS: Lazy<KeyedLock> = Lazy::new(KeyedLock::new);
-static COVER_FETCH_SEMAPHORE: Lazy<Arc<Semaphore>> =
-    Lazy::new(|| Arc::new(Semaphore::new(COVER_FETCH_CONCURRENCY)));
-
 pub async fn get_cover(
     State(app): State<AppState>,
     Path(comic_id): Path<String>,
 ) -> Result<Response, CoverError> {
     validate_comic_id(&comic_id)?;
-    let cache_key = cover_cache_key(&comic_id);
-
-    if let Some(cached) = app
-        .cache
-        .get_cover(&cache_key)
-        .await
-        .map_err(CoverError::Cache)?
-    {
-        return Ok(cover_response(cached));
-    }
-
-    let _guard = COVER_FETCH_LOCKS.lock(&cache_key).await;
-    materialize_cover(&app, &comic_id, &cache_key)
+    app.covers
+        .get_cover(&comic_id)
         .await
         .map(cover_response)
-}
-
-async fn materialize_cover(
-    app: &AppState,
-    comic_id: &str,
-    cache_key: &str,
-) -> Result<Vec<u8>, CoverError> {
-    if let Some(cached) = app
-        .cache
-        .get_cover(cache_key)
-        .await
-        .map_err(CoverError::Cache)?
-    {
-        return Ok(cached);
-    }
-
-    let _permit = COVER_FETCH_SEMAPHORE
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|error| CoverError::Internal(error.to_string()))?;
-    let data = download_cover(app, comic_id).await?;
-
-    app.cache
-        .put_cover(cache_key, &data)
-        .await
-        .map_err(CoverError::Cache)?;
-
-    Ok(data)
-}
-
-async fn download_cover(app: &AppState, comic_id: &str) -> crate::jm::JmResult<Vec<u8>> {
-    let (endpoint, img_host) =
-        request_with_failover(&app.jm, &app.endpoints, |client, endpoint| {
-            Box::pin(client.get_img_host(endpoint))
-        })
-        .await?;
-    let cover_url = format!("{img_host}/media/albums/{comic_id}_3x4.jpg");
-
-    match app.jm.download_image(&cover_url).await {
-        Ok(data) => Ok(data),
-        Err(error) if error.is_retryable() => {
-            invalidate_img_host(&endpoint).await;
-            let (_, refreshed_host) =
-                request_with_failover(&app.jm, &app.endpoints, |client, endpoint| {
-                    Box::pin(client.get_img_host(endpoint))
-                })
-                .await?;
-            let refreshed_url = format!("{refreshed_host}/media/albums/{comic_id}_3x4.jpg");
-            app.jm.download_image(&refreshed_url).await
-        }
-        Err(error) => Err(error),
-    }
+        .map_err(CoverError::from)
 }
 
 fn validate_comic_id(comic_id: &str) -> Result<(), CoverError> {
@@ -132,9 +56,13 @@ pub enum CoverError {
     Internal(String),
 }
 
-impl From<crate::jm::JmError> for CoverError {
-    fn from(error: crate::jm::JmError) -> Self {
-        Self::Jm(error)
+impl From<CoverServiceError> for CoverError {
+    fn from(error: CoverServiceError) -> Self {
+        match error {
+            CoverServiceError::Jm(error) => Self::Jm(error),
+            CoverServiceError::Cache(error) => Self::Cache(error),
+            CoverServiceError::Internal(message) => Self::Internal(message),
+        }
     }
 }
 

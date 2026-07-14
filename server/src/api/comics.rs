@@ -20,7 +20,8 @@ pub async fn get_comic_detail(
     Path(comic_id): Path<String>,
 ) -> JmResult<Json<ComicDetailResponse>> {
     let detail = app
-        .jm_request(move |client, endpoint| {
+        .comics
+        .request(move |client, endpoint| {
             let comic_id = comic_id.clone();
             Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
         })
@@ -67,7 +68,8 @@ pub async fn get_comments(
 ) -> JmResult<Json<ComicCommentsResult>> {
     let page = query.page.max(1);
     let payload: CommentListPayload = app
-        .jm_request(move |client, endpoint| {
+        .comics
+        .request(move |client, endpoint| {
             let comic_id = comic_id.clone();
             Box::pin(async move {
                 client
@@ -84,7 +86,7 @@ pub async fn get_comments(
             })
         })
         .await?;
-    let img_host = app.img_host().await;
+    let img_host = app.comics.img_host().await;
     Ok(Json(ComicCommentsResult {
         page,
         total: payload.total,
