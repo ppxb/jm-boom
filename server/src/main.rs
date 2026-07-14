@@ -1,5 +1,6 @@
 mod api;
 mod cache;
+mod domain;
 mod download;
 mod endpoint;
 mod expiring_cache;

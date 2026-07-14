@@ -1,11 +1,11 @@
 use crate::{
-    api::home::cover_url,
+    api::comic_dto::{map_comic_detail, ComicDetailResponse},
     jm::{
         serde_ext::{
             optional_string_from_any as optional_string_from_value,
             string_from_any as string_from_value, u32_from_any as u32_from_value,
         },
-        ComicDetail, JmResult,
+        JmResult,
     },
     AppState,
 };
@@ -18,18 +18,14 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub async fn get_comic_detail(
     State(app): State<AppState>,
     Path(comic_id): Path<String>,
-) -> JmResult<Json<ComicDetail>> {
-    let mut detail = app
+) -> JmResult<Json<ComicDetailResponse>> {
+    let detail = app
         .jm_request(move |client, endpoint| {
             let comic_id = comic_id.clone();
             Box::pin(async move { client.get_comic_detail(endpoint, &comic_id).await })
         })
         .await?;
-    detail.image = cover_url(&detail.id, &detail.image);
-    for related in &mut detail.related_list {
-        related.image = cover_url(&related.id, &related.image);
-    }
-    Ok(Json(detail))
+    Ok(Json(map_comic_detail(detail)))
 }
 
 #[derive(Deserialize)]

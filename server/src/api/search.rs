@@ -1,4 +1,4 @@
-use crate::{api::home::cover_url, jm::JmResult, AppState};
+use crate::{api::media::cover_url, domain::comic::ComicDetail, jm::JmResult, AppState};
 use axum::{
     extract::{Query, State},
     Json,
@@ -128,12 +128,12 @@ pub async fn search_comics(
     Ok(Json(search_response(page, total, items)))
 }
 
-fn search_comic_from_detail(detail: crate::jm::ComicDetail) -> SearchComic {
+fn search_comic_from_detail(detail: ComicDetail) -> SearchComic {
     SearchComic {
         image: cover_url(&detail.id, &detail.image),
         id: detail.id,
-        title: detail.name,
-        author: detail.author.join(" / "),
+        title: detail.title,
+        author: detail.authors.join(" / "),
         description: detail.description,
         tags: detail.tags,
         updated_at: None,

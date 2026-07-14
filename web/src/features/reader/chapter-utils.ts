@@ -1,4 +1,4 @@
-import type { ComicChapter } from '@/lib/api/comic'
+import type { ComicChapter } from '@/domain/comic'
 import { formatComicChapterTitle, sortComicChapters } from '@/lib/comic'
 import type { ReaderChapterItem } from './types'
 

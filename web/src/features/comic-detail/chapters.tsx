@@ -12,7 +12,7 @@ import {
   PaginationNext,
   PaginationPrevious
 } from '@/components/ui/pagination'
-import type { ComicChapter } from '@/lib/api/comic'
+import type { ComicChapter } from '@/domain/comic'
 import {
   SINGLE_CHAPTER_TITLE,
   formatComicChapterTitle,

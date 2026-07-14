@@ -1,8 +1,7 @@
-use super::{
-    client::JmClient, crypto, error::JmError, models::Chapter, signature::JmRequestSignature,
-    JmResult,
+use super::{client::JmClient, crypto, error::JmError, signature::JmRequestSignature, JmResult};
+use crate::{
+    domain::reader::ChapterManifest, expiring_cache::ExpiringCache, keyed_lock::KeyedLock,
 };
-use crate::{expiring_cache::ExpiringCache, keyed_lock::KeyedLock};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::time::Duration;
@@ -11,7 +10,7 @@ const JM_API_SECRET: &str = "185Hcomic3PAPP7R";
 const CHAPTER_CACHE_TTL: Duration = Duration::from_secs(20 * 60);
 const CHAPTER_CACHE_MAX_ENTRIES: usize = 256;
 
-static CHAPTER_CACHE: Lazy<ExpiringCache<Chapter>> =
+static CHAPTER_CACHE: Lazy<ExpiringCache<ChapterManifest>> =
     Lazy::new(|| ExpiringCache::new(CHAPTER_CACHE_TTL, CHAPTER_CACHE_MAX_ENTRIES));
 static CHAPTER_FETCH_LOCKS: Lazy<KeyedLock> = Lazy::new(KeyedLock::new);
 
@@ -54,7 +53,7 @@ struct ChapterDataFallback {
 
 impl JmClient {
     /// Get chapter manifest with page images
-    pub async fn get_chapter(&self, endpoint: &str, chapter_id: &str) -> JmResult<Chapter> {
+    pub async fn get_chapter(&self, endpoint: &str, chapter_id: &str) -> JmResult<ChapterManifest> {
         let cache_key = format!("{endpoint}|{chapter_id}");
         if let Some(chapter) = cached_chapter(&cache_key).await {
             return Ok(chapter);
@@ -70,7 +69,7 @@ impl JmClient {
         Ok(chapter)
     }
 
-    async fn fetch_chapter(&self, endpoint: &str, chapter_id: &str) -> JmResult<Chapter> {
+    async fn fetch_chapter(&self, endpoint: &str, chapter_id: &str) -> JmResult<ChapterManifest> {
         let signature = JmRequestSignature::new();
         let url = format!("{endpoint}/chapter");
         let host = extract_host(&url);
@@ -109,24 +108,22 @@ impl JmClient {
         let fallback: ChapterDataFallback = serde_json::from_str(&body)
             .map_err(|e| JmError::Decode(format!("Invalid chapter response: {e}")))?;
 
-        ensure_chapter_images(Chapter {
+        ensure_chapter_images(ChapterManifest {
             id: chapter_id.to_string(),
-            name: String::new(),
-            sort: String::new(),
             images: fallback.images,
         })
     }
 }
 
-async fn cached_chapter(cache_key: &str) -> Option<Chapter> {
+async fn cached_chapter(cache_key: &str) -> Option<ChapterManifest> {
     CHAPTER_CACHE.get(cache_key).await
 }
 
-async fn insert_cached_chapter(cache_key: &str, chapter: Chapter) {
+async fn insert_cached_chapter(cache_key: &str, chapter: ChapterManifest) {
     CHAPTER_CACHE.insert(cache_key, chapter).await;
 }
 
-fn ensure_chapter_images(chapter: Chapter) -> JmResult<Chapter> {
+fn ensure_chapter_images(chapter: ChapterManifest) -> JmResult<ChapterManifest> {
     if chapter.images.iter().any(|image| !image.trim().is_empty()) {
         Ok(chapter)
     } else {
@@ -134,7 +131,7 @@ fn ensure_chapter_images(chapter: Chapter) -> JmResult<Chapter> {
     }
 }
 
-fn decrypt_chapter_payload(body: &str, ts: &str, chapter_id: &str) -> JmResult<Chapter> {
+fn decrypt_chapter_payload(body: &str, ts: &str, chapter_id: &str) -> JmResult<ChapterManifest> {
     let envelope: ChapterResponse = serde_json::from_str(body)
         .map_err(|e| JmError::Decode(format!("Invalid envelope: {e}")))?;
 
@@ -160,14 +157,12 @@ fn decrypt_chapter_payload(body: &str, ts: &str, chapter_id: &str) -> JmResult<C
             let chapter_data: ChapterData = serde_json::from_str(&decrypted)
                 .map_err(|e| JmError::Decode(format!("Invalid decrypted data: {e}")))?;
 
-            Ok(Chapter {
+            Ok(ChapterManifest {
                 id: if chapter_data.id.is_empty() {
                     chapter_id.to_string()
                 } else {
                     chapter_data.id
                 },
-                name: String::new(),
-                sort: String::new(),
                 images: chapter_data.images,
             })
         }
@@ -176,14 +171,12 @@ fn decrypt_chapter_payload(body: &str, ts: &str, chapter_id: &str) -> JmResult<C
             let chapter_data: ChapterData = serde_json::from_value(value)
                 .map_err(|e| JmError::Decode(format!("Invalid payload: {e}")))?;
 
-            Ok(Chapter {
+            Ok(ChapterManifest {
                 id: if chapter_data.id.is_empty() {
                     chapter_id.to_string()
                 } else {
                     chapter_data.id
                 },
-                name: String::new(),
-                sort: String::new(),
                 images: chapter_data.images,
             })
         }

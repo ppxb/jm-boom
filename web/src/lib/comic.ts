@@ -1,4 +1,4 @@
-import type { ComicChapter, ComicDetail } from '@/lib/api/comic'
+import type { ComicChapter, ComicDetail } from '@/domain/comic'
 
 export const SINGLE_CHAPTER_TITLE = '单章'
 
@@ -30,6 +30,6 @@ export function getComicDisplayChapterCount(chapters: ComicChapter[]) {
 }
 
 export function resolveComicStartReadingId(comic: ComicDetail) {
-  const sortedChapters = sortComicChapters(comic.series)
+  const sortedChapters = sortComicChapters(comic.chapters)
   return sortedChapters[sortedChapters.length - 1]?.id ?? comic.id
 }

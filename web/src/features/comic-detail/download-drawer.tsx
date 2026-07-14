@@ -12,7 +12,7 @@ import {
   DrawerHeader,
   DrawerTitle
 } from '@/components/ui/drawer'
-import type { ComicChapter } from '@/lib/api/comic'
+import type { ComicChapter } from '@/domain/comic'
 import type { DownloadChapterRequest } from '@/lib/api/download'
 import { formatComicChapterTitle } from '@/lib/comic'
 

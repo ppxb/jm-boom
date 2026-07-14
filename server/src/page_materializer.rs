@@ -1,8 +1,9 @@
 use crate::{
     cache::{reader_page_cache_key, CachedReaderPage, ImageCache},
+    domain::reader::ChapterManifest,
     endpoint::{request_with_failover, EndpointManager},
     image_work::{ImageWorkBudget, ImageWorkPriority},
-    jm::{invalidate_img_host, Chapter, JmClient, JmError, JmResult},
+    jm::{invalidate_img_host, JmClient, JmError, JmResult},
     keyed_lock::KeyedLock,
     reader::{page_name_from_image, prepare_page_image},
 };
@@ -36,7 +37,7 @@ pub enum PageMaterializeError {
 type PageSourceFuture<'a, T> = Pin<Box<dyn Future<Output = JmResult<T>> + Send + 'a>>;
 
 trait PageSource: Send + Sync {
-    fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, Chapter>;
+    fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, ChapterManifest>;
 
     fn download_page_image<'a>(
         &'a self,
@@ -193,7 +194,7 @@ impl PageMaterializer {
 }
 
 impl PageSource for JmPageSource {
-    fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, Chapter> {
+    fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, ChapterManifest> {
         Box::pin(async move {
             let request_chapter_id = chapter_id.to_string();
             let (_, chapter) =
@@ -253,8 +254,9 @@ mod tests {
     };
     use crate::{
         cache::ImageCache,
+        domain::reader::ChapterManifest,
         image_work::{ImageWorkBudget, ImageWorkPriority},
-        jm::{Chapter, JmError},
+        jm::JmError,
         reader::PageImageFormat,
     };
     use sqlx::sqlite::SqlitePoolOptions;
@@ -316,12 +318,10 @@ mod tests {
     }
 
     impl PageSource for TestPageSource {
-        fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, Chapter> {
+        fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, ChapterManifest> {
             Box::pin(async move {
-                Ok(Chapter {
+                Ok(ChapterManifest {
                     id: chapter_id.to_string(),
-                    name: String::new(),
-                    sort: String::new(),
                     images: vec!["001.png".into(), "002.png".into()],
                 })
             })

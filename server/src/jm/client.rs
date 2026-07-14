@@ -1,4 +1,13 @@
-use super::{crypto, error::JmError, models::*, signature::JmRequestSignature, JmResult};
+use super::{
+    crypto,
+    error::JmError,
+    models::{
+        Comic, ComicDetailPayload, HomeSection, HomeSectionPayload, SearchPayload, SearchResult,
+    },
+    signature::JmRequestSignature,
+    JmResult,
+};
+use crate::domain::comic::{ComicChapter, ComicDetail, RelatedComic};
 use once_cell::sync::OnceCell;
 use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
@@ -78,22 +87,35 @@ impl JmClient {
 
         Ok(ComicDetail {
             id: payload.id,
-            name: payload.name,
+            title: payload.name,
             description: payload.description,
             image: payload.image,
-            author: payload.author,
+            authors: payload.author,
             tags: payload.tags,
             actors: payload.actors,
             works: payload.works,
             total_views: payload.total_views,
             likes: payload.likes,
-            comment_total: payload.comment_total,
-            related_list: payload
+            comment_count: payload.comment_total,
+            related_comics: payload
                 .related_list
                 .into_iter()
-                .map(RelatedComic::from)
+                .map(|related| RelatedComic {
+                    id: related.id,
+                    title: related.name,
+                    author: related.author,
+                    image: related.image,
+                })
                 .collect(),
-            series: payload.series.into_iter().map(Chapter::from).collect(),
+            chapters: payload
+                .series
+                .into_iter()
+                .map(|chapter| ComicChapter {
+                    id: chapter.id,
+                    title: chapter.name,
+                    sort: chapter.sort,
+                })
+                .collect(),
         })
     }
 

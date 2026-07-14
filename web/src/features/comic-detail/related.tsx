@@ -1,5 +1,5 @@
 import { ComicCard, ComicRail, ComicRailItem } from '@/components/comic'
-import type { RelatedComic } from '@/lib/api/comic'
+import type { RelatedComic } from '@/domain/comic'
 
 export function RelatedPanel({ items }: { items: RelatedComic[] }) {
   return (

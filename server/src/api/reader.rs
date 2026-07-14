@@ -215,7 +215,7 @@ fn should_expand_prewarm_window(priority: ImageWorkPriority) -> bool {
 }
 
 fn resolve_manifest_data(
-    chapter: crate::jm::JmResult<crate::jm::Chapter>,
+    chapter: crate::jm::JmResult<crate::domain::reader::ChapterManifest>,
     offline_manifest: Option<(String, Vec<String>)>,
 ) -> Result<(String, Vec<String>), ApiError> {
     match chapter {
@@ -290,10 +290,7 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::{resolve_manifest_data, should_expand_prewarm_window, ApiError};
-    use crate::{
-        image_work::ImageWorkPriority,
-        jm::{Chapter, JmError},
-    };
+    use crate::{domain::reader::ChapterManifest, image_work::ImageWorkPriority, jm::JmError};
 
     #[test]
     fn prefetch_requests_do_not_expand_the_server_prewarm_window() {
@@ -312,10 +309,8 @@ mod tests {
         assert_eq!(fallback, offline.expect("offline manifest tuple"));
 
         let upstream = resolve_manifest_data(
-            Ok(Chapter {
+            Ok(ChapterManifest {
                 id: "1001".into(),
-                name: String::new(),
-                sort: String::new(),
                 images: vec!["upstream-001.jpg".into()],
             }),
             Some(("1001".into(), vec!["offline-001.jpg".into()])),

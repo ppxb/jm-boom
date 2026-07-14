@@ -1,4 +1,5 @@
 use crate::{
+    api::media::cover_url,
     jm::{
         serde_ext::{string_from_any as string_from_value, u32_from_any as u32_from_value},
         JmResult,
@@ -524,14 +525,6 @@ fn map_feed_comic(item: ComicListPayload) -> FeedComic {
         description: item.description,
         tags,
         updated_at: item.updated_at,
-    }
-}
-
-pub(crate) fn cover_url(comic_id: &str, fallback: &str) -> String {
-    if !comic_id.is_empty() && comic_id.chars().all(|character| character.is_ascii_digit()) {
-        format!("/api/covers/{comic_id}")
-    } else {
-        fallback.to_string()
     }
 }
 

@@ -10,7 +10,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { BackTopButton } from '@/components/back-top-button'
 import { PageBackButton } from '@/components/page-back-button'
-import { getComicComments, getComicDetail, type ComicDetail } from '@/lib/api/comic'
+import type { ComicDetail } from '@/domain/comic'
+import { getComicComments, getComicDetail } from '@/lib/api/comic'
 import {
   SINGLE_CHAPTER_TITLE,
   resolveComicStartReadingId,
@@ -92,7 +93,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const startReadingId = useMemo(() => resolveComicStartReadingId(comic), [comic])
   const isCoverSettled = hideCovers || comic.image.length === 0 || settledCoverUrl === comic.image
   const downloadChapters = useMemo(() => {
-    const chapters = sortComicChapters(comic.series)
+    const chapters = sortComicChapters(comic.chapters)
 
     if (chapters.length === 0) {
       return [
@@ -105,7 +106,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     }
 
     return toDownloadChapterOptions(chapters)
-  }, [comic.id, comic.series])
+  }, [comic.chapters, comic.id])
 
   useEffect(() => {
     if (!isCoverSettled) {
@@ -143,7 +144,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     const favorited = toggleFavorite({
       id: comic.id,
       title: comic.title,
-      author: comic.author.join(' / '),
+      author: comic.authors.join(' / '),
       description: comic.description,
       image: comic.image,
       tags: comic.tags
@@ -189,7 +190,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     () => commentsQuery.data?.pages.flatMap(page => page.comments) ?? [],
     [commentsQuery.data]
   )
-  const commentTotal = commentsQuery.data?.pages[0]?.total ?? comic.commentTotal
+  const commentTotal = commentsQuery.data?.pages[0]?.total ?? comic.commentCount
 
   function handleDownloadClick() {
     if (downloadChapters.length <= 1) {
@@ -212,9 +213,9 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         downloadBusy={downloadMutation.isPending}
       />
 
-      <ChaptersSection albumId={albumId} comicId={comic.id} chapters={comic.series} />
+      <ChaptersSection albumId={albumId} comicId={comic.id} chapters={comic.chapters} />
 
-      <RelatedPanel items={comic.relatedList} />
+      <RelatedPanel items={comic.relatedComics} />
 
       <CommentsDrawer
         open={isCommentsOpen}

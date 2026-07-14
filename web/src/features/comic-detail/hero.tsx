@@ -15,7 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import type { ComicDetail } from '@/lib/api/comic'
+import type { ComicDetail } from '@/domain/comic'
 import { getComicDisplayChapterCount, resolveComicStartReadingId } from '@/lib/comic'
 import { formatNumber } from '@/lib/format'
 import { ComicCover } from './shared'
@@ -59,7 +59,7 @@ export function ComicHero({
           </h1>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <UserRoundIcon className="size-4" />
-            <SearchLinks items={comic.author} fallback="N/A" className="min-w-0" />
+            <SearchLinks items={comic.authors} fallback="N/A" className="min-w-0" />
           </div>
         </div>
 
@@ -121,14 +121,14 @@ function StatsRow({ comic, onCommentsClick }: { comic: ComicDetail; onCommentsCl
     {
       id: 'comments',
       label: '评论',
-      value: formatNumber(comic.commentTotal),
+      value: formatNumber(comic.commentCount),
       icon: MessageCircleIcon,
       onClick: onCommentsClick
     },
     {
       id: 'chapters',
       label: '章节',
-      value: formatNumber(getComicDisplayChapterCount(comic.series)),
+      value: formatNumber(getComicDisplayChapterCount(comic.chapters)),
       icon: LayersIcon
     }
   ]

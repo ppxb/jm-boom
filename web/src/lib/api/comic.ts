@@ -1,36 +1,37 @@
 import { apiClient } from './client'
+import type { ComicDetail } from '@/domain/comic'
 
-export type RelatedComic = {
+export type ComicDetailResult = {
+  comic: ComicDetail
+}
+
+type ComicDetailResponse = {
+  id: string
+  title: string
+  description: string
+  image: string
+  authors: string[]
+  tags: string[]
+  actors: string[]
+  works: string[]
+  totalViews: number
+  likes: number
+  commentCount: number
+  relatedComics: RelatedComicResponse[]
+  chapters: ComicChapterResponse[]
+}
+
+type RelatedComicResponse = {
   id: string
   title: string
   author: string
   image: string
 }
 
-export type ComicChapter = {
+type ComicChapterResponse = {
   id: string
   title: string
   sort: string
-}
-
-export type ComicDetail = {
-  id: string
-  title: string
-  author: string[]
-  description: string
-  totalViews: number
-  likes: number
-  commentTotal: number
-  tags: string[]
-  actors: string[]
-  works: string[]
-  relatedList: RelatedComic[]
-  series: ComicChapter[]
-  image: string
-}
-
-export type ComicDetailResult = {
-  comic: ComicDetail
 }
 
 export type ComicComment = {
@@ -56,56 +57,10 @@ export type ComicCommentsResult = {
 }
 
 export async function getComicDetail(comicId: string): Promise<ComicDetailResult> {
-  const result = await apiClient.get<{
-    id: string
-    name: string
-    author: string[]
-    description: string
-    tags: string[]
-    actors: string[]
-    works: string[]
-    total_views: number
-    likes: number
-    comment_total: number
-    related_list: Array<{
-      id: string
-      name: string
-      author: string
-      image: string
-    }>
-    series: Array<{
-      id: string
-      name: string
-      sort: string
-    }>
-    image: string
-  }>(`/api/comics/${comicId}`)
+  const response = await apiClient.get<ComicDetailResponse>(`/api/comics/${comicId}`)
 
   return {
-    comic: {
-      id: result.id,
-      title: result.name,
-      author: normalizeTextList(result.author),
-      description: result.description,
-      totalViews: result.total_views,
-      likes: result.likes,
-      commentTotal: result.comment_total,
-      tags: normalizeTextList(result.tags),
-      actors: normalizeTextList(result.actors),
-      works: normalizeTextList(result.works),
-      relatedList: result.related_list.map(r => ({
-        id: r.id,
-        title: r.name,
-        author: r.author,
-        image: r.image
-      })),
-      series: result.series.map(s => ({
-        id: s.id,
-        title: s.name,
-        sort: s.sort
-      })),
-      image: result.image
-    }
+    comic: mapComicDetail(response)
   }
 }
 
@@ -119,20 +74,29 @@ export async function getComicComments({
   return apiClient.get(`/api/comics/${comicId}/comments`, { page })
 }
 
-function normalizeTextList(items: string[]) {
-  const seen = new Set<string>()
-  const normalizedItems: string[] = []
-
-  for (const item of items) {
-    const normalized = item.trim()
-
-    if (normalized.length === 0 || seen.has(normalized)) {
-      continue
-    }
-
-    seen.add(normalized)
-    normalizedItems.push(normalized)
+function mapComicDetail(response: ComicDetailResponse): ComicDetail {
+  return {
+    id: response.id,
+    title: response.title,
+    description: response.description,
+    image: response.image,
+    authors: response.authors,
+    tags: response.tags,
+    actors: response.actors,
+    works: response.works,
+    totalViews: response.totalViews,
+    likes: response.likes,
+    commentCount: response.commentCount,
+    relatedComics: response.relatedComics.map(related => ({
+      id: related.id,
+      title: related.title,
+      author: related.author,
+      image: related.image
+    })),
+    chapters: response.chapters.map(chapter => ({
+      id: chapter.id,
+      title: chapter.title,
+      sort: chapter.sort
+    }))
   }
-
-  return normalizedItems
 }

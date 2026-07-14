@@ -26,7 +26,7 @@ export function useReaderChapterInfo({
     refetchOnMount: false,
     refetchOnWindowFocus: false
   })
-  const chapters = albumDetail.data?.comic.series
+  const chapters = albumDetail.data?.comic.chapters
   const chapterInfo = useMemo(
     () =>
       resolveReaderChapterInfo({
@@ -36,11 +36,11 @@ export function useReaderChapterInfo({
     [chapters, comicId]
   )
   const title = safeTrim(albumDetail.data?.comic.title)
-  const author = albumDetail.data?.comic.author.join(' / ') ?? ''
+  const author = albumDetail.data?.comic.authors.join(' / ') ?? ''
   const coverUrl = albumDetail.data?.comic.image ?? ''
   const chapterTitle =
     chapterInfo.chapterTitle ||
-    (albumDetail.data?.comic.series.length === 0 ? SINGLE_CHAPTER_TITLE : '')
+    (albumDetail.data?.comic.chapters.length === 0 ? SINGLE_CHAPTER_TITLE : '')
 
   return {
     albumId,

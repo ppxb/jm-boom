@@ -5,10 +5,12 @@ use axum::{
 };
 
 mod auth;
+mod comic_dto;
 mod comics;
 mod covers;
 mod downloads;
 mod home;
+mod media;
 mod reader;
 mod search;
 mod settings;
