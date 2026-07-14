@@ -64,6 +64,7 @@ where
         .as_u64()
         .map(|value| value as u32)
         .or_else(|| value.as_str()?.parse().ok())
+        .or_else(|| value.as_bool().map(u32::from))
         .unwrap_or_default())
 }
 

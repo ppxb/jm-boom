@@ -156,3 +156,26 @@ fn search_response(page: u32, total: u32, items: Vec<SearchComic>) -> SearchResp
 fn is_comic_id(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|character| character.is_ascii_digit())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::search_response;
+
+    #[test]
+    fn serializes_empty_search_response_contract() {
+        let body = serde_json::to_value(search_response(1, 0, Vec::new()))
+            .expect("serialize empty search response");
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "paging": {
+                    "page": 1,
+                    "pages": 0,
+                    "total": 0,
+                    "hasReachedMax": true
+                },
+                "items": []
+            })
+        );
+    }
+}

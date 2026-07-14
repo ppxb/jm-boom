@@ -37,3 +37,26 @@ impl IntoResponse for DownloadError {
         HttpError::new(status, self.to_string(), retryable).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DownloadError;
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+
+    #[tokio::test]
+    async fn serializes_not_found_error_contract() {
+        let response = DownloadError::NotFound.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read download error response body");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body)
+                .expect("parse download error response"),
+            serde_json::json!({
+                "error": "Download task not found",
+                "retryable": false
+            })
+        );
+    }
+}

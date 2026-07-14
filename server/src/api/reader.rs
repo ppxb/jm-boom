@@ -328,4 +328,23 @@ mod tests {
             Err(ApiError::Jm(JmError::Empty))
         ));
     }
+
+    #[tokio::test]
+    async fn serializes_reader_not_found_error_contract() {
+        use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+
+        let response = ApiError::NotFound("Page index out of range".into()).into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read reader error response body");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body)
+                .expect("parse reader error response"),
+            serde_json::json!({
+                "error": "Page index out of range",
+                "retryable": false
+            })
+        );
+    }
 }

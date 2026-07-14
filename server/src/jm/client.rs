@@ -2,9 +2,9 @@ use super::{crypto, error::JmError, models::*, signature::JmRequestSignature, Jm
 use once_cell::sync::OnceCell;
 use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
-use std::{sync::Mutex, time::Duration};
+use std::time::Duration;
 
-static HTTP_CLIENT: OnceCell<Mutex<Option<Client>>> = OnceCell::new();
+static HTTP_CLIENT: OnceCell<Client> = OnceCell::new();
 
 const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230305.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 Mobile Safari/537.36";
 
@@ -160,23 +160,14 @@ mod tests {
 // Internal helpers
 
 fn get_or_create_client() -> JmResult<Client> {
-    let client_cell = HTTP_CLIENT.get_or_init(|| Mutex::new(None));
-    let mut guard = client_cell
-        .lock()
-        .map_err(|e| JmError::Other(format!("Lock error: {e}")))?;
-
-    if let Some(client) = guard.as_ref() {
-        return Ok(client.clone());
-    }
-
-    let client = Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| JmError::Other(format!("Failed to create HTTP client: {e}")))?;
-
-    *guard = Some(client.clone());
-    Ok(client)
+    let client = HTTP_CLIENT.get_or_try_init(|| {
+        Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| JmError::Other(format!("Failed to create HTTP client: {e}")))
+    })?;
+    Ok(client.clone())
 }
 
 trait RequestBuilderExt {
