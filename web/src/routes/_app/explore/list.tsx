@@ -27,8 +27,6 @@ type HomeSectionListSearch = {
   page: number
   sectionId: string
   title: string
-  slug: string
-  type: string
   filterValue: string
   rankTag: string
   category: string
@@ -46,8 +44,6 @@ export const Route = createFileRoute('/_app/explore/list')({
       page: parsePositivePage(search.page),
       sectionId: parseStringSearch(search.sectionId),
       title: parseStringSearch(search.title),
-      slug: parseStringSearch(search.slug),
-      type: parseStringSearch(search.type),
       filterValue: parseStringSearch(search.filterValue),
       rankTag,
       category: parseListCategory(mode, rankTag, search.category),
@@ -70,8 +66,6 @@ function HomeSectionListPage() {
         page: search.page,
         sectionId: search.sectionId,
         sectionTitle: search.title,
-        slug: search.slug,
-        type: search.type,
         filterValue: search.filterValue,
         category:
           search.mode === 'ranking'

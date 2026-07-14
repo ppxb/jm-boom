@@ -23,7 +23,7 @@ function BookshelfPage() {
   const clear = useReadingHistoryStore(state => state.clear)
 
   const sortedItems = useMemo(
-    () => [...items].sort((left, right) => right.updatedAt - left.updatedAt),
+    () => [...items].sort((left, right) => right.lastReadAt - left.lastReadAt),
     [items]
   )
 
@@ -131,17 +131,17 @@ function BookshelfPage() {
             const progress = (item.pageIndex + 1) / item.pageCount
             return (
               <ComicCard
-                key={item.comicId}
+                key={item.id}
                 comic={{
-                  id: item.comicId,
+                  id: item.id,
                   title: item.title,
-                  image: item.coverUrl?.trim() ?? ''
+                  image: item.image.trim()
                 }}
                 ratio="square"
                 showIdBadge
                 progress={progress}
                 selectable={selection.isSelecting}
-                selected={selection.selectedComicIds.has(item.comicId)}
+                selected={selection.selectedComicIds.has(item.id)}
                 onSelect={selection.toggleSelectItem}
                 linkProps={
                   !selection.isSelecting
@@ -149,7 +149,7 @@ function BookshelfPage() {
                         to: '/reader/$comicId',
                         params: { comicId: item.chapterId },
                         search: {
-                          albumId: item.albumId,
+                          albumId: item.id,
                           page: item.pageIndex + 1
                         }
                       }
@@ -161,7 +161,7 @@ function BookshelfPage() {
                       {item.chapterTitle}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {item.pageIndex + 1}/{item.pageCount} • {formatDate(item.updatedAt)}
+                      {item.pageIndex + 1}/{item.pageCount} • {formatDate(item.lastReadAt)}
                     </p>
                   </>
                 }

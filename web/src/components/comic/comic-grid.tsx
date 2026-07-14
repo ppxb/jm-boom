@@ -1,7 +1,7 @@
-import type { FeedComic } from '@/lib/api/home'
+import type { ComicSummary } from '@/domain/comic'
 import { ComicCard } from './comic-card'
 
-export function ComicGrid({ items }: { items: FeedComic[] }) {
+export function ComicGrid({ items }: { items: ComicSummary[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
       {items.map(item => (

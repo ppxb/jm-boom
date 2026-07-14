@@ -1,24 +1,14 @@
 import { apiClient } from './client'
-
-export type FeedComic = {
-  id: string
-  title: string
-  author: string
-  description: string
-  image: string
-  tags: string[]
-  updatedAt?: number | null
-}
+import { mapComicSummary, type ComicSummaryResponse } from './comic-summary'
+import type { ComicSummary } from '@/domain/comic'
 
 export type HomeFeedSection = {
   id: string
   title: string
-  slug: string
-  type: string
   filterValue: string
   listMode: HomeSectionListMode | null
   rankTag: string
-  items: FeedComic[]
+  items: ComicSummary[]
 }
 
 export type HomeSectionListMode = 'promote' | 'weekly' | 'latest' | 'ranking'
@@ -28,8 +18,6 @@ export type HomeSectionListParams = {
   page?: number
   sectionId?: string | null
   sectionTitle?: string | null
-  slug?: string | null
-  type?: string | null
   filterValue?: string | null
   category?: string | null
   week?: string | null
@@ -43,7 +31,7 @@ export type HomeSectionListResult = {
   total: number
   hasMore: boolean
   title: string
-  items: FeedComic[]
+  items: ComicSummary[]
 }
 
 export type HomeFeedResult = {
@@ -78,11 +66,29 @@ export type WeekItemsParams = {
 export type WeekItemsResult = {
   page: number
   total: number
-  items: FeedComic[]
+  items: ComicSummary[]
+}
+
+type HomeFeedResponse = {
+  sections: Array<Omit<HomeFeedSection, 'items'> & { items: ComicSummaryResponse[] }>
+}
+
+type HomeSectionListResponse = Omit<HomeSectionListResult, 'items'> & {
+  items: ComicSummaryResponse[]
+}
+
+type WeekItemsResponse = Omit<WeekItemsResult, 'items'> & {
+  items: ComicSummaryResponse[]
 }
 
 export async function getHomeFeed(): Promise<HomeFeedResult> {
-  return apiClient.get('/api/home/feed')
+  const response = await apiClient.get<HomeFeedResponse>('/api/home/feed')
+  return {
+    sections: response.sections.map(section => ({
+      ...section,
+      items: section.items.map(mapComicSummary)
+    }))
+  }
 }
 
 export async function getWeekFilters(): Promise<WeekFiltersResult> {
@@ -94,7 +100,12 @@ export async function getWeekItems({
   categoryId,
   typeId
 }: WeekItemsParams): Promise<WeekItemsResult> {
-  return apiClient.get('/api/home/weekly/items', { page, categoryId, typeId })
+  const response = await apiClient.get<WeekItemsResponse>('/api/home/weekly/items', {
+    page,
+    categoryId,
+    typeId
+  })
+  return { ...response, items: response.items.map(mapComicSummary) }
 }
 
 export async function getHomeSectionList({
@@ -102,23 +113,20 @@ export async function getHomeSectionList({
   page = 1,
   sectionId = null,
   sectionTitle = null,
-  slug = null,
-  type = null,
   filterValue = null,
   category = null,
   week = null,
   order = null
 }: HomeSectionListParams): Promise<HomeSectionListResult> {
-  return apiClient.get('/api/home/sections', {
+  const response = await apiClient.get<HomeSectionListResponse>('/api/home/sections', {
     mode,
     page,
     sectionId,
     sectionTitle,
-    slug,
-    type,
     filterValue,
     category,
     week,
     order
   })
+  return { ...response, items: response.items.map(mapComicSummary) }
 }

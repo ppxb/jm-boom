@@ -67,8 +67,6 @@ function SectionHeader({ section }: { section: HomeFeedSection }) {
               page: 1,
               sectionId: section.id,
               title: section.title,
-              slug: section.slug,
-              type: section.type,
               filterValue: section.filterValue,
               rankTag,
               category: mode === 'ranking' ? defaultRankingCategory(rankTag) : 'all',

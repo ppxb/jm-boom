@@ -1,4 +1,6 @@
-use crate::{api::media::cover_url, domain::comic::ComicDetail, jm::JmResult, AppState};
+use crate::{
+    api::comic_summary::ComicSummaryResponse, domain::comic::ComicDetail, jm::JmResult, AppState,
+};
 use axum::{
     extract::{Query, State},
     Json,
@@ -21,7 +23,7 @@ pub struct SearchQuery {
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
     paging: SearchPaging,
-    items: Vec<SearchComic>,
+    items: Vec<ComicSummaryResponse>,
 }
 
 #[derive(Serialize)]
@@ -31,18 +33,6 @@ struct SearchPaging {
     pages: u32,
     total: u32,
     has_reached_max: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchComic {
-    id: String,
-    title: String,
-    author: String,
-    description: String,
-    image: String,
-    tags: Vec<String>,
-    updated_at: Option<i64>,
 }
 
 fn default_page() -> u32 {
@@ -115,32 +105,32 @@ pub async fn search_comics(
     let items = result
         .content
         .into_iter()
-        .map(|comic| SearchComic {
-            image: cover_url(&comic.id, &comic.image),
-            id: comic.id,
-            title: comic.name,
-            author: comic.author,
-            description: comic.description,
-            tags: comic.tags,
-            updated_at: None,
+        .map(|comic| {
+            ComicSummaryResponse::new(
+                comic.id,
+                comic.name,
+                comic.author,
+                comic.description,
+                comic.image,
+                comic.tags,
+            )
         })
         .collect();
     Ok(Json(search_response(page, total, items)))
 }
 
-fn search_comic_from_detail(detail: ComicDetail) -> SearchComic {
-    SearchComic {
-        image: cover_url(&detail.id, &detail.image),
-        id: detail.id,
-        title: detail.title,
-        author: detail.authors.join(" / "),
-        description: detail.description,
-        tags: detail.tags,
-        updated_at: None,
-    }
+fn search_comic_from_detail(detail: ComicDetail) -> ComicSummaryResponse {
+    ComicSummaryResponse::new(
+        detail.id,
+        detail.title,
+        detail.authors.join(" / "),
+        detail.description,
+        detail.image,
+        detail.tags,
+    )
 }
 
-fn search_response(page: u32, total: u32, items: Vec<SearchComic>) -> SearchResponse {
+fn search_response(page: u32, total: u32, items: Vec<ComicSummaryResponse>) -> SearchResponse {
     let pages = total.div_ceil(SEARCH_PAGE_SIZE);
     SearchResponse {
         paging: SearchPaging {

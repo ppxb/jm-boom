@@ -1,4 +1,6 @@
 import { apiClient } from './client'
+import { mapComicSummary, type ComicSummaryResponse } from './comic-summary'
+import type { ComicSummary } from '@/domain/comic'
 
 export type PagingInfo = {
   page: number
@@ -7,25 +9,19 @@ export type PagingInfo = {
   hasReachedMax: boolean
 }
 
-export type SearchComicItem = {
-  id: string
-  title: string
-  author: string
-  description: string
-  image: string
-  tags: string[]
-  updatedAt: number | null
-}
-
 export type SearchResult = {
   paging: PagingInfo
-  items: SearchComicItem[]
+  items: ComicSummary[]
 }
 
 export type SearchComicParams = {
   keyword: string
   page?: number
   sortBy?: number
+}
+
+type SearchResponse = Omit<SearchResult, 'items'> & {
+  items: ComicSummaryResponse[]
 }
 
 export async function searchComic({
@@ -47,9 +43,10 @@ export async function searchComic({
     }
   }
 
-  return apiClient.get<SearchResult>('/api/search', {
+  const response = await apiClient.get<SearchResponse>('/api/search', {
     keyword: normalizedKeyword,
     page,
     sortBy
   })
+  return { ...response, items: response.items.map(mapComicSummary) }
 }

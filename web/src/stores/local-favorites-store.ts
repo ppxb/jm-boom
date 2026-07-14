@@ -1,19 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type LocalFavoriteItem = {
-  id: string
-  title: string
-  author: string
-  description: string
-  image: string
-  tags: string[]
-  updatedAt: number
+import type { ComicSummary } from '@/domain/comic'
+
+export type LocalFavoriteItem = ComicSummary & {
+  favoritedAt: number
 }
 
 type LocalFavoritesState = {
   items: LocalFavoriteItem[]
-  toggle: (item: Omit<LocalFavoriteItem, 'updatedAt'>) => boolean
+  toggle: (comic: ComicSummary) => boolean
   remove: (comicId: string) => void
   clear: () => void
 }
@@ -22,17 +18,17 @@ export const useLocalFavoritesStore = create<LocalFavoritesState>()(
   persist(
     set => ({
       items: [],
-      toggle: item => {
+      toggle: comic => {
         let favorited = false
 
         set(state => {
-          const exists = state.items.some(entry => entry.id === item.id)
+          const exists = state.items.some(entry => entry.id === comic.id)
           favorited = !exists
 
           return {
             items: exists
-              ? state.items.filter(entry => entry.id !== item.id)
-              : [{ ...item, updatedAt: Date.now() }, ...state.items]
+              ? state.items.filter(entry => entry.id !== comic.id)
+              : [{ ...comic, favoritedAt: Date.now() }, ...state.items]
           }
         })
 
@@ -44,7 +40,7 @@ export const useLocalFavoritesStore = create<LocalFavoritesState>()(
       clear: () => set({ items: [] })
     }),
     {
-      name: 'jm-boom-local-favorites'
+      name: 'jm-boom-local-favorites-v2'
     }
   )
 )

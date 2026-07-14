@@ -31,11 +31,10 @@ export function useReaderHistorySync({
     () =>
       comicId && pageCount > 0
         ? {
-            comicId: albumId || comicId,
-            albumId,
+            id: albumId || comicId,
             title: title || `JM ${albumId || comicId}`,
             author,
-            coverUrl,
+            image: coverUrl,
             chapterId: comicId,
             chapterTitle: chapter || READER.DEFAULT_CHAPTER_TITLE,
             pageIndex: currentIndex,

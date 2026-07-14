@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { searchComic, type SearchComicItem } from '@/lib/api/search'
+import type { ComicSummary } from '@/domain/comic'
+import { searchComic } from '@/lib/api/search'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -183,7 +184,7 @@ function SearchContent({
   keyword: string
   isError: boolean
   isLoading: boolean
-  items: SearchComicItem[]
+  items: ComicSummary[]
   page: number
   hasMore: boolean
   disabled: boolean

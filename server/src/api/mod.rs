@@ -6,6 +6,7 @@ use axum::{
 
 mod auth;
 mod comic_dto;
+mod comic_summary;
 mod comics;
 mod covers;
 mod downloads;

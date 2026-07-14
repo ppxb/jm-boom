@@ -1,5 +1,5 @@
 use crate::{
-    api::media::cover_url,
+    api::comic_summary::ComicSummaryResponse,
     jm::{
         serde_ext::{string_from_any as string_from_value, u32_from_any as u32_from_value},
         JmResult,
@@ -10,7 +10,7 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 const PAGE_SIZE: usize = 20;
 const PROMOTE_PAGE_SIZE: usize = 27;
@@ -26,13 +26,10 @@ pub struct HomeFeedResult {
 pub struct HomeFeedSection {
     id: String,
     title: String,
-    slug: String,
-    #[serde(rename = "type")]
-    section_type: String,
     filter_value: String,
     list_mode: Option<HomeSectionMode>,
     rank_tag: String,
-    items: Vec<FeedComic>,
+    items: Vec<ComicSummaryResponse>,
 }
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -53,7 +50,7 @@ pub struct HomeSectionListResult {
     total: u32,
     has_more: bool,
     title: String,
-    items: Vec<FeedComic>,
+    items: Vec<ComicSummaryResponse>,
 }
 
 #[derive(Serialize)]
@@ -84,19 +81,7 @@ pub struct WeekType {
 pub struct WeekItemsResult {
     page: u32,
     total: u32,
-    items: Vec<FeedComic>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct FeedComic {
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) author: String,
-    pub(crate) description: String,
-    pub(crate) image: String,
-    pub(crate) tags: Vec<String>,
-    pub(crate) updated_at: Option<i64>,
+    items: Vec<ComicSummaryResponse>,
 }
 
 #[derive(Deserialize)]
@@ -146,8 +131,6 @@ pub async fn get_home_feed(State(app): State<AppState>) -> JmResult<Json<HomeFee
             HomeFeedSection {
                 id: section.id,
                 title: section.title,
-                slug: section.slug,
-                section_type: section.section_type,
                 filter_value: section.filter_val,
                 list_mode,
                 rank_tag,
@@ -155,14 +138,15 @@ pub async fn get_home_feed(State(app): State<AppState>) -> JmResult<Json<HomeFee
                     .content
                     .into_iter()
                     .take(8)
-                    .map(|comic| FeedComic {
-                        image: cover_url(&comic.id, &comic.image),
-                        id: comic.id,
-                        title: comic.name,
-                        author: comic.author,
-                        description: comic.description,
-                        tags: comic.tags,
-                        updated_at: None,
+                    .map(|comic| {
+                        ComicSummaryResponse::new(
+                            comic.id,
+                            comic.name,
+                            comic.author,
+                            comic.description,
+                            comic.image,
+                            comic.tags,
+                        )
                     })
                     .collect(),
             }
@@ -491,12 +475,6 @@ struct ComicListPayload {
     category: Option<CategoryTag>,
     #[serde(default, rename = "category_sub")]
     category_sub: Option<CategoryTag>,
-    #[serde(
-        default,
-        deserialize_with = "optional_i64_from_value",
-        rename = "update_at"
-    )]
-    updated_at: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -505,7 +483,7 @@ struct CategoryTag {
     title: String,
 }
 
-fn map_feed_comic(item: ComicListPayload) -> FeedComic {
+fn map_feed_comic(item: ComicListPayload) -> ComicSummaryResponse {
     let mut tags = Vec::new();
     for title in [item.category, item.category_sub]
         .into_iter()
@@ -517,15 +495,14 @@ fn map_feed_comic(item: ComicListPayload) -> FeedComic {
             tags.push(title);
         }
     }
-    FeedComic {
-        image: cover_url(&item.id, &item.image),
-        id: item.id,
-        title: item.name,
-        author: item.author,
-        description: item.description,
+    ComicSummaryResponse::new(
+        item.id,
+        item.name,
+        item.author,
+        item.description,
+        item.image,
         tags,
-        updated_at: item.updated_at,
-    }
+    )
 }
 
 fn resolve_list_mode(
@@ -582,17 +559,9 @@ fn current_china_weekday() -> u32 {
     }
 }
 
-fn optional_i64_from_value<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(value.as_i64().or_else(|| value.as_str()?.parse().ok()))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::cover_url;
+    use crate::api::media::cover_url;
 
     #[test]
     fn proxies_numeric_cover_ids() {

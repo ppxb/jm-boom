@@ -19,7 +19,7 @@ function FavoritesPage() {
   const items = useLocalFavoritesStore(state => state.items)
   const clear = useLocalFavoritesStore(state => state.clear)
   const sortedItems = useMemo(
-    () => [...items].sort((left, right) => right.updatedAt - left.updatedAt),
+    () => [...items].sort((left, right) => right.favoritedAt - left.favoritedAt),
     [items]
   )
 

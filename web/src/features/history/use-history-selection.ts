@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 
 export interface HistoryItem {
-  comicId: string
-  title: string
-  coverUrl?: string
+  id: string
   pageIndex: number
   pageCount: number
-  updatedAt: number
+  lastReadAt: number
 }
 
 export interface HistorySelection {
@@ -28,7 +26,7 @@ export function useHistorySelection(items: HistoryItem[]): HistorySelection {
 
   // Sync selection state when items change
   useEffect(() => {
-    const availableComicIds = new Set(items.map(item => item.comicId))
+    const availableComicIds = new Set(items.map(item => item.id))
 
     setSelectedComicIds(current => {
       const next = new Set([...current].filter(comicId => availableComicIds.has(comicId)))
@@ -52,7 +50,7 @@ export function useHistorySelection(items: HistoryItem[]): HistorySelection {
     if (allSelected) {
       setSelectedComicIds(new Set())
     } else {
-      setSelectedComicIds(new Set(items.map(item => item.comicId)))
+      setSelectedComicIds(new Set(items.map(item => item.id)))
     }
   }
 

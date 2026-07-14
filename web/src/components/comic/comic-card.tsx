@@ -4,17 +4,12 @@ import { OverflowTooltip } from '@/components/overflow-tooltip'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
+import type { ComicCardSummary } from '@/domain/comic'
 import { cn } from '@/lib/utils'
 import { ComicCover } from './comic-cover'
 
-type BaseComic = {
-  id: string
-  title: string
-  image: string
-}
-
-type ComicCardProps<T extends BaseComic> = {
-  comic: T
+type ComicCardProps = {
+  comic: ComicCardSummary
   ratio?: 'portrait' | 'square'
   showIdBadge?: boolean
   metadata?: React.ReactNode
@@ -32,7 +27,7 @@ type ComicCardProps<T extends BaseComic> = {
   className?: string
 }
 
-export function ComicCard<T extends BaseComic>({
+export function ComicCard({
   comic,
   ratio = 'portrait',
   showIdBadge = false,
@@ -45,7 +40,7 @@ export function ComicCard<T extends BaseComic>({
   onOpen,
   linkProps,
   className
-}: ComicCardProps<T>) {
+}: ComicCardProps) {
   const card = (
     <Card
       size="sm"
