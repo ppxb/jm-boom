@@ -2,10 +2,10 @@ use crate::{
     cache::{reader_page_cache_key, CachedReaderPage, ImageCache},
     domain::reader::ChapterManifest,
     endpoint::{request_with_failover, EndpointManager},
-    image_work::{ImageWorkBudget, ImageWorkPriority},
+    image_work::{ImageWorkBudget, ImageWorkPermit, ImageWorkPriority},
     jm::{invalidate_img_host, JmClient, JmError, JmResult},
     keyed_lock::KeyedLock,
-    reader::{page_name_from_image, prepare_page_image},
+    reader::{needs_decoding, page_name_from_image, prepare_page_image, PageImageFormat},
 };
 use once_cell::sync::Lazy;
 use std::{future::Future, pin::Pin, sync::Arc};
@@ -138,23 +138,6 @@ impl PageMaterializer {
             return Ok(cached);
         }
 
-        let _work_permit = match request.cancelled.as_mut() {
-            Some(cancelled) => {
-                tokio::select! {
-                    permit = self.image_work.acquire(request.priority) => permit,
-                    _ = wait_for_cancel(cancelled) => return Err(PageMaterializeError::Cancelled),
-                }
-            }
-            None => self.image_work.acquire(request.priority).await,
-        };
-        if request
-            .cancelled
-            .as_ref()
-            .is_some_and(|cancelled| *cancelled.borrow())
-        {
-            return Err(PageMaterializeError::Cancelled);
-        }
-
         let owned_image_path;
         let image_path = match request.image_path {
             Some(image_path) => image_path,
@@ -168,13 +151,67 @@ impl PageMaterializer {
                 &owned_image_path
             }
         };
+        if request
+            .cancelled
+            .as_ref()
+            .is_some_and(|cancelled| *cancelled.borrow())
+        {
+            return Err(PageMaterializeError::Cancelled);
+        }
+
+        let page_name = page_name_from_image(image_path);
+        let mut decode_permit =
+            if likely_requires_decoding(request.comic_id, &page_name, image_path) {
+                Some(
+                    self.acquire_decode_permit(request.priority, request.cancelled.as_mut())
+                        .await?,
+                )
+            } else {
+                None
+            };
+        let mut network_permit = Some(
+            self.acquire_network_permit(request.priority, request.cancelled.as_mut())
+                .await?,
+        );
+        if request
+            .cancelled
+            .as_ref()
+            .is_some_and(|cancelled| *cancelled.borrow())
+        {
+            return Err(PageMaterializeError::Cancelled);
+        }
 
         let image_data = self
             .source
             .download_page_image(request.chapter_id, image_path)
             .await?;
-        let page_name = page_name_from_image(image_path);
+        if request
+            .cancelled
+            .as_ref()
+            .is_some_and(|cancelled| *cancelled.borrow())
+        {
+            return Err(PageMaterializeError::Cancelled);
+        }
+        let format = PageImageFormat::detect(&image_data)?;
+        let requires_decoding =
+            needs_decoding(request.comic_id, &page_name, format == PageImageFormat::Gif);
+
+        if requires_decoding {
+            if decode_permit.is_none() {
+                drop(network_permit.take());
+                decode_permit = Some(
+                    self.acquire_decode_permit(request.priority, request.cancelled.as_mut())
+                        .await?,
+                );
+            } else {
+                drop(network_permit.take());
+            }
+        } else {
+            drop(decode_permit.take());
+        }
+
         let prepared = prepare_page_image(image_data, request.comic_id, page_name).await?;
+        drop(decode_permit);
         tracing::debug!(
             chapter_id = request.chapter_id,
             page = request.page,
@@ -185,12 +222,49 @@ impl PageMaterializer {
         self.cache
             .put_reader_page(cache_key, prepared.format, &prepared.data)
             .await?;
+        drop(network_permit);
 
         Ok(CachedReaderPage {
             data: prepared.data,
             format: prepared.format,
         })
     }
+
+    async fn acquire_network_permit(
+        &self,
+        priority: ImageWorkPriority,
+        cancelled: Option<&mut watch::Receiver<bool>>,
+    ) -> Result<ImageWorkPermit, PageMaterializeError> {
+        match cancelled {
+            Some(cancelled) => tokio::select! {
+                permit = self.image_work.acquire_network(priority) => Ok(permit),
+                _ = wait_for_cancel(cancelled) => Err(PageMaterializeError::Cancelled),
+            },
+            None => Ok(self.image_work.acquire_network(priority).await),
+        }
+    }
+
+    async fn acquire_decode_permit(
+        &self,
+        priority: ImageWorkPriority,
+        cancelled: Option<&mut watch::Receiver<bool>>,
+    ) -> Result<ImageWorkPermit, PageMaterializeError> {
+        match cancelled {
+            Some(cancelled) => tokio::select! {
+                permit = self.image_work.acquire_decode(priority) => Ok(permit),
+                _ = wait_for_cancel(cancelled) => Err(PageMaterializeError::Cancelled),
+            },
+            None => Ok(self.image_work.acquire_decode(priority).await),
+        }
+    }
+}
+
+fn likely_requires_decoding(comic_id: u32, page_name: &str, image_path: &str) -> bool {
+    let path = image_path.split('?').next().unwrap_or(image_path);
+    let is_gif = path
+        .rsplit_once('.')
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("gif"));
+    needs_decoding(comic_id, page_name, is_gif)
 }
 
 impl PageSource for JmPageSource {
@@ -436,6 +510,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn passthrough_images_do_not_wait_for_decode_capacity() {
+        let source = Arc::new(TestPageSource::new(png_data(), Duration::ZERO, 0));
+        let (materializer, cache, root) = test_materializer_with_budget(
+            "passthrough-budget",
+            source.clone(),
+            ImageWorkBudget::new_for_test(2, 0),
+        )
+        .await;
+
+        let page = timeout(
+            Duration::from_secs(1),
+            materializer.materialize(test_request("chapter-passthrough", 0, "001.png")),
+        )
+        .await
+        .expect("passthrough image waited for decode capacity")
+        .expect("passthrough image should materialize");
+
+        assert_eq!(page.format, PageImageFormat::Png);
+        assert_eq!(source.download_count(), 1);
+        cleanup(materializer, cache, root).await;
+    }
+
+    #[tokio::test]
+    async fn cancelling_decode_waiter_stops_before_image_download() {
+        let source = Arc::new(TestPageSource::new(png_data(), Duration::ZERO, 0));
+        let (materializer, cache, root) = test_materializer_with_budget(
+            "decode-cancel",
+            source.clone(),
+            ImageWorkBudget::new_for_test(2, 0),
+        )
+        .await;
+        let (cancel, cancelled) = watch::channel(false);
+        let mut request = test_request("chapter-decode-cancel", 0, "001.png");
+        request.comic_id = 500_000;
+        request.cancelled = Some(cancelled);
+        let task = tokio::spawn({
+            let materializer = materializer.clone();
+            async move { materializer.materialize(request).await }
+        });
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        cancel.send(true).expect("cancel decode waiter");
+
+        let result = timeout(Duration::from_secs(1), task)
+            .await
+            .expect("decode waiter cancellation timed out")
+            .expect("decode waiter task failed");
+        assert!(matches!(result, Err(PageMaterializeError::Cancelled)));
+        assert_eq!(source.download_count(), 0);
+        cleanup(materializer, cache, root).await;
+    }
+
+    #[tokio::test]
+    async fn format_mismatch_does_not_hold_network_capacity_while_waiting_for_decode() {
+        let source = Arc::new(TestPageSource::new(png_data(), Duration::ZERO, 0));
+        let (materializer, cache, root) = test_materializer_with_budget(
+            "format-mismatch-budget",
+            source.clone(),
+            ImageWorkBudget::new_for_test(1, 0),
+        )
+        .await;
+        let (cancel, cancelled) = watch::channel(false);
+        let mut mismatched = test_request("chapter-format-mismatch", 0, "001.gif");
+        mismatched.comic_id = 500_000;
+        mismatched.cancelled = Some(cancelled);
+        let blocked = tokio::spawn({
+            let materializer = materializer.clone();
+            async move { materializer.materialize(mismatched).await }
+        });
+
+        timeout(Duration::from_secs(1), async {
+            while source.download_count() == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("mismatched image download did not start");
+
+        let passthrough =
+            materializer.materialize(test_request("chapter-after-mismatch", 0, "002.png"));
+        timeout(Duration::from_secs(1), passthrough)
+            .await
+            .expect("decode waiter retained network capacity")
+            .expect("passthrough image should materialize");
+
+        cancel.send(true).expect("cancel mismatched decode waiter");
+        let result = timeout(Duration::from_secs(1), blocked)
+            .await
+            .expect("mismatched decode waiter cancellation timed out")
+            .expect("mismatched decode waiter task failed");
+        assert!(matches!(result, Err(PageMaterializeError::Cancelled)));
+        assert_eq!(source.download_count(), 2);
+        cleanup(materializer, cache, root).await;
+    }
+
+    #[tokio::test]
     async fn cancelling_a_waiter_does_not_cancel_the_owner() {
         let source = Arc::new(TestPageSource::new(
             png_data(),
@@ -537,6 +708,14 @@ mod tests {
         name: &str,
         source: Arc<TestPageSource>,
     ) -> (Arc<PageMaterializer>, Arc<ImageCache>, PathBuf) {
+        test_materializer_with_budget(name, source, ImageWorkBudget::new()).await
+    }
+
+    async fn test_materializer_with_budget(
+        name: &str,
+        source: Arc<TestPageSource>,
+        image_work: ImageWorkBudget,
+    ) -> (Arc<PageMaterializer>, Arc<ImageCache>, PathBuf) {
         let root = test_root(name);
         let db = SqlitePoolOptions::new()
             .max_connections(1)
@@ -555,7 +734,7 @@ mod tests {
         let materializer = Arc::new(PageMaterializer::with_source(
             source,
             cache.clone(),
-            ImageWorkBudget::new(),
+            image_work,
         ));
         (materializer, cache, root)
     }
