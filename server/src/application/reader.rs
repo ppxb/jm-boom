@@ -1,8 +1,8 @@
 use crate::{
-    application::ComicService,
+    application::{ComicService, DownloadService},
     cache::CachedReaderPage,
     domain::reader::ChapterManifest,
-    download::{DownloadError, DownloadManager},
+    download::DownloadError,
     image_work::ImageWorkPriority,
     jm::JmResult,
     page_materializer::{PageMaterializeError, PageMaterializeRequest, PageMaterializer},
@@ -14,14 +14,14 @@ use tokio::sync::watch;
 pub struct ReaderService {
     comics: Arc<ComicService>,
     page_materializer: Arc<PageMaterializer>,
-    downloads: Arc<DownloadManager>,
+    downloads: Arc<DownloadService>,
 }
 
 impl ReaderService {
     pub fn new(
         comics: Arc<ComicService>,
         page_materializer: Arc<PageMaterializer>,
-        downloads: Arc<DownloadManager>,
+        downloads: Arc<DownloadService>,
     ) -> Self {
         Self {
             comics,
@@ -46,14 +46,7 @@ impl ReaderService {
         &self,
         chapter_id: &str,
     ) -> Result<Option<ChapterManifest>, DownloadError> {
-        Ok(self
-            .downloads
-            .offline_manifest(chapter_id)
-            .await?
-            .map(|manifest| ChapterManifest {
-                id: manifest.chapter_id,
-                images: manifest.images,
-            }))
+        self.downloads.offline_manifest(chapter_id).await
     }
 
     pub async fn offline_page(

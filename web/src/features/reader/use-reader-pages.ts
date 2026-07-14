@@ -8,7 +8,12 @@ import { useReaderPrefetch } from './use-reader-prefetch'
 
 const EMPTY_MANIFEST_PAGES: never[] = []
 
-export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) {
+export function useReaderPages(
+  comicId: string,
+  initialIndex = 0,
+  pageStep = 1,
+  prefetchEnabled = true
+) {
   const manifest = useReaderManifestQuery(comicId)
   const manifestPages = manifest.data?.pages ?? EMPTY_MANIFEST_PAGES
   const pageCount = manifestPages.length
@@ -36,7 +41,7 @@ export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) 
     pageIndex: effectiveCurrentIndex,
     pageCount,
     pageStep,
-    enabled: manifest.isSuccess && pageCount > 0,
+    enabled: prefetchEnabled && manifest.isSuccess && pageCount > 0,
     pageQueryKey,
     requestPage
   })
@@ -56,7 +61,7 @@ export function useReaderPages(comicId: string, initialIndex = 0, pageStep = 1) 
     currentIndex: effectiveCurrentIndex,
     pageCount,
     pageStep,
-    enabled: manifest.isSuccess && isPageReady && pageCount > 0,
+    enabled: prefetchEnabled && manifest.isSuccess && isPageReady && pageCount > 0,
     pageQueryKey,
     requestPage
   })

@@ -8,7 +8,7 @@ mod storage;
 mod worker;
 
 pub use error::{DownloadError, DownloadResult};
-pub use manager::DownloadManager;
+pub(crate) use manager::DownloadManager;
 pub use model::{DownloadTaskList, DownloadedChapterList, EnqueueDownload};
 
 pub(super) const DOWNLOAD_TASK_CONCURRENCY: usize = 2;

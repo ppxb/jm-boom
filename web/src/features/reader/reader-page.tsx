@@ -62,7 +62,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     pageQueryKey,
     requestPage,
     retry
-  } = useReaderPages(comicId, initialPageIndex, pageStep)
+  } = useReaderPages(comicId, initialPageIndex, pageStep, !isStripMode)
   const availableNextChapter = nextChapter
 
   useReaderHistorySync({

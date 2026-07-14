@@ -1,7 +1,10 @@
 use crate::{
-    application::{AccessGateService, ComicService, CoverService, ReaderService, SettingsService},
+    application::{
+        AccessGateService, ComicService, CoverService, DownloadService, ReaderService,
+        SettingsService,
+    },
     bootstrap::config::AppConfig,
-    cache, download, endpoint, image_work, jm, page_materializer,
+    cache, endpoint, image_work, jm, page_materializer,
 };
 use std::sync::Arc;
 
@@ -11,7 +14,7 @@ pub(crate) struct AppState {
     pub(crate) comics: Arc<ComicService>,
     pub(crate) covers: Arc<CoverService>,
     pub(crate) reader: Arc<ReaderService>,
-    pub(crate) downloads: Arc<download::DownloadManager>,
+    pub(crate) downloads: Arc<DownloadService>,
     pub(crate) settings: Arc<SettingsService>,
 }
 
@@ -44,13 +47,8 @@ impl AppState {
             image_work::ImageWorkBudget::new(),
         ));
         let downloads = Arc::new(
-            download::DownloadManager::new(
-                db,
-                jm.clone(),
-                endpoints.clone(),
-                page_materializer.clone(),
-            )
-            .await?,
+            DownloadService::new(db, jm.clone(), endpoints.clone(), page_materializer.clone())
+                .await?,
         );
 
         let covers = Arc::new(CoverService::new(
@@ -67,9 +65,9 @@ impl AppState {
         let access_gate = Arc::new(AccessGateService::from_env());
 
         endpoints.start_maintenance();
-        let download_manager = downloads.clone();
+        let download_service = downloads.clone();
         tokio::spawn(async move {
-            download_manager.resume_pending().await;
+            download_service.resume_pending().await;
         });
 
         Ok(Self {

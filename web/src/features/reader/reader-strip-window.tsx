@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -19,7 +20,9 @@ const DEFAULT_PAGE_HEIGHT_RATIO = 1.45
 const STRIP_END_PADDING_PX = 128
 const STRIP_END_SCROLL_THRESHOLD_PX = 24
 const STRIP_MAX_CONTENT_WIDTH_PX = 1024
+const STRIP_MIN_PAGE_VIEWPORT_RATIO = 0.64
 const STRIP_OVERSCAN_VIEWPORTS = 1.5
+const STRIP_TRACKING_VIEWPORT_RATIO = 0.25
 const SIZE_CACHE_PREFIX = 'jm-boom-reader-strip-sizes:'
 
 type PendingNavigation = {
@@ -70,17 +73,21 @@ export function ReaderStripWindow({
   const contentWidthRef = useRef(contentWidth)
 
   const effectiveContentWidth = Math.max(contentWidth, 1)
+  const viewportHeight = Math.max(viewport.height, 1)
   const pageHeights = useMemo(
     () =>
       Array.from({ length: pageCount }, (_, index) =>
-        Math.max(1, effectiveContentWidth * (pageHeightRatios[index] ?? DEFAULT_PAGE_HEIGHT_RATIO))
+        Math.max(
+          viewportHeight * STRIP_MIN_PAGE_VIEWPORT_RATIO,
+          effectiveContentWidth * (pageHeightRatios[index] ?? DEFAULT_PAGE_HEIGHT_RATIO)
+        )
       ),
-    [effectiveContentWidth, pageCount, pageHeightRatios]
+    [effectiveContentWidth, pageCount, pageHeightRatios, viewportHeight]
   )
   const pageOffsets = useMemo(() => createPageOffsets(pageHeights), [pageHeights])
   const pageOffsetsRef = useRef(pageOffsets)
   const totalHeight = (pageOffsets[pageCount] ?? 0) + STRIP_END_PADDING_PX
-  const viewportHeight = Math.max(viewport.height, 1)
+  const trackingOffset = viewportHeight * STRIP_TRACKING_VIEWPORT_RATIO
   const overscan = viewportHeight * STRIP_OVERSCAN_VIEWPORTS
   const visibleStartIndex = findPageAtOffset(pageOffsets, viewport.scrollTop, pageCount)
   const visibleEndIndex = findPageAtOffset(
@@ -90,7 +97,7 @@ export function ReaderStripWindow({
   )
   const activeIndex = findPageAtOffset(
     pageOffsets,
-    viewport.scrollTop + viewportHeight / 2,
+    viewport.scrollTop + trackingOffset,
     pageCount
   )
   const renderStartIndex = findPageAtOffset(
@@ -125,7 +132,7 @@ export function ReaderStripWindow({
     pageHeightRatiosRef.current = pageHeightRatios
   }, [pageHeightRatios])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     pageOffsetsRef.current = pageOffsets
   }, [pageOffsets])
 
@@ -179,6 +186,7 @@ export function ReaderStripWindow({
     const targetTop = pageOffsetsRef.current[targetIndex] ?? 0
     lastNavigationRequestRef.current = navigationRequestId
     pendingNavigationRef.current = { requestId: navigationRequestId, targetIndex }
+    currentIndexRef.current = targetIndex
     container.scrollTo({ top: targetTop, behavior: 'auto' })
     setViewport({ height: container.clientHeight, scrollTop: targetTop })
 
@@ -226,10 +234,12 @@ export function ReaderStripWindow({
         return
       }
 
-      const viewportCenter = container.scrollTop + container.clientHeight / 2
-      const nextIndex = findPageAtOffset(pageOffsetsRef.current, viewportCenter, pageCount)
+      const trackingPoint =
+        container.scrollTop + container.clientHeight * STRIP_TRACKING_VIEWPORT_RATIO
+      const nextIndex = findPageAtOffset(pageOffsetsRef.current, trackingPoint, pageCount)
 
       if (nextIndex !== currentIndexRef.current) {
+        currentIndexRef.current = nextIndex
         onCurrentIndexChange(nextIndex)
       }
     },
@@ -286,12 +296,19 @@ export function ReaderStripWindow({
       const anchorIndex = pendingNavigationRef.current?.targetIndex ?? currentIndexRef.current
 
       if (container && index < anchorIndex) {
-        const nextScrollTop = container.scrollTop + contentWidth * (nextRatio - previousRatio)
+        const minimumPageHeight =
+          container.clientHeight * STRIP_MIN_PAGE_VIEWPORT_RATIO
+        const previousHeight = Math.max(minimumPageHeight, contentWidth * previousRatio)
+        const nextHeight = Math.max(minimumPageHeight, contentWidth * nextRatio)
+        const nextScrollTop = container.scrollTop + nextHeight - previousHeight
         programmaticScrollTopRef.current = nextScrollTop
         container.scrollTop = nextScrollTop
+        setViewport({ height: container.clientHeight, scrollTop: nextScrollTop })
       }
 
-      setPageHeightRatios(current => ({ ...current, [index]: nextRatio }))
+      const nextRatios = { ...pageHeightRatiosRef.current, [index]: nextRatio }
+      pageHeightRatiosRef.current = nextRatios
+      setPageHeightRatios(nextRatios)
     },
     [containerRef, contentWidth]
   )
@@ -371,7 +388,7 @@ function ReaderStripImage({
 }) {
   const page = useQuery({
     queryKey: pageQueryKey(index),
-    queryFn: ({ signal }) => requestPage(index, isVisible ? 'visible' : 'prefetch', signal),
+    queryFn: ({ signal }) => requestPage(index, 'visible', signal),
     staleTime: CACHE.READER_STALE_TIME,
     gcTime: CACHE.READER_GC_TIME,
     retry: false,
@@ -395,7 +412,7 @@ function ReaderStripImage({
           loading="eager"
           decoding={isVisible ? 'sync' : 'async'}
           showLoadingIndicator={isActive}
-          loadingIndicatorClassName="!fixed inset-0 z-10"
+          loadingIndicatorClassName="pointer-events-none !fixed inset-0 z-10"
           onLoad={image => onPageSize(index, image)}
         />
       ) : page.isError ? (
@@ -421,7 +438,7 @@ function ReaderStripImage({
         isActive ? (
           <ReaderLoading
             label={`正在加载第 ${index + 1} 页`}
-            className="fixed inset-0 z-10"
+            className="pointer-events-none fixed inset-0 z-10"
           />
         ) : null
       )}

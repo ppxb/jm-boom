@@ -1,6 +1,7 @@
 mod access_gate;
 mod comic;
 mod cover;
+mod download;
 mod reader;
 mod settings;
 
@@ -11,5 +12,6 @@ pub(crate) use comic::{
     HomeSectionRequest, WeekFilters, WeekItems,
 };
 pub use cover::{CoverService, CoverServiceError};
+pub use download::DownloadService;
 pub use reader::ReaderService;
 pub use settings::SettingsService;
