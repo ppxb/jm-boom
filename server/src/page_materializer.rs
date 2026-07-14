@@ -3,14 +3,14 @@ use crate::{
     endpoint::{request_with_failover, EndpointManager},
     image_work::{ImageWorkBudget, ImageWorkPriority},
     jm::{invalidate_img_host, JmClient, JmError},
+    keyed_lock::KeyedLock,
     reader::{page_name_from_image, prepare_page_image},
 };
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{watch, Mutex};
+use std::sync::Arc;
+use tokio::sync::watch;
 
-static PAGE_MATERIALIZE_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static PAGE_MATERIALIZE_LOCKS: Lazy<KeyedLock> = Lazy::new(KeyedLock::new);
 
 pub struct PageMaterializeRequest<'a> {
     pub chapter_id: &'a str,
@@ -93,23 +93,16 @@ impl PageMaterializer {
         cache_key: &str,
         mut request: PageMaterializeRequest<'_>,
     ) -> Result<CachedReaderPage, PageMaterializeError> {
-        let materialize_lock = page_materialize_lock(cache_key).await;
-        let guard = match request.cancelled.as_mut() {
+        let _guard = match request.cancelled.as_mut() {
             Some(cancelled) => {
                 tokio::select! {
-                    guard = materialize_lock.lock() => guard,
-                    _ = wait_for_cancel(cancelled) => {
-                        remove_page_materialize_lock(cache_key, &materialize_lock).await;
-                        return Err(PageMaterializeError::Cancelled);
-                    }
+                    guard = PAGE_MATERIALIZE_LOCKS.lock(cache_key) => guard,
+                    _ = wait_for_cancel(cancelled) => return Err(PageMaterializeError::Cancelled),
                 }
             }
-            None => materialize_lock.lock().await,
+            None => PAGE_MATERIALIZE_LOCKS.lock(cache_key).await,
         };
-        let result = self.materialize_with_lock(cache_key, request).await;
-        drop(guard);
-        remove_page_materialize_lock(cache_key, &materialize_lock).await;
-        result
+        self.materialize_with_lock(cache_key, request).await
     }
 
     async fn materialize_with_lock(
@@ -207,26 +200,6 @@ impl PageMaterializer {
             }
             Err(error) => Err(error),
         }
-    }
-}
-
-async fn page_materialize_lock(cache_key: &str) -> Arc<Mutex<()>> {
-    let mut locks = PAGE_MATERIALIZE_LOCKS.lock().await;
-    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
-    locks
-        .entry(cache_key.to_string())
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone()
-}
-
-async fn remove_page_materialize_lock(cache_key: &str, materialize_lock: &Arc<Mutex<()>>) {
-    let mut locks = PAGE_MATERIALIZE_LOCKS.lock().await;
-    let should_remove = locks.get(cache_key).is_some_and(|current| {
-        Arc::ptr_eq(current, materialize_lock) && Arc::strong_count(materialize_lock) == 2
-    });
-
-    if should_remove {
-        locks.remove(cache_key);
     }
 }
 

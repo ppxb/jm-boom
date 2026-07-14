@@ -2,6 +2,7 @@ use crate::cache::cover_cache_key;
 use crate::endpoint::request_with_failover;
 use crate::http_error::HttpError;
 use crate::jm::invalidate_img_host;
+use crate::keyed_lock::KeyedLock;
 use crate::AppState;
 use axum::{
     extract::{Path, State},
@@ -9,13 +10,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, Semaphore};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 const COVER_FETCH_CONCURRENCY: usize = 6;
 
-static COVER_FETCH_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static COVER_FETCH_LOCKS: Lazy<KeyedLock> = Lazy::new(KeyedLock::new);
 static COVER_FETCH_SEMAPHORE: Lazy<Arc<Semaphore>> =
     Lazy::new(|| Arc::new(Semaphore::new(COVER_FETCH_CONCURRENCY)));
 
@@ -35,13 +35,10 @@ pub async fn get_cover(
         return Ok(cover_response(cached));
     }
 
-    let fetch_lock = cover_fetch_lock(&cache_key).await;
-    let guard = fetch_lock.lock().await;
-    let result = materialize_cover(&app, &comic_id, &cache_key).await;
-    drop(guard);
-    remove_cover_fetch_lock(&cache_key, &fetch_lock).await;
-
-    result.map(cover_response)
+    let _guard = COVER_FETCH_LOCKS.lock(&cache_key).await;
+    materialize_cover(&app, &comic_id, &cache_key)
+        .await
+        .map(cover_response)
 }
 
 async fn materialize_cover(
@@ -94,26 +91,6 @@ async fn download_cover(app: &AppState, comic_id: &str) -> crate::jm::JmResult<V
             app.jm.download_image(&refreshed_url).await
         }
         Err(error) => Err(error),
-    }
-}
-
-async fn cover_fetch_lock(cache_key: &str) -> Arc<Mutex<()>> {
-    let mut locks = COVER_FETCH_LOCKS.lock().await;
-    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
-    locks
-        .entry(cache_key.to_string())
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone()
-}
-
-async fn remove_cover_fetch_lock(cache_key: &str, fetch_lock: &Arc<Mutex<()>>) {
-    let mut locks = COVER_FETCH_LOCKS.lock().await;
-    let should_remove = locks.get(cache_key).is_some_and(|current| {
-        Arc::ptr_eq(current, fetch_lock) && Arc::strong_count(fetch_lock) == 2
-    });
-
-    if should_remove {
-        locks.remove(cache_key);
     }
 }
 

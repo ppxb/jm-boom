@@ -2,14 +2,14 @@ use super::{
     client::JmClient, crypto, error::JmError, models::Chapter, signature::JmRequestSignature,
     JmResult,
 };
+use crate::keyed_lock::KeyedLock;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 const JM_API_SECRET: &str = "185Hcomic3PAPP7R";
 const CHAPTER_CACHE_TTL: Duration = Duration::from_secs(20 * 60);
@@ -23,8 +23,7 @@ struct CachedChapter {
 
 static CHAPTER_CACHE: Lazy<RwLock<HashMap<String, CachedChapter>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
-static CHAPTER_FETCH_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static CHAPTER_FETCH_LOCKS: Lazy<KeyedLock> = Lazy::new(KeyedLock::new);
 
 #[derive(Debug, Deserialize)]
 struct ChapterResponse {
@@ -71,21 +70,14 @@ impl JmClient {
             return Ok(chapter);
         }
 
-        let fetch_lock = chapter_fetch_lock(&cache_key).await;
-        let guard = fetch_lock.lock().await;
-        let result = async {
-            if let Some(chapter) = cached_chapter(&cache_key).await {
-                return Ok(chapter);
-            }
-
-            let chapter = self.fetch_chapter(endpoint, chapter_id).await?;
-            insert_cached_chapter(&cache_key, chapter.clone()).await;
-            Ok(chapter)
+        let _guard = CHAPTER_FETCH_LOCKS.lock(&cache_key).await;
+        if let Some(chapter) = cached_chapter(&cache_key).await {
+            return Ok(chapter);
         }
-        .await;
-        drop(guard);
-        remove_chapter_fetch_lock(&cache_key, &fetch_lock).await;
-        result
+
+        let chapter = self.fetch_chapter(endpoint, chapter_id).await?;
+        insert_cached_chapter(&cache_key, chapter.clone()).await;
+        Ok(chapter)
     }
 
     async fn fetch_chapter(&self, endpoint: &str, chapter_id: &str) -> JmResult<Chapter> {
@@ -164,26 +156,6 @@ async fn insert_cached_chapter(cache_key: &str, chapter: Chapter) {
             break;
         };
         cache.remove(&oldest_key);
-    }
-}
-
-async fn chapter_fetch_lock(cache_key: &str) -> Arc<Mutex<()>> {
-    let mut locks = CHAPTER_FETCH_LOCKS.lock().await;
-    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
-    locks
-        .entry(cache_key.to_string())
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone()
-}
-
-async fn remove_chapter_fetch_lock(cache_key: &str, fetch_lock: &Arc<Mutex<()>>) {
-    let mut locks = CHAPTER_FETCH_LOCKS.lock().await;
-    let should_remove = locks.get(cache_key).is_some_and(|current| {
-        Arc::ptr_eq(current, fetch_lock) && Arc::strong_count(fetch_lock) == 2
-    });
-
-    if should_remove {
-        locks.remove(cache_key);
     }
 }
 

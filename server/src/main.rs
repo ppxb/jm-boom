@@ -5,6 +5,7 @@ mod endpoint;
 mod http_error;
 mod image_work;
 mod jm;
+mod keyed_lock;
 mod page_materializer;
 mod reader;
 
