@@ -125,6 +125,15 @@ impl ImageCache {
         Ok(cache)
     }
 
+    #[cfg(test)]
+    pub(crate) async fn new_for_test(
+        db: sqlx::SqlitePool,
+        max_size_bytes: i64,
+        cache_dir: PathBuf,
+    ) -> Result<Self> {
+        Self::new_with_cache_dir(db, CacheConfig { max_size_bytes }, cache_dir).await
+    }
+
     pub fn start_maintenance(self: &Arc<Self>) {
         let cache = Arc::downgrade(self);
         tokio::spawn(async move {

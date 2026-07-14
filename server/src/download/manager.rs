@@ -55,8 +55,25 @@ impl DownloadManager {
         endpoints: Arc<EndpointManager>,
         page_materializer: Arc<PageMaterializer>,
     ) -> DownloadResult<Self> {
+        Self::new_with_storage_root(
+            db,
+            jm,
+            endpoints,
+            page_materializer,
+            PathBuf::from("data/downloads"),
+        )
+        .await
+    }
+
+    async fn new_with_storage_root(
+        db: SqlitePool,
+        jm: Arc<JmClient>,
+        endpoints: Arc<EndpointManager>,
+        page_materializer: Arc<PageMaterializer>,
+        storage_root: PathBuf,
+    ) -> DownloadResult<Self> {
         let repository = DownloadRepository::new(db);
-        let storage = DownloadStorage::new(PathBuf::from("data/downloads")).await?;
+        let storage = DownloadStorage::new(storage_root).await?;
         let tasks = repository
             .load_tasks()
             .await?
@@ -296,5 +313,389 @@ fn invalid_state(operation: &'static str, status: DownloadStatus) -> DownloadErr
     DownloadError::InvalidState {
         operation,
         status: status.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DownloadManager;
+    use crate::{
+        cache::{CachedReaderPage, ImageCache},
+        download::{
+            model::{DownloadChapter, DownloadStatus, DownloadTask},
+            repository::DownloadRepository,
+            DownloadError,
+        },
+        endpoint::EndpointManager,
+        image_work::ImageWorkBudget,
+        jm::JmClient,
+        page_materializer::PageMaterializer,
+        reader::PageImageFormat,
+    };
+    use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+    use std::{
+        io::Cursor,
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            Arc,
+        },
+        time::{Duration, Instant},
+    };
+    use tokio::{fs, sync::Semaphore, time::timeout};
+
+    static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    #[tokio::test]
+    async fn pause_resume_and_cancel_follow_valid_transitions() {
+        let db = test_db().await;
+        let (manager, root) = test_manager("transitions", db).await;
+        let mut task = test_task("task-transitions", DownloadStatus::Running, 1);
+        task.total_pages = 12;
+        task.completed_pages = 5;
+        task.eta_seconds = Some(30);
+        task.speed_bytes_per_second = 1024;
+        insert_task(&manager, task).await;
+        manager
+            .progress_persisted_at
+            .lock()
+            .await
+            .insert("task-transitions".into(), Instant::now());
+
+        manager
+            .pause("task-transitions")
+            .await
+            .expect("pause running task");
+        let paused = task_snapshot(&manager, "task-transitions").await;
+        assert_eq!(paused.status, DownloadStatus::Paused);
+        assert_eq!(paused.eta_seconds, None);
+        assert_eq!(paused.speed_bytes_per_second, 0);
+        assert!(!manager
+            .progress_persisted_at
+            .lock()
+            .await
+            .contains_key("task-transitions"));
+
+        manager
+            .resume("task-transitions")
+            .await
+            .expect("resume paused task");
+        wait_for_worker(&manager, "task-transitions", true).await;
+        let resumed = task_snapshot(&manager, "task-transitions").await;
+        assert_eq!(resumed.status, DownloadStatus::Queued);
+        assert_eq!(resumed.generation, 2);
+        assert_eq!(resumed.total_pages, 0);
+        assert_eq!(resumed.completed_pages, 0);
+
+        manager
+            .cancel("task-transitions")
+            .await
+            .expect("cancel queued task");
+        wait_for_worker(&manager, "task-transitions", false).await;
+        let cancelled = persisted_task(&manager, "task-transitions").await;
+        assert_eq!(cancelled.status, DownloadStatus::Cancelled);
+        assert!(matches!(
+            manager.pause("task-transitions").await,
+            Err(DownloadError::InvalidState { .. })
+        ));
+
+        cleanup(manager, root).await;
+    }
+
+    #[tokio::test]
+    async fn stale_generation_cannot_update_or_finish_resumed_task() {
+        let db = test_db().await;
+        let (manager, root) = test_manager("generation", db).await;
+        insert_task(
+            &manager,
+            test_task("task-generation", DownloadStatus::Queued, 2),
+        )
+        .await;
+
+        assert!(manager
+            .begin_generation("task-generation", 1)
+            .await
+            .expect("ignore stale begin")
+            .is_none());
+        assert!(manager
+            .begin_generation("task-generation", 2)
+            .await
+            .expect("begin current generation")
+            .is_some());
+
+        manager
+            .complete_page("task-generation", 1, 512, Duration::from_secs(1))
+            .await
+            .expect("ignore stale page completion");
+        manager
+            .fail_generation("task-generation", 1, "stale failure".into())
+            .await
+            .expect("ignore stale failure");
+        manager
+            .complete_generation("task-generation", 1)
+            .await
+            .expect("ignore stale completion");
+        let active = task_snapshot(&manager, "task-generation").await;
+        assert_eq!(active.status, DownloadStatus::Running);
+        assert_eq!(active.completed_pages, 0);
+        assert_eq!(active.error, None);
+
+        manager
+            .complete_generation("task-generation", 2)
+            .await
+            .expect("complete current generation");
+        assert_eq!(
+            persisted_task(&manager, "task-generation").await.status,
+            DownloadStatus::Completed
+        );
+
+        cleanup(manager, root).await;
+    }
+
+    #[tokio::test]
+    async fn remove_waits_for_worker_and_deletes_manifest_and_files() {
+        let db = test_db().await;
+        let (manager, root) = test_manager("remove", db).await;
+        let task = test_task("task-remove", DownloadStatus::Queued, 1);
+        let chapter = task.chapters[0].clone();
+        insert_task(&manager, task.clone()).await;
+        manager
+            .repository
+            .persist_manifest(&task, &chapter, &["001.png".into()])
+            .await
+            .expect("persist manifest");
+        manager
+            .repository
+            .complete_manifest(&task.task_id, &chapter.chapter_id)
+            .await
+            .expect("complete manifest");
+        manager
+            .storage
+            .store_page(
+                &task.task_id,
+                &chapter.chapter_id,
+                0,
+                &CachedReaderPage {
+                    data: png_data(),
+                    format: PageImageFormat::Png,
+                },
+            )
+            .await
+            .expect("store downloaded page");
+        manager.spawn(task.task_id.clone());
+        wait_for_worker(&manager, &task.task_id, true).await;
+
+        manager
+            .remove(&task.task_id)
+            .await
+            .expect("remove active task");
+        wait_for_worker(&manager, &task.task_id, false).await;
+
+        assert!(manager.list().await.tasks.is_empty());
+        assert!(manager
+            .repository
+            .load_tasks()
+            .await
+            .expect("load persisted tasks")
+            .is_empty());
+        assert!(manager
+            .repository
+            .offline_manifest(&chapter.chapter_id)
+            .await
+            .expect("load deleted manifest")
+            .is_none());
+        assert!(!fs::try_exists(root.join("downloads").join(&task.task_id))
+            .await
+            .expect("check deleted download directory"));
+
+        cleanup(manager, root).await;
+    }
+
+    #[tokio::test]
+    async fn restart_requeues_running_tasks_without_resuming_paused_tasks() {
+        let db = test_db().await;
+        let repository = DownloadRepository::new(db.clone());
+        let mut running = test_task("task-running", DownloadStatus::Running, 3);
+        running.total_pages = 20;
+        running.completed_pages = 7;
+        running.eta_seconds = Some(15);
+        running.speed_bytes_per_second = 4096;
+        repository
+            .persist_task(&running)
+            .await
+            .expect("persist running task");
+        repository
+            .persist_task(&test_task("task-paused", DownloadStatus::Paused, 4))
+            .await
+            .expect("persist paused task");
+
+        let (manager, root) = test_manager("restart", db).await;
+        let recovered = task_snapshot(&manager, "task-running").await;
+        assert_eq!(recovered.status, DownloadStatus::Queued);
+        assert_eq!(recovered.generation, 3);
+        assert_eq!(recovered.total_pages, 0);
+        assert_eq!(recovered.completed_pages, 0);
+        assert_eq!(recovered.eta_seconds, None);
+        assert_eq!(recovered.speed_bytes_per_second, 0);
+        assert_eq!(
+            task_snapshot(&manager, "task-paused").await.status,
+            DownloadStatus::Paused
+        );
+
+        manager.resume_pending().await;
+        wait_for_worker(&manager, "task-running", true).await;
+        assert!(!manager.workers.lock().await.contains_key("task-paused"));
+
+        manager
+            .pause("task-running")
+            .await
+            .expect("pause recovered task");
+        wait_for_worker(&manager, "task-running", false).await;
+        cleanup(manager, root).await;
+    }
+
+    async fn test_manager(name: &str, db: SqlitePool) -> (DownloadManager, PathBuf) {
+        let root = test_root(name);
+        let cache = Arc::new(
+            ImageCache::new_for_test(db.clone(), 1024 * 1024, root.join("cache"))
+                .await
+                .expect("create image cache"),
+        );
+        let endpoints = Arc::new(
+            EndpointManager::new(db.clone())
+                .await
+                .expect("create endpoint manager"),
+        );
+        let jm = Arc::new(JmClient::new().expect("create JM client"));
+        let page_materializer = Arc::new(PageMaterializer::new(
+            jm.clone(),
+            endpoints.clone(),
+            cache,
+            ImageWorkBudget::new(),
+        ));
+        let mut manager = DownloadManager::new_with_storage_root(
+            db,
+            jm,
+            endpoints,
+            page_materializer,
+            root.join("downloads"),
+        )
+        .await
+        .expect("create download manager");
+        manager.task_semaphore = Arc::new(Semaphore::new(0));
+        (manager, root)
+    }
+
+    async fn test_db() -> SqlitePool {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect in-memory sqlite");
+        sqlx::migrate!("./migrations")
+            .run(&db)
+            .await
+            .expect("run migrations");
+        db
+    }
+
+    async fn insert_task(manager: &DownloadManager, task: DownloadTask) {
+        manager
+            .repository
+            .persist_task(&task)
+            .await
+            .expect("persist test task");
+        manager
+            .tasks
+            .write()
+            .await
+            .insert(task.task_id.clone(), task);
+    }
+
+    async fn task_snapshot(manager: &DownloadManager, task_id: &str) -> DownloadTask {
+        manager
+            .tasks
+            .read()
+            .await
+            .get(task_id)
+            .cloned()
+            .expect("task should exist")
+    }
+
+    async fn persisted_task(manager: &DownloadManager, task_id: &str) -> DownloadTask {
+        manager
+            .repository
+            .load_tasks()
+            .await
+            .expect("load persisted tasks")
+            .into_iter()
+            .find(|task| task.task_id == task_id)
+            .expect("persisted task should exist")
+    }
+
+    async fn wait_for_worker(manager: &DownloadManager, task_id: &str, expected: bool) {
+        timeout(Duration::from_secs(1), async {
+            loop {
+                if manager.workers.lock().await.contains_key(task_id) == expected {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("worker state did not settle");
+    }
+
+    async fn cleanup(manager: DownloadManager, root: PathBuf) {
+        drop(manager);
+        fs::remove_dir_all(root)
+            .await
+            .expect("remove test manager root");
+    }
+
+    fn test_task(task_id: &str, status: DownloadStatus, generation: u64) -> DownloadTask {
+        DownloadTask {
+            task_id: task_id.into(),
+            album_id: "album-1".into(),
+            comic_title: "测试漫画".into(),
+            chapters: vec![DownloadChapter {
+                chapter_id: "1001".into(),
+                title: "第一章".into(),
+                order: 1,
+            }],
+            status,
+            current_chapter_title: String::new(),
+            total_pages: 0,
+            completed_pages: 0,
+            eta_seconds: None,
+            speed_bytes_per_second: 0,
+            error: None,
+            created_at: 1,
+            started_at: None,
+            updated_at: 1,
+            completed_at: None,
+            generation,
+        }
+    }
+
+    fn png_data() -> Vec<u8> {
+        let image = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            1,
+            1,
+            image::Rgb([1, 2, 3]),
+        ));
+        let mut bytes = Cursor::new(Vec::new());
+        image
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .expect("encode png");
+        bytes.into_inner()
+    }
+
+    fn test_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "jm-boom-download-manager-{name}-{}-{}",
+            std::process::id(),
+            TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ))
     }
 }
