@@ -1,5 +1,5 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 
 import { ReaderBottomBar, ReaderTopBar } from './reader-bars'
 import { ReaderHotZones } from './reader-hot-zones'
@@ -13,7 +13,7 @@ import { useReaderChapterInfo } from './use-reader-chapter-info'
 import { useReaderHistorySync } from './use-reader-history-sync'
 import { useReaderKeyboardNavigation } from './use-reader-keyboard-navigation'
 import { useNextChapterPrefetch } from './use-next-chapter-prefetch'
-import { useReaderPages } from './use-reader-pages'
+import { useReaderSession } from './use-reader-session'
 import { useReaderToolbarVisibility } from './use-reader-toolbar-visibility'
 import { READER } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -25,18 +25,16 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const readerReadMode = useSettingsStore(state => state.readerReadMode)
   const readerPageDirection = useSettingsStore(state => state.readerPageDirection)
   const readerDoublePageMode = useSettingsStore(state => state.readerDoublePageMode)
-  const readerAutoReadEnabled = useSettingsStore(state => state.readerAutoReadEnabled)
   const isStripMode = readerReadMode === 'strip'
   const isDoublePageMode = !isStripMode && readerDoublePageMode
   const pageStep = isDoublePageMode ? 2 : 1
   const stripScrollRef = useRef<HTMLDivElement | null>(null)
-  const autoReadEntryComicIdRef = useRef<string | null>(null)
   const nextChapterNavigationRef = useRef<string | null>(null)
   const {
     isVisible: isToolbarVisible,
     toggle: toggleToolbar,
     hide: hideToolbar
-  } = useReaderToolbarVisibility(!readerAutoReadEnabled)
+  } = useReaderToolbarVisibility(false)
   const initialPageIndex = search.page ? search.page - 1 : 0
   const { albumId, title, author, coverUrl, chapter, chapters, previousChapter, nextChapter } =
     useReaderChapterInfo({
@@ -46,23 +44,20 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const {
     currentIndex,
     pageCount,
+    pages,
     pageSrc,
     pageWindow,
-    navigationRequestId,
+    navigationCommand,
     isManifestLoading,
     manifestError,
-    isPageLoading,
-    pageError,
     isFetching,
     isLastPage,
     goToPreviousPage,
     goToNextPage,
     goToPage,
-    setObservedPage,
-    pageQueryKey,
-    requestPage,
+    observePage,
     retry
-  } = useReaderPages(comicId, initialPageIndex, pageStep, !isStripMode)
+  } = useReaderSession({ comicId, initialIndex: initialPageIndex, pageStep })
   const availableNextChapter = nextChapter
 
   useReaderHistorySync({
@@ -76,17 +71,9 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     pageCount
   })
 
-  useEffect(() => {
-    if (autoReadEntryComicIdRef.current === comicId) {
-      return
-    }
-
-    autoReadEntryComicIdRef.current = comicId
-
-    if (readerAutoReadEnabled) {
-      hideToolbar()
-    }
-  }, [comicId, hideToolbar, readerAutoReadEnabled])
+  useLayoutEffect(() => {
+    hideToolbar()
+  }, [comicId, hideToolbar])
 
   useEffect(() => {
     nextChapterNavigationRef.current = null
@@ -186,9 +173,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const showReaderTopBar = isToolbarVisible
   const showReaderBottomBar = isToolbarVisible && pageCount > 0
   const canAutoReadAdvance =
-    !isManifestLoading &&
-    !manifestError &&
-    (isStripMode || (!isPageLoading && !pageError && pageSrc.length > 0))
+    !isManifestLoading && !manifestError && (isStripMode || pageSrc.length > 0)
   useReaderAutoRead({
     readMode: readerReadMode,
     pageStep,
@@ -239,21 +224,14 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
         ) : isStripMode ? (
           <ReaderStripWindow
             key={comicId}
-            cacheKey={comicId}
             containerRef={stripScrollRef}
-            pageCount={pageCount}
+            pages={pages}
             currentIndex={currentIndex}
-            navigationRequestId={navigationRequestId}
-            pageQueryKey={pageQueryKey}
-            requestPage={requestPage}
-            onCurrentIndexChange={setObservedPage}
+            navigationCommand={navigationCommand}
+            onCurrentIndexChange={observePage}
             onUserScroll={hideToolbar}
             onScrollPastEnd={goToNextChapter}
           />
-        ) : isPageLoading ? (
-          <ReaderLoading label={`正在加载第 ${currentIndex + 1} 页`} />
-        ) : pageError ? (
-          <ReaderError title="图片加载失败" description={pageError.message} />
         ) : pageSrc.length > 0 ? (
           <ReaderImageWindow
             pages={pageWindow}

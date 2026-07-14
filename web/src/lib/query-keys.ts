@@ -10,8 +10,6 @@ export const queryKeys = {
   ranking: (page: number, category: string, order: string) =>
     ['jm-ranking', page, category, order] as const,
   readerManifest: (comicId: string) => ['jm-reader-manifest', comicId] as const,
-  readerPage: (comicId: string, index: number, path: string) =>
-    ['jm-reader-page', comicId, index, path] as const,
   search: (keyword: string, page: number, sortBy: number) =>
     ['jm-search', keyword, page, sortBy] as const,
   weekFilters: () => ['week-filters'] as const,

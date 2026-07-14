@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
-import { getComicReadManifest, getComicReadPage } from '@/lib/api/reader'
+import { getComicReadManifest, preloadComicReadPage } from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import type { ReaderChapterItem } from './types'
@@ -66,27 +66,9 @@ export function useNextChapterPrefetch({
         }
 
         return Promise.allSettled(
-          Array.from({ length: initialPageCount }, (_, index) => {
-            const page = manifest?.pages[index]
-
-            if (!page) {
-              return Promise.reject(new Error('Reader page is missing from manifest'))
-            }
-
-            return queryClient.prefetchQuery({
-              queryKey: queryKeys.readerPage(nextReadId, index, page.path),
-              queryFn: () =>
-                getComicReadPage({
-                  readId: nextReadId,
-                  index,
-                  path: page.path,
-                  requestOrigin: 'prefetch'
-                }),
-              staleTime: CACHE.READER_STALE_TIME,
-              gcTime: CACHE.READER_GC_TIME,
-              retry: false
-            })
-          })
+          manifest?.pages
+            .slice(0, initialPageCount)
+            .map(page => preloadComicReadPage(page.path)) ?? []
         )
       })
       .catch(error => {

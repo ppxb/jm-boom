@@ -2,8 +2,7 @@ import {
   useInfiniteQuery,
   useMutation,
   useQuery,
-  useQueryClient,
-  type QueryClient
+  useQueryClient
 } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useEffect, useMemo, useState } from 'react'
@@ -12,14 +11,10 @@ import { BackTopButton } from '@/components/back-top-button'
 import { PageBackButton } from '@/components/page-back-button'
 import type { ComicDetail } from '@/domain/comic'
 import { getComicComments, getComicDetail } from '@/lib/api/comic'
-import {
-  SINGLE_CHAPTER_TITLE,
-  resolveComicStartReadingId,
-  sortComicChapters
-} from '@/lib/comic'
+import { SINGLE_CHAPTER_TITLE, sortComicChapters } from '@/lib/comic'
 import {
   getComicReadManifest,
-  getComicReadPage,
+  preloadComicReadPage,
   type ComicReadManifestResult
 } from '@/lib/api/reader'
 import { CACHE } from '@/lib/constants'
@@ -38,7 +33,9 @@ import {
 } from './download-drawer'
 import { enqueueComicDownload } from '@/lib/api/download'
 import { useLocalFavoritesStore } from '@/stores/local-favorites-store'
+import { useReadingHistoryStore } from '@/stores/reading-history-store'
 import { useSettingsStore } from '@/stores/settings-store'
+import { resolveComicReadingTarget } from './reading-target'
 
 const DETAIL_READER_PRELOAD_COUNT = 4
 const DETAIL_READER_PRELOAD_CONCURRENCY = 2
@@ -85,12 +82,18 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const queryClient = useQueryClient()
   const isFavorite = useLocalFavoritesStore(state => state.items.some(item => item.id === comic.id))
   const toggleFavorite = useLocalFavoritesStore(state => state.toggle)
+  const readingHistory = useReadingHistoryStore(state =>
+    state.items.find(item => item.id === comic.id)
+  )
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
   const [settledCoverUrl, setSettledCoverUrl] = useState('')
   const albumId = comic.id
-  const startReadingId = useMemo(() => resolveComicStartReadingId(comic), [comic])
+  const readingTarget = useMemo(
+    () => resolveComicReadingTarget(comic, readingHistory),
+    [comic, readingHistory]
+  )
   const isCoverSettled = hideCovers || comic.image.length === 0 || settledCoverUrl === comic.image
   const downloadChapters = useMemo(() => {
     const chapters = sortComicChapters(comic.chapters)
@@ -113,7 +116,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
       return
     }
 
-    const readId = startReadingId.trim()
+    const readId = readingTarget.readId.trim()
 
     if (readId.length === 0) {
       return
@@ -128,7 +131,9 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         staleTime: CACHE.READER_STALE_TIME,
         gcTime: CACHE.READER_GC_TIME
       })
-      .then(manifest => prefetchReaderStartPages(queryClient, manifest))
+      .then(manifest =>
+        prefetchReaderStartPages(manifest, Math.max((readingTarget.page ?? 1) - 1, 0))
+      )
       .catch(error => {
         if (isActive && import.meta.env.DEV) {
           console.debug('Comic detail reader manifest prefetch failed', error)
@@ -138,7 +143,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     return () => {
       isActive = false
     }
-  }, [isCoverSettled, queryClient, startReadingId])
+  }, [isCoverSettled, queryClient, readingTarget.page, readingTarget.readId])
 
   function handleFavoriteToggle() {
     const favorited = toggleFavorite({
@@ -205,6 +210,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     <div className="space-y-10">
       <ComicHero
         comic={comic}
+        readingTarget={readingTarget}
         isFavorite={isFavorite}
         onCommentsClick={() => setIsCommentsOpen(true)}
         onDownloadClick={handleDownloadClick}
@@ -245,10 +251,11 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
 }
 
 async function prefetchReaderStartPages(
-  queryClient: QueryClient,
-  manifest: ComicReadManifestResult
+  manifest: ComicReadManifestResult,
+  initialPageIndex: number
 ) {
-  const pages = manifest.pages.slice(0, DETAIL_READER_PRELOAD_COUNT)
+  const startIndex = Math.min(initialPageIndex, Math.max(manifest.pages.length - 1, 0))
+  const pages = manifest.pages.slice(startIndex, startIndex + DETAIL_READER_PRELOAD_COUNT)
   let nextPageIndex = 0
 
   async function prefetchWorker() {
@@ -256,19 +263,7 @@ async function prefetchReaderStartPages(
       const page = pages[nextPageIndex]
       nextPageIndex += 1
 
-      await queryClient.prefetchQuery({
-        queryKey: queryKeys.readerPage(manifest.readId, page.index, page.path),
-        queryFn: () =>
-          getComicReadPage({
-            readId: manifest.readId,
-            index: page.index,
-            path: page.path,
-            requestOrigin: 'prefetch'
-          }),
-        staleTime: CACHE.READER_STALE_TIME,
-        gcTime: CACHE.READER_GC_TIME,
-        retry: false
-      })
+      await preloadComicReadPage(page.path)
     }
   }
 

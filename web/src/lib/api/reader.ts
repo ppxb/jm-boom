@@ -12,14 +12,6 @@ export type ComicReadManifestResult = {
   pages: ComicReadManifestPage[]
 }
 
-export type ComicReadPageResult = {
-  readId: string
-  index: number
-  path: string
-}
-
-type ReaderPageRequestOrigin = 'visible' | 'prefetch'
-
 export async function getComicReadManifest({
   readId
 }: {
@@ -45,41 +37,7 @@ export async function getComicReadManifest({
   }
 }
 
-export async function getComicReadPage({
-  readId,
-  index,
-  path,
-  requestOrigin = 'visible',
-  signal
-}: {
-  readId: string
-  index: number
-  path: string
-  requestOrigin?: ReaderPageRequestOrigin
-  signal?: AbortSignal
-}): Promise<ComicReadPageResult> {
-  if (requestOrigin === 'prefetch') {
-    try {
-      await preloadReaderImage(path, signal)
-    } catch (error) {
-      if (signal?.aborted) {
-        throw error
-      }
-
-      if (import.meta.env.DEV) {
-        console.debug('Reader image preload failed', { path, error })
-      }
-    }
-  }
-
-  return {
-    readId,
-    index,
-    path
-  }
-}
-
-async function preloadReaderImage(path: string, signal?: AbortSignal) {
+export async function preloadComicReadPage(path: string, signal?: AbortSignal) {
   if (typeof Image === 'undefined') {
     return
   }

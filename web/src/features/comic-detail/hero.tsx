@@ -16,12 +16,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import type { ComicDetail } from '@/domain/comic'
-import { getComicDisplayChapterCount, resolveComicStartReadingId } from '@/lib/comic'
+import { getComicDisplayChapterCount } from '@/lib/comic'
 import { formatNumber } from '@/lib/format'
+import type { ComicReadingTarget } from './reading-target'
 import { ComicCover } from './shared'
 
 export function ComicHero({
   comic,
+  readingTarget,
   isFavorite,
   onCommentsClick,
   onDownloadClick,
@@ -30,6 +32,7 @@ export function ComicHero({
   downloadBusy = false
 }: {
   comic: ComicDetail
+  readingTarget: ComicReadingTarget
   isFavorite: boolean
   onCommentsClick: () => void
   onDownloadClick: () => void
@@ -37,8 +40,6 @@ export function ComicHero({
   onCoverSettled: () => void
   downloadBusy?: boolean
 }) {
-  const startReadingId = resolveComicStartReadingId(comic)
-
   return (
     <section className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
       <ComicCover
@@ -75,13 +76,14 @@ export function ComicHero({
           <Button asChild>
             <Link
               to="/reader/$comicId"
-              params={{ comicId: startReadingId }}
+              params={{ comicId: readingTarget.readId }}
               search={{
-                albumId: comic.id
+                albumId: comic.id,
+                page: readingTarget.page
               }}
             >
               <BookOpenIcon className="size-4" />
-              开始阅读
+              {readingTarget.isContinue ? '继续阅读' : '开始阅读'}
             </Link>
           </Button>
           <Button variant={isFavorite ? 'secondary' : 'outline'} onClick={onFavoriteClick}>

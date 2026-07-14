@@ -1,224 +1,147 @@
-import { useQuery } from '@tanstack/react-query'
+import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
-  useState,
   type RefObject,
   type WheelEvent
 } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { CACHE } from '@/lib/constants'
+import type { ComicReadManifestPage } from '@/lib/api/reader'
 import { ReaderPageImage } from './reader-image'
-import { ReaderLoading } from './reader-state'
-import type { ReaderPageQueryKeyFactory, ReaderPageRequester } from './use-reader-page-query'
+import type { ReaderNavigationCommand } from './use-reader-session'
 
-const DEFAULT_PAGE_HEIGHT_RATIO = 1.45
 const STRIP_END_PADDING_PX = 128
 const STRIP_END_SCROLL_THRESHOLD_PX = 24
+const STRIP_ESTIMATED_PAGE_RATIO = 1.45
 const STRIP_MAX_CONTENT_WIDTH_PX = 1024
 const STRIP_MIN_PAGE_VIEWPORT_RATIO = 0.64
-const STRIP_OVERSCAN_VIEWPORTS = 1.5
+const STRIP_OVERSCAN_PAGES = 3
 const STRIP_TRACKING_VIEWPORT_RATIO = 0.25
-const SIZE_CACHE_PREFIX = 'jm-boom-reader-strip-sizes:'
-
-type PendingNavigation = {
-  requestId: number
-  targetIndex: number
-}
-
-type ViewportState = {
-  height: number
-  scrollTop: number
-}
 
 export function ReaderStripWindow({
-  cacheKey,
   containerRef,
-  pageCount,
+  pages,
   currentIndex,
-  navigationRequestId,
-  pageQueryKey,
-  requestPage,
+  navigationCommand,
   onCurrentIndexChange,
   onUserScroll,
   onScrollPastEnd
 }: {
-  cacheKey: string
   containerRef: RefObject<HTMLDivElement | null>
-  pageCount: number
+  pages: ComicReadManifestPage[]
   currentIndex: number
-  navigationRequestId: number
-  pageQueryKey: ReaderPageQueryKeyFactory
-  requestPage: ReaderPageRequester
+  navigationCommand: ReaderNavigationCommand
   onCurrentIndexChange: (index: number) => void
   onUserScroll?: () => void
   onScrollPastEnd?: () => boolean
 }) {
-  const [pageHeightRatios, setPageHeightRatios] = useState<Record<number, number>>(() =>
-    readPageHeightRatios(cacheKey)
-  )
-  const [contentWidth, setContentWidth] = useState(getInitialContentWidth)
-  const [viewport, setViewport] = useState<ViewportState>(getInitialViewport)
-  const frameRef = useRef<number | null>(null)
-  const navigationFrameRef = useRef<number | null>(null)
-  const lastNavigationRequestRef = useRef<number | null>(null)
-  const pendingNavigationRef = useRef<PendingNavigation | null>(null)
-  const programmaticScrollTopRef = useRef<number | null>(null)
   const currentIndexRef = useRef(currentIndex)
-  const pageHeightRatiosRef = useRef(pageHeightRatios)
-  const contentWidthRef = useRef(contentWidth)
+  const navigationFrameRef = useRef<number | null>(null)
+  const scrollFrameRef = useRef<number | null>(null)
+  const lastNavigationIdRef = useRef<number | null>(null)
+  const pendingTargetRef = useRef<number | null>(currentIndex)
+  const estimatePageSize = useCallback(() => {
+    const container = containerRef.current
+    const viewportWidth = container?.clientWidth ?? getWindowWidth()
+    const viewportHeight = container?.clientHeight ?? getWindowHeight()
+    const contentWidth = Math.min(viewportWidth, STRIP_MAX_CONTENT_WIDTH_PX)
 
-  const effectiveContentWidth = Math.max(contentWidth, 1)
-  const viewportHeight = Math.max(viewport.height, 1)
-  const pageHeights = useMemo(
-    () =>
-      Array.from({ length: pageCount }, (_, index) =>
-        Math.max(
-          viewportHeight * STRIP_MIN_PAGE_VIEWPORT_RATIO,
-          effectiveContentWidth * (pageHeightRatios[index] ?? DEFAULT_PAGE_HEIGHT_RATIO)
-        )
-      ),
-    [effectiveContentWidth, pageCount, pageHeightRatios, viewportHeight]
-  )
-  const pageOffsets = useMemo(() => createPageOffsets(pageHeights), [pageHeights])
-  const pageOffsetsRef = useRef(pageOffsets)
-  const totalHeight = (pageOffsets[pageCount] ?? 0) + STRIP_END_PADDING_PX
-  const trackingOffset = viewportHeight * STRIP_TRACKING_VIEWPORT_RATIO
-  const overscan = viewportHeight * STRIP_OVERSCAN_VIEWPORTS
-  const visibleStartIndex = findPageAtOffset(pageOffsets, viewport.scrollTop, pageCount)
-  const visibleEndIndex = findPageAtOffset(
-    pageOffsets,
-    viewport.scrollTop + viewportHeight,
-    pageCount
-  )
-  const activeIndex = findPageAtOffset(
-    pageOffsets,
-    viewport.scrollTop + trackingOffset,
-    pageCount
-  )
-  const renderStartIndex = findPageAtOffset(
-    pageOffsets,
-    Math.max(0, viewport.scrollTop - overscan),
-    pageCount
-  )
-  const renderEndIndex = findPageAtOffset(
-    pageOffsets,
-    viewport.scrollTop + viewportHeight + overscan,
-    pageCount
-  )
-  const virtualIndexes = useMemo(() => {
-    const indexes = new Set<number>()
-
-    for (let index = renderStartIndex; index <= renderEndIndex; index += 1) {
-      indexes.add(index)
+    return Math.max(
+      viewportHeight * STRIP_MIN_PAGE_VIEWPORT_RATIO,
+      contentWidth * STRIP_ESTIMATED_PAGE_RATIO
+    )
+  }, [containerRef])
+  const initialOffset = useCallback(() => {
+    if (pages.length <= 0) {
+      return 0
     }
 
-    if (currentIndex >= 0 && currentIndex < pageCount) {
-      indexes.add(currentIndex)
-    }
+    const targetIndex = Math.min(
+      Math.max(currentIndex, 0),
+      pages.length - 1
+    )
 
-    return [...indexes].sort((left, right) => left - right)
-  }, [currentIndex, pageCount, renderEndIndex, renderStartIndex])
+    return targetIndex * estimatePageSize()
+  }, [currentIndex, estimatePageSize, pages.length])
+  const getPageKey = useCallback((index: number) => pages[index]?.path ?? index, [pages])
+  const handleVirtualizerChange = useCallback(
+    (virtualizer: Virtualizer<HTMLDivElement, HTMLElement>) => {
+      const activeIndex = resolveActiveIndex(virtualizer, containerRef.current?.scrollTop)
+
+      if (activeIndex == null) {
+        return
+      }
+
+      const pendingTarget = pendingTargetRef.current
+
+      if (pendingTarget != null) {
+        if (activeIndex !== pendingTarget) {
+          return
+        }
+
+        pendingTargetRef.current = null
+      }
+
+      if (activeIndex !== currentIndexRef.current) {
+        currentIndexRef.current = activeIndex
+        onCurrentIndexChange(activeIndex)
+      }
+    },
+    [containerRef, onCurrentIndexChange]
+  )
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLElement>({
+    count: pages.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: estimatePageSize,
+    initialOffset,
+    getItemKey: getPageKey,
+    overscan: STRIP_OVERSCAN_PAGES,
+    paddingEnd: STRIP_END_PADDING_PX,
+    onChange: handleVirtualizerChange,
+    useAnimationFrameWithResizeObserver: true
+  })
+  const virtualPages = virtualizer.getVirtualItems()
 
   useEffect(() => {
     currentIndexRef.current = currentIndex
   }, [currentIndex])
 
-  useEffect(() => {
-    pageHeightRatiosRef.current = pageHeightRatios
-  }, [pageHeightRatios])
-
   useLayoutEffect(() => {
-    pageOffsetsRef.current = pageOffsets
-  }, [pageOffsets])
-
-  useEffect(() => {
-    const container = containerRef.current
-
-    if (!container) {
+    if (pages.length <= 0) {
       return
     }
 
-    const updateSize = () => {
-      const nextContentWidth = Math.min(container.clientWidth, STRIP_MAX_CONTENT_WIDTH_PX)
-      const previousContentWidth = contentWidthRef.current
+    const isInitialNavigation = lastNavigationIdRef.current == null
 
-      if (previousContentWidth > 0 && nextContentWidth !== previousContentWidth) {
-        const nextScrollTop = container.scrollTop * (nextContentWidth / previousContentWidth)
-        programmaticScrollTopRef.current = nextScrollTop
-        container.scrollTop = nextScrollTop
-      }
-
-      contentWidthRef.current = nextContentWidth
-      setContentWidth(nextContentWidth)
-      setViewport({ height: container.clientHeight, scrollTop: container.scrollTop })
-    }
-
-    updateSize()
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateSize)
-      return () => window.removeEventListener('resize', updateSize)
-    }
-
-    const observer = new ResizeObserver(updateSize)
-    observer.observe(container)
-
-    return () => observer.disconnect()
-  }, [containerRef])
-
-  useEffect(() => {
-    if (lastNavigationRequestRef.current === navigationRequestId || pageCount <= 0) {
+    if (!isInitialNavigation && lastNavigationIdRef.current === navigationCommand.id) {
       return
     }
 
-    const container = containerRef.current
-
-    if (!container) {
-      return
-    }
-
-    const targetIndex = Math.min(Math.max(currentIndex, 0), pageCount - 1)
-    const targetTop = pageOffsetsRef.current[targetIndex] ?? 0
-    lastNavigationRequestRef.current = navigationRequestId
-    pendingNavigationRef.current = { requestId: navigationRequestId, targetIndex }
+    const targetIndex = Math.min(
+      Math.max(isInitialNavigation ? currentIndex : navigationCommand.targetIndex, 0),
+      pages.length - 1
+    )
+    lastNavigationIdRef.current = navigationCommand.id
+    pendingTargetRef.current = targetIndex
     currentIndexRef.current = targetIndex
-    container.scrollTo({ top: targetTop, behavior: 'auto' })
-    setViewport({ height: container.clientHeight, scrollTop: targetTop })
+    virtualizer.scrollToIndex(targetIndex, { align: 'start', behavior: 'auto' })
 
     if (navigationFrameRef.current !== null) {
       window.cancelAnimationFrame(navigationFrameRef.current)
     }
 
     navigationFrameRef.current = window.requestAnimationFrame(() => {
-      navigationFrameRef.current = window.requestAnimationFrame(() => {
-        const pending = pendingNavigationRef.current
-
-        if (pending?.requestId === navigationRequestId) {
-          pendingNavigationRef.current = null
-        }
-
-        navigationFrameRef.current = null
-      })
+      navigationFrameRef.current = null
+      virtualizer.scrollToIndex(targetIndex, { align: 'start', behavior: 'auto' })
     })
-  }, [containerRef, currentIndex, navigationRequestId, pageCount])
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      writePageHeightRatios(cacheKey, pageHeightRatios)
-    }, 300)
-
-    return () => window.clearTimeout(timeout)
-  }, [cacheKey, pageHeightRatios])
+  }, [currentIndex, navigationCommand, pages.length, virtualizer])
 
   useEffect(
     () => () => {
-      if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current)
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current)
       }
 
       if (navigationFrameRef.current !== null) {
@@ -228,90 +151,18 @@ export function ReaderStripWindow({
     []
   )
 
-  const resolveCurrentIndex = useCallback(
-    (container: HTMLDivElement) => {
-      if (pendingNavigationRef.current || pageCount <= 0) {
-        return
-      }
-
-      const trackingPoint =
-        container.scrollTop + container.clientHeight * STRIP_TRACKING_VIEWPORT_RATIO
-      const nextIndex = findPageAtOffset(pageOffsetsRef.current, trackingPoint, pageCount)
-
-      if (nextIndex !== currentIndexRef.current) {
-        currentIndexRef.current = nextIndex
-        onCurrentIndexChange(nextIndex)
-      }
-    },
-    [onCurrentIndexChange, pageCount]
-  )
-
   const handleScroll = useCallback(() => {
-    if (frameRef.current !== null) {
+    onUserScroll?.()
+
+    if (scrollFrameRef.current !== null) {
       return
     }
 
-    frameRef.current = window.requestAnimationFrame(() => {
-      frameRef.current = null
-      const container = containerRef.current
-
-      if (!container) {
-        return
-      }
-
-      setViewport({ height: container.clientHeight, scrollTop: container.scrollTop })
-
-      const programmaticScrollTop = programmaticScrollTopRef.current
-      const isProgrammaticScroll =
-        programmaticScrollTop !== null &&
-        Math.abs(programmaticScrollTop - container.scrollTop) < 1
-
-      if (isProgrammaticScroll) {
-        programmaticScrollTopRef.current = null
-      }
-
-      if (!pendingNavigationRef.current && !isProgrammaticScroll) {
-        onUserScroll?.()
-      }
-
-      resolveCurrentIndex(container)
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null
+      handleVirtualizerChange(virtualizer)
     })
-  }, [containerRef, onUserScroll, resolveCurrentIndex])
-
-  const handlePageSize = useCallback(
-    (index: number, image: HTMLImageElement) => {
-      if (image.naturalWidth <= 0 || image.naturalHeight <= 0 || contentWidth <= 0) {
-        return
-      }
-
-      const nextRatio = image.naturalHeight / image.naturalWidth
-      const previousRatio =
-        pageHeightRatiosRef.current[index] ?? DEFAULT_PAGE_HEIGHT_RATIO
-
-      if (Math.abs(nextRatio - previousRatio) < 0.001) {
-        return
-      }
-
-      const container = containerRef.current
-      const anchorIndex = pendingNavigationRef.current?.targetIndex ?? currentIndexRef.current
-
-      if (container && index < anchorIndex) {
-        const minimumPageHeight =
-          container.clientHeight * STRIP_MIN_PAGE_VIEWPORT_RATIO
-        const previousHeight = Math.max(minimumPageHeight, contentWidth * previousRatio)
-        const nextHeight = Math.max(minimumPageHeight, contentWidth * nextRatio)
-        const nextScrollTop = container.scrollTop + nextHeight - previousHeight
-        programmaticScrollTopRef.current = nextScrollTop
-        container.scrollTop = nextScrollTop
-        setViewport({ height: container.clientHeight, scrollTop: nextScrollTop })
-      }
-
-      const nextRatios = { ...pageHeightRatiosRef.current, [index]: nextRatio }
-      pageHeightRatiosRef.current = nextRatios
-      setPageHeightRatios(nextRatios)
-    },
-    [containerRef, contentWidth]
-  )
+  }, [handleVirtualizerChange, onUserScroll, virtualizer])
 
   const handleWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
@@ -347,181 +198,73 @@ export function ReaderStripWindow({
     >
       <div
         className="relative mx-auto w-full max-w-5xl bg-neutral-950"
-        style={{ height: totalHeight }}
+        style={{ height: virtualizer.getTotalSize() }}
       >
-        {virtualIndexes.map(index => (
-          <ReaderStripImage
-            key={index}
-            index={index}
-            top={pageOffsets[index] ?? 0}
-            height={pageHeights[index] ?? 1}
-            isVisible={index >= visibleStartIndex && index <= visibleEndIndex}
-            isActive={index === activeIndex}
-            pageQueryKey={pageQueryKey}
-            requestPage={requestPage}
-            onPageSize={handlePageSize}
-          />
-        ))}
+        {virtualPages.map(virtualPage => {
+          const page = pages[virtualPage.index]
+
+          if (!page) {
+            return null
+          }
+
+          const isActive = virtualPage.index === currentIndex
+
+          return (
+            <article
+              key={virtualPage.key}
+              ref={virtualizer.measureElement}
+              data-index={virtualPage.index}
+              data-reader-page-index={virtualPage.index}
+              className="absolute top-0 left-0 flex min-h-[64vh] w-full justify-center bg-neutral-950"
+              style={{ transform: `translateY(${virtualPage.start}px)` }}
+            >
+              <ReaderPageImage
+                src={page.path}
+                label={`第 ${virtualPage.index + 1} 页`}
+                wrapperClassName="min-h-[64vh] w-full"
+                imageClassName="block h-auto w-full object-contain"
+                loading="eager"
+                decoding={isActive ? 'sync' : 'async'}
+                showLoadingIndicator={isActive}
+              />
+            </article>
+          )
+        })}
       </div>
     </div>
   )
 }
 
-function ReaderStripImage({
-  index,
-  top,
-  height,
-  isVisible,
-  isActive,
-  pageQueryKey,
-  requestPage,
-  onPageSize
-}: {
-  index: number
-  top: number
-  height: number
-  isVisible: boolean
-  isActive: boolean
-  pageQueryKey: ReaderPageQueryKeyFactory
-  requestPage: ReaderPageRequester
-  onPageSize: (index: number, image: HTMLImageElement) => void
-}) {
-  const page = useQuery({
-    queryKey: pageQueryKey(index),
-    queryFn: ({ signal }) => requestPage(index, 'visible', signal),
-    staleTime: CACHE.READER_STALE_TIME,
-    gcTime: CACHE.READER_GC_TIME,
-    retry: false,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false
-  })
-  const src = page.data?.index === index ? page.data.path : ''
+function resolveActiveIndex(
+  virtualizer: Virtualizer<HTMLDivElement, HTMLElement>,
+  scrollOffset = virtualizer.scrollOffset ?? 0
+) {
+  const virtualPages = virtualizer.getVirtualItems()
 
-  return (
-    <article
-      className="absolute inset-x-0 flex w-full justify-center bg-neutral-950"
-      style={{ height, top }}
-      data-reader-page-index={index}
-    >
-      {src ? (
-        <ReaderPageImage
-          src={src}
-          label={`第 ${index + 1} 页`}
-          wrapperClassName="h-full w-full"
-          imageClassName="block h-auto w-full object-contain"
-          loading="eager"
-          decoding={isVisible ? 'sync' : 'async'}
-          showLoadingIndicator={isActive}
-          loadingIndicatorClassName="pointer-events-none !fixed inset-0 z-10"
-          onLoad={image => onPageSize(index, image)}
-        />
-      ) : page.isError ? (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-neutral-300">
-          <div>
-            <div className="font-medium text-neutral-100">第 {index + 1} 张加载失败</div>
-            <div className="mt-1 text-xs text-neutral-500">{page.error.message}</div>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="border-white/15 bg-white/5 text-neutral-100 hover:bg-white/10 hover:text-neutral-50"
-            onClick={event => {
-              event.stopPropagation()
-              void page.refetch()
-            }}
-          >
-            重试
-          </Button>
-        </div>
-      ) : (
-        isActive ? (
-          <ReaderLoading
-            label={`正在加载第 ${index + 1} 页`}
-            className="pointer-events-none fixed inset-0 z-10"
-          />
-        ) : null
-      )}
-    </article>
+  if (virtualPages.length === 0) {
+    return null
+  }
+
+  const viewportHeight = virtualizer.scrollRect?.height ?? 0
+  const trackingPoint =
+    scrollOffset + viewportHeight * STRIP_TRACKING_VIEWPORT_RATIO
+  const activePage = virtualPages.find(
+    page => trackingPoint >= page.start && trackingPoint < page.end
   )
+
+  if (activePage) {
+    return activePage.index
+  }
+
+  return virtualPages.reduce((nearest, page) =>
+    Math.abs(page.start - trackingPoint) < Math.abs(nearest.start - trackingPoint) ? page : nearest
+  ).index
 }
 
-function createPageOffsets(pageHeights: number[]) {
-  const offsets = Array.from({ length: pageHeights.length + 1 }, () => 0)
-  offsets[0] = 0
-
-  for (let index = 0; index < pageHeights.length; index += 1) {
-    offsets[index + 1] = offsets[index] + pageHeights[index]
-  }
-
-  return offsets
+function getWindowWidth() {
+  return typeof window === 'undefined' ? STRIP_MAX_CONTENT_WIDTH_PX : window.innerWidth
 }
 
-function findPageAtOffset(pageOffsets: number[], offset: number, pageCount: number) {
-  if (pageCount <= 0) {
-    return 0
-  }
-
-  let low = 0
-  let high = pageCount - 1
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2)
-    const pageStart = pageOffsets[middle] ?? 0
-    const pageEnd = pageOffsets[middle + 1] ?? pageStart
-
-    if (offset < pageStart) {
-      high = middle - 1
-    } else if (offset >= pageEnd) {
-      low = middle + 1
-    } else {
-      return middle
-    }
-  }
-
-  return Math.min(Math.max(low, 0), pageCount - 1)
-}
-
-function readPageHeightRatios(cacheKey: string) {
-  if (typeof localStorage === 'undefined') {
-    return {}
-  }
-
-  try {
-    const value = localStorage.getItem(`${SIZE_CACHE_PREFIX}${cacheKey}`)
-    const parsed = value ? (JSON.parse(value) as Record<number, number>) : {}
-
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([, ratio]) => Number.isFinite(ratio) && ratio > 0 && ratio < 100)
-    )
-  } catch {
-    return {}
-  }
-}
-
-function getInitialContentWidth() {
-  if (typeof window === 'undefined') {
-    return STRIP_MAX_CONTENT_WIDTH_PX
-  }
-
-  return Math.min(window.innerWidth, STRIP_MAX_CONTENT_WIDTH_PX)
-}
-
-function getInitialViewport(): ViewportState {
-  return {
-    height: typeof window === 'undefined' ? 800 : window.innerHeight,
-    scrollTop: 0
-  }
-}
-
-function writePageHeightRatios(cacheKey: string, ratios: Record<number, number>) {
-  if (typeof localStorage === 'undefined') {
-    return
-  }
-
-  try {
-    localStorage.setItem(`${SIZE_CACHE_PREFIX}${cacheKey}`, JSON.stringify(ratios))
-  } catch {
-    // Size persistence is an optimization; reading must keep working when storage is unavailable.
-  }
+function getWindowHeight() {
+  return typeof window === 'undefined' ? 800 : window.innerHeight
 }
