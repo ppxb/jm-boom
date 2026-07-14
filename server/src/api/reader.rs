@@ -48,21 +48,19 @@ pub async fn get_manifest(
         })
         .await;
 
-    let (manifest_chapter_id, images) = match chapter {
-        Ok(chapter) => (chapter.id, chapter.images),
-        Err(upstream_error) => match app
-            .downloads
+    let offline_manifest = if chapter.is_err() {
+        app.downloads
             .offline_manifest(&chapter_id)
             .await
             .map_err(|error| ApiError::Cache(anyhow::anyhow!(error.to_string())))?
-        {
-            Some(manifest) => {
-                tracing::debug!(chapter_id, "上游章节不可用，使用离线 manifest");
-                (manifest.chapter_id, manifest.images)
-            }
-            None => return Err(ApiError::Jm(upstream_error)),
-        },
+            .map(|manifest| (manifest.chapter_id, manifest.images))
+    } else {
+        None
     };
+    if offline_manifest.is_some() {
+        tracing::debug!(chapter_id, "上游章节不可用，使用离线 manifest");
+    }
+    let (manifest_chapter_id, images) = resolve_manifest_data(chapter, offline_manifest)?;
 
     let pages: Vec<_> = images
         .iter()
@@ -216,6 +214,16 @@ fn should_expand_prewarm_window(priority: ImageWorkPriority) -> bool {
     priority == ImageWorkPriority::Foreground
 }
 
+fn resolve_manifest_data(
+    chapter: crate::jm::JmResult<crate::jm::Chapter>,
+    offline_manifest: Option<(String, Vec<String>)>,
+) -> Result<(String, Vec<String>), ApiError> {
+    match chapter {
+        Ok(chapter) => Ok((chapter.id, chapter.images)),
+        Err(error) => offline_manifest.ok_or(ApiError::Jm(error)),
+    }
+}
+
 fn validate_chapter_id(chapter_id: &str) -> Result<u32, ApiError> {
     chapter_id
         .parse::<u32>()
@@ -281,12 +289,43 @@ impl IntoResponse for ApiError {
 
 #[cfg(test)]
 mod tests {
-    use super::should_expand_prewarm_window;
-    use crate::image_work::ImageWorkPriority;
+    use super::{resolve_manifest_data, should_expand_prewarm_window, ApiError};
+    use crate::{
+        image_work::ImageWorkPriority,
+        jm::{Chapter, JmError},
+    };
 
     #[test]
     fn prefetch_requests_do_not_expand_the_server_prewarm_window() {
         assert!(should_expand_prewarm_window(ImageWorkPriority::Foreground));
         assert!(!should_expand_prewarm_window(ImageWorkPriority::Prefetch));
+    }
+
+    #[test]
+    fn falls_back_to_offline_manifest_only_when_upstream_fails() {
+        let offline = Some(("1001".into(), vec!["offline-001.jpg".into()]));
+        let fallback = resolve_manifest_data(
+            Err(JmError::Network("upstream unavailable".into())),
+            offline.clone(),
+        )
+        .expect("offline manifest should be used");
+        assert_eq!(fallback, offline.expect("offline manifest tuple"));
+
+        let upstream = resolve_manifest_data(
+            Ok(Chapter {
+                id: "1001".into(),
+                name: String::new(),
+                sort: String::new(),
+                images: vec!["upstream-001.jpg".into()],
+            }),
+            Some(("1001".into(), vec!["offline-001.jpg".into()])),
+        )
+        .expect("upstream manifest should be preferred");
+        assert_eq!(upstream.1, vec!["upstream-001.jpg"]);
+
+        assert!(matches!(
+            resolve_manifest_data(Err(JmError::Empty), None),
+            Err(ApiError::Jm(JmError::Empty))
+        ));
     }
 }

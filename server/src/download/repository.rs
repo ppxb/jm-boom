@@ -171,7 +171,7 @@ mod tests {
     #[tokio::test]
     async fn preserves_completed_manifest_only_when_images_are_unchanged() {
         let repository = test_repository().await;
-        let task = test_task();
+        let task = test_task("task-1");
         let chapter = DownloadChapter {
             chapter_id: "1001".into(),
             title: "第一章".into(),
@@ -218,6 +218,72 @@ mod tests {
             .is_none());
     }
 
+    #[tokio::test]
+    async fn selects_the_newest_completed_manifest_and_ignores_incomplete_entries() {
+        let repository = test_repository().await;
+        let chapter = DownloadChapter {
+            chapter_id: "1001".into(),
+            title: "第一章".into(),
+            order: 1,
+        };
+        let older = test_task("task-older");
+        let newer = test_task("task-newer");
+        let incomplete = test_task("task-incomplete");
+
+        repository
+            .persist_manifest(&older, &chapter, &["older-001.jpg".into()])
+            .await
+            .expect("persist older manifest");
+        repository
+            .complete_manifest(&older.task_id, &chapter.chapter_id)
+            .await
+            .expect("complete older manifest");
+        set_manifest_updated_at(&repository, &older.task_id, 10).await;
+
+        repository
+            .persist_manifest(&newer, &chapter, &["newer-001.jpg".into()])
+            .await
+            .expect("persist newer manifest");
+        repository
+            .complete_manifest(&newer.task_id, &chapter.chapter_id)
+            .await
+            .expect("complete newer manifest");
+        set_manifest_updated_at(&repository, &newer.task_id, 20).await;
+
+        repository
+            .persist_manifest(&incomplete, &chapter, &["incomplete-001.jpg".into()])
+            .await
+            .expect("persist incomplete manifest");
+        set_manifest_updated_at(&repository, &incomplete.task_id, 30).await;
+
+        let selected = repository
+            .offline_manifest(&chapter.chapter_id)
+            .await
+            .expect("load selected manifest")
+            .expect("completed manifest should exist");
+        assert_eq!(selected.task_id, newer.task_id);
+        assert_eq!(selected.images, vec!["newer-001.jpg"]);
+        assert_eq!(
+            repository
+                .completed_manifest_task_ids(&chapter.chapter_id)
+                .await
+                .expect("load completed manifest task ids"),
+            vec![newer.task_id.clone(), older.task_id.clone()]
+        );
+
+        repository
+            .delete_task(&newer.task_id)
+            .await
+            .expect("delete newer task");
+        let fallback = repository
+            .offline_manifest(&chapter.chapter_id)
+            .await
+            .expect("load fallback manifest")
+            .expect("older completed manifest should remain");
+        assert_eq!(fallback.task_id, older.task_id);
+        assert_eq!(fallback.images, vec!["older-001.jpg"]);
+    }
+
     async fn test_repository() -> DownloadRepository {
         let db = SqlitePoolOptions::new()
             .max_connections(1)
@@ -231,9 +297,22 @@ mod tests {
         DownloadRepository::new(db)
     }
 
-    fn test_task() -> DownloadTask {
+    async fn set_manifest_updated_at(
+        repository: &DownloadRepository,
+        task_id: &str,
+        updated_at: i64,
+    ) {
+        sqlx::query("UPDATE download_manifests SET updated_at = ? WHERE task_id = ?")
+            .bind(updated_at)
+            .bind(task_id)
+            .execute(&repository.db)
+            .await
+            .expect("set manifest updated_at");
+    }
+
+    fn test_task(task_id: &str) -> DownloadTask {
         DownloadTask {
-            task_id: "task-1".into(),
+            task_id: task_id.into(),
             album_id: "album-1".into(),
             comic_title: "测试漫画".into(),
             chapters: Vec::new(),

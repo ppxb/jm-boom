@@ -512,6 +512,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn offline_page_falls_back_from_corrupt_newer_download_and_expires_after_delete() {
+        let db = test_db().await;
+        let (manager, root) = test_manager("offline-fallback", db).await;
+        let older = test_task("task-older", DownloadStatus::Completed, 1);
+        let newer = test_task("task-newer", DownloadStatus::Completed, 1);
+        let chapter = older.chapters[0].clone();
+        insert_task(&manager, older.clone()).await;
+        insert_task(&manager, newer.clone()).await;
+
+        for (task, image) in [(&older, "older-001.png"), (&newer, "newer-001.png")] {
+            manager
+                .repository
+                .persist_manifest(task, &chapter, &[image.into()])
+                .await
+                .expect("persist offline manifest");
+            manager
+                .repository
+                .complete_manifest(&task.task_id, &chapter.chapter_id)
+                .await
+                .expect("complete offline manifest");
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+
+        let older_data = png_data();
+        manager
+            .storage
+            .store_page(
+                &older.task_id,
+                &chapter.chapter_id,
+                0,
+                &CachedReaderPage {
+                    data: older_data.clone(),
+                    format: PageImageFormat::Png,
+                },
+            )
+            .await
+            .expect("store older offline page");
+        let newer_page = root
+            .join("downloads")
+            .join(&newer.task_id)
+            .join(&chapter.chapter_id)
+            .join("0.png");
+        fs::create_dir_all(newer_page.parent().expect("newer page parent"))
+            .await
+            .expect("create newer page parent");
+        let mut corrupt = png_data();
+        corrupt.truncate(corrupt.len() - 12);
+        fs::write(&newer_page, corrupt)
+            .await
+            .expect("write corrupt newer page");
+
+        let offline = manager
+            .offline_page(&chapter.chapter_id, 0)
+            .await
+            .expect("load offline page")
+            .expect("older offline page should be used");
+        assert_eq!(offline.format, PageImageFormat::Png);
+        assert_eq!(offline.data, older_data);
+        assert!(!newer_page.exists());
+
+        manager
+            .remove(&older.task_id)
+            .await
+            .expect("remove older task");
+        assert!(manager
+            .offline_page(&chapter.chapter_id, 0)
+            .await
+            .expect("load offline page after deletion")
+            .is_none());
+        manager
+            .remove(&newer.task_id)
+            .await
+            .expect("remove newer task");
+
+        cleanup(manager, root).await;
+    }
+
+    #[tokio::test]
     async fn restart_requeues_running_tasks_without_resuming_paused_tasks() {
         let db = test_db().await;
         let repository = DownloadRepository::new(db.clone());
