@@ -2,6 +2,7 @@ export const queryKeys = {
   apiEndpointDiscovery: () => ['jm-api-endpoint-discovery'] as const,
   settingsSystem: () => ['jm-settings-system'] as const,
   installedSources: () => ['installed-sources'] as const,
+  sourceCatalog: () => ['source-catalog'] as const,
   comicComments: (comicId: string) => ['jm-comic-comments', comicId] as const,
   comicDetail: (comicId: string) => ['jm-comic-detail', comicId] as const,
   downloadTasks: () => ['jm-download-tasks'] as const,

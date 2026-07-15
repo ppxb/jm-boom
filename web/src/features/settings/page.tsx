@@ -21,8 +21,18 @@ export function SettingsPage() {
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const setHideCovers = useSettingsStore(state => state.setHideCovers)
   const reset = useSettingsStore(state => state.reset)
-  const { sources, selectedSourceId, selectSource, resetSelection, isLoading } =
-    useSourceCatalog()
+  const {
+    sources,
+    catalog,
+    selectedSourceId,
+    selectSource,
+    resetSelection,
+    installSource,
+    installingSourceId,
+    isLoading,
+    isCatalogLoading,
+    catalogError
+  } = useSourceCatalog()
   const { endpointState, systemInfo, refreshEndpoints, changeEndpoint, clearCache } =
     useSettingsData()
 
@@ -63,6 +73,11 @@ export function SettingsPage() {
             selectedSourceId={selectedSourceId}
             isLoading={isLoading}
             onSourceChange={selectSource}
+            catalog={catalog}
+            isCatalogLoading={isCatalogLoading}
+            catalogError={catalogError}
+            installingSourceId={installingSourceId}
+            onInstall={installSource}
           />
 
           <Separator />

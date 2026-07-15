@@ -44,6 +44,27 @@ export type InstalledSource = {
   settingCount: number
 }
 
+export type AvailableSource = {
+  id: string
+  name: string
+  version: number
+  iconUrl: string | null
+  downloadUrl: string | null
+  languages: string[]
+  contentRating: number
+  installedVersion: number | null
+}
+
 export function getInstalledSources() {
   return apiClient.get<InstalledSource[]>('/api/sources')
+}
+
+export function getSourceCatalog(refresh = false) {
+  return apiClient.get<AvailableSource[]>('/api/sources/catalog', { refresh })
+}
+
+export function installSource(sourceId: string) {
+  return apiClient.post<InstalledSource>(
+    `/api/sources/catalog/${encodeURIComponent(sourceId)}/install`
+  )
 }

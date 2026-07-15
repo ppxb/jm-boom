@@ -1,3 +1,4 @@
+mod catalog;
 mod list;
 mod package;
 mod protocol;
@@ -5,6 +6,7 @@ mod registry;
 mod runtime;
 mod service;
 
+pub use catalog::{AvailableSource, SourceCatalogError, SourceCatalogService};
 pub use list::{SourceList, SourceListEntry, SourceListError};
 pub use package::{
     SourceCapabilities, SourceImport, SourceInfo, SourceInterface, SourceListing, SourceManifest,

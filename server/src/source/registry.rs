@@ -107,12 +107,20 @@ impl SourceRegistry {
     }
 
     pub async fn install(&self, bytes: Vec<u8>) -> Result<InstalledSource, SourceRegistryError> {
-        let _operation = self.operation_lock.lock().await;
         let (package, bytes) = tokio::task::spawn_blocking(move || {
             SourcePackage::from_bytes(&bytes).map(|package| (package, bytes))
         })
         .await
         .map_err(|error| std::io::Error::other(error.to_string()))??;
+        self.install_parsed(package, bytes).await
+    }
+
+    pub(super) async fn install_parsed(
+        &self,
+        package: SourcePackage,
+        bytes: Vec<u8>,
+    ) -> Result<InstalledSource, SourceRegistryError> {
+        let _operation = self.operation_lock.lock().await;
         let source_id = package.manifest.info.id.clone();
         let version = package.manifest.info.version;
 
