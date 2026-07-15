@@ -7,6 +7,7 @@
 - 项目已完全放弃 Tauri，当前结构为 `web/` React 前端与 `server/` Rust/Axum 后端。
 - 前端使用 React 19、Vite、TanStack Router/Query、Zustand、shadcn/ui。
 - 后端负责匿名 JM API 请求、端点探测、阅读图片解扰、缓存和下载任务。
+- 新漫画源实现统一使用 `source` 命名：服务端可解析、注册和执行 `.aix` 包，源能力由 WASM 导入/导出决定，不按源 ID 编写分支；现有 JM 链路将在业务 API 完成迁移后删除。
 - 下载使用服务端有界队列：同时最多运行 2 个漫画任务，每个任务最多 5 个页面 job；Manager 统一控制状态转换与 worker 重调度，暂停、取消和删除通过通知退出，恢复与删除使用 generation 隔离旧 worker。
 - 下载文件独立保存在 `data/downloads/<task_id>/`，章节 manifest 持久化到 SQLite；阅读器在上游不可用时回退到离线 manifest 和页面文件，删除任务时同步删除对应 manifest 与文件目录。
 - 阅读页仅在确需解扰时重新编码为 WebP；无需解扰的 JPEG、PNG、WebP 和 GIF 原样缓存，阅读 URL 包含缓存算法版本。

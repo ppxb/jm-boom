@@ -1,3 +1,4 @@
+mod bridge;
 mod host;
 mod store;
 
@@ -6,7 +7,14 @@ use host::{build_imports, HostState};
 use serde::{de::DeserializeOwned, Serialize};
 use store::DescriptorValue;
 use thiserror::Error;
-use wasmer::{FunctionEnv, Instance, Module, Store, TypedFunction};
+use wasmer::{Engine, FunctionEnv, Instance, Module, Store, TypedFunction};
+
+#[derive(Clone)]
+pub struct CompiledSource {
+    source_id: String,
+    engine: Engine,
+    module: Module,
+}
 
 pub struct SourceInstance {
     store: Store,
@@ -24,25 +32,45 @@ pub enum SourceRuntimeError {
     Export(String),
     #[error("source execution failed: {0}")]
     Execution(String),
+    #[error("failed to initialize source host: {0}")]
+    Host(String),
     #[error("source returned error code {0}")]
     Source(i32),
+    #[error("source returned an error: {0}")]
+    SourceMessage(String),
     #[error("source result is invalid: {0}")]
     InvalidResult(String),
     #[error("failed to encode source input: {0}")]
     Encode(#[from] postcard::Error),
 }
 
+impl CompiledSource {
+    pub fn compile(package: &SourcePackage) -> Result<Self, SourceRuntimeError> {
+        let engine = Engine::default();
+        let module = Module::new(&engine, package.wasm.as_ref())
+            .map_err(|error| SourceRuntimeError::Compile(error.to_string()))?;
+        Ok(Self {
+            source_id: package.manifest.info.id.clone(),
+            engine,
+            module,
+        })
+    }
+
+    pub fn instantiate(&self) -> Result<SourceInstance, SourceRuntimeError> {
+        SourceInstance::instantiate(self)
+    }
+}
+
 impl SourceInstance {
     pub fn load(package: &SourcePackage) -> Result<Self, SourceRuntimeError> {
-        let mut store = Store::default();
-        let module = Module::new(&store, package.wasm.as_ref())
-            .map_err(|error| SourceRuntimeError::Compile(error.to_string()))?;
-        let environment = FunctionEnv::new(
-            &mut store,
-            HostState::new(package.manifest.info.id.clone()),
-        );
+        CompiledSource::compile(package)?.instantiate()
+    }
+
+    fn instantiate(compiled: &CompiledSource) -> Result<Self, SourceRuntimeError> {
+        let mut store = Store::new(compiled.engine.clone());
+        let environment = FunctionEnv::new(&mut store, HostState::new(compiled.source_id.clone())?);
         let imports = build_imports(&mut store, &environment);
-        let instance = Instance::new(&mut store, &module, &imports)
+        let instance = Instance::new(&mut store, &compiled.module, &imports)
             .map_err(|error| SourceRuntimeError::Instantiate(error.to_string()))?;
         let memory = instance
             .exports
@@ -67,7 +95,7 @@ impl SourceInstance {
     }
 
     pub fn has_export(&self, name: &str) -> bool {
-        self.instance.exports.get_extern(name).is_ok()
+        self.instance.exports.get_extern(name).is_some()
     }
 
     pub fn store<T: Serialize>(&mut self, value: &T) -> Result<i32, SourceRuntimeError> {
@@ -86,12 +114,15 @@ impl SourceInstance {
         if pointer < 0 {
             return Err(SourceRuntimeError::Source(pointer));
         }
-        let bytes = self
+        if pointer == 0 {
+            return Err(SourceRuntimeError::InvalidResult(
+                "source returned a null result pointer".into(),
+            ));
+        }
+        let result = self
             .environment
             .as_ref(&self.store)
-            .read_result_bytes(&self.store, pointer as u32)?;
-        let result = postcard::from_bytes(&bytes)
-            .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))?;
+            .read_result(&self.store, pointer as u32);
 
         let free: TypedFunction<i32, ()> = self
             .instance
@@ -100,6 +131,84 @@ impl SourceInstance {
             .map_err(|error| SourceRuntimeError::Export(error.to_string()))?;
         free.call(&mut self.store, pointer)
             .map_err(|error| SourceRuntimeError::Execution(error.to_string()))?;
-        Ok(result)
+        let (is_error, bytes) = result?;
+        if is_error {
+            return Err(SourceRuntimeError::SourceMessage(
+                String::from_utf8(bytes)
+                    .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))?,
+            ));
+        }
+        postcard::from_bytes(&bytes)
+            .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))
+    }
+
+    pub fn invoke0<T: DeserializeOwned>(&mut self, export: &str) -> Result<T, SourceRuntimeError> {
+        let function: TypedFunction<(), i32> = self
+            .instance
+            .exports
+            .get_typed_function(&self.store, export)
+            .map_err(|error| SourceRuntimeError::Export(error.to_string()))?;
+        let pointer = function
+            .call(&mut self.store)
+            .map_err(|error| SourceRuntimeError::Execution(error.to_string()))?;
+        self.read_result(pointer)
+    }
+
+    pub fn invoke1<T: DeserializeOwned>(
+        &mut self,
+        export: &str,
+        argument: i32,
+    ) -> Result<T, SourceRuntimeError> {
+        let function: TypedFunction<i32, i32> = self
+            .instance
+            .exports
+            .get_typed_function(&self.store, export)
+            .map_err(|error| SourceRuntimeError::Export(error.to_string()))?;
+        let pointer = function
+            .call(&mut self.store, argument)
+            .map_err(|error| SourceRuntimeError::Execution(error.to_string()))?;
+        self.read_result(pointer)
+    }
+
+    pub fn invoke2<T: DeserializeOwned>(
+        &mut self,
+        export: &str,
+        first: i32,
+        second: i32,
+    ) -> Result<T, SourceRuntimeError> {
+        let function: TypedFunction<(i32, i32), i32> = self
+            .instance
+            .exports
+            .get_typed_function(&self.store, export)
+            .map_err(|error| SourceRuntimeError::Export(error.to_string()))?;
+        let pointer = function
+            .call(&mut self.store, first, second)
+            .map_err(|error| SourceRuntimeError::Execution(error.to_string()))?;
+        self.read_result(pointer)
+    }
+
+    pub fn invoke3<T: DeserializeOwned>(
+        &mut self,
+        export: &str,
+        first: i32,
+        second: i32,
+        third: i32,
+    ) -> Result<T, SourceRuntimeError> {
+        let function: TypedFunction<(i32, i32, i32), i32> = self
+            .instance
+            .exports
+            .get_typed_function(&self.store, export)
+            .map_err(|error| SourceRuntimeError::Export(error.to_string()))?;
+        let pointer = function
+            .call(&mut self.store, first, second, third)
+            .map_err(|error| SourceRuntimeError::Execution(error.to_string()))?;
+        self.read_result(pointer)
+    }
+
+    pub fn remove_descriptor(&mut self, descriptor: i32) {
+        self.environment
+            .as_mut(&mut self.store)
+            .descriptors
+            .remove(descriptor);
     }
 }

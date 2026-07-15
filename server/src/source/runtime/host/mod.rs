@@ -1,23 +1,56 @@
+pub(super) mod canvas;
+pub(super) mod defaults;
+pub(super) mod env;
+pub(super) mod html;
+pub(super) mod net;
+pub(super) mod std;
+
+use reqwest::blocking::Client;
+use wasmer::{imports, Function, FunctionEnv, Imports, Memory, Store, WasmPtr};
+
 use super::store::DescriptorStore;
 use crate::source::runtime::SourceRuntimeError;
-use wasmer::{imports, Function, FunctionEnv, FunctionEnvMut, Imports, Memory, Store, WasmPtr};
 
-pub struct HostState {
+const MAX_RESULT_BYTES: u32 = 64 * 1024 * 1024;
+const MAX_DESCRIPTOR_ARRAY_LENGTH: i32 = 16_384;
+
+pub(super) struct HostState {
     source_id: String,
-    pub memory: Option<Memory>,
-    pub descriptors: DescriptorStore,
+    pub(super) memory: Option<Memory>,
+    pub(super) descriptors: DescriptorStore,
+    defaults: defaults::UserDefaults,
+    partial_results: Vec<Vec<u8>>,
+    http_client: Client,
 }
 
+// Wasmer requires host environments to satisfy Send + Sync even though a source
+// instance is executed on one thread and never shared across stores. The HTML
+// tree is therefore guarded by the source instance's single-threaded ownership.
+unsafe impl Send for HostState {}
+unsafe impl Sync for HostState {}
+
 impl HostState {
-    pub fn new(source_id: String) -> Self {
-        Self {
+    pub(super) fn new(source_id: String) -> Result<Self, SourceRuntimeError> {
+        let http_client = Client::builder()
+            .cookie_store(true)
+            .user_agent(
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) \
+                 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+            )
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .build()
+            .map_err(|error| SourceRuntimeError::Host(error.to_string()))?;
+        Ok(Self {
             source_id,
             memory: None,
             descriptors: DescriptorStore::new(),
-        }
+            defaults: defaults::UserDefaults::new(),
+            partial_results: Vec::new(),
+            http_client,
+        })
     }
 
-    fn read_bytes(
+    pub(super) fn read_bytes(
         &self,
         store: &impl wasmer::AsStoreRef,
         pointer: u32,
@@ -28,10 +61,9 @@ impl HostState {
             .as_ref()
             .ok_or_else(|| SourceRuntimeError::InvalidResult("memory is not initialized".into()))?;
         let view = memory.view(store);
-        let bytes = WasmPtr::<u8>::new(pointer)
+        WasmPtr::<u8>::new(pointer)
             .slice(&view, length)
-            .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))?;
-        bytes
+            .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))?
             .iter()
             .map(|byte| {
                 byte.read()
@@ -40,7 +72,7 @@ impl HostState {
             .collect()
     }
 
-    fn write_bytes(
+    pub(super) fn write_bytes(
         &self,
         store: &impl wasmer::AsStoreRef,
         pointer: u32,
@@ -56,14 +88,103 @@ impl HostState {
             .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))
     }
 
-    fn read_string(
+    pub(super) fn read_string(
+        &self,
+        store: &impl wasmer::AsStoreRef,
+        pointer: i32,
+        length: i32,
+    ) -> Result<String, SourceRuntimeError> {
+        if pointer < 0 || length < 0 {
+            return Err(SourceRuntimeError::InvalidResult(
+                "invalid string range".into(),
+            ));
+        }
+        String::from_utf8(self.read_bytes(store, pointer as u32, length as u32)?)
+            .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))
+    }
+
+    pub(super) fn read_item_bytes(
+        &self,
+        store: &impl wasmer::AsStoreRef,
+        pointer: i32,
+    ) -> Result<Vec<u8>, SourceRuntimeError> {
+        if pointer < 0 {
+            return Err(SourceRuntimeError::InvalidResult(
+                "invalid item pointer".into(),
+            ));
+        }
+        let length = self.read_u32(store, pointer as u32)?;
+        if !(8..=MAX_RESULT_BYTES).contains(&length) {
+            return Err(SourceRuntimeError::InvalidResult(
+                "invalid item length".into(),
+            ));
+        }
+        self.read_bytes(store, pointer as u32 + 8, length - 8)
+    }
+
+    pub(super) fn read_i32s(
+        &self,
+        store: &impl wasmer::AsStoreRef,
+        pointer: i32,
+        length: i32,
+    ) -> Result<Vec<i32>, SourceRuntimeError> {
+        if pointer < 0 || !(0..=MAX_DESCRIPTOR_ARRAY_LENGTH).contains(&length) {
+            return Err(SourceRuntimeError::InvalidResult(
+                "invalid descriptor range".into(),
+            ));
+        }
+        let byte_length = (length as u32).checked_mul(4).ok_or_else(|| {
+            SourceRuntimeError::InvalidResult("descriptor array is too large".into())
+        })?;
+        let bytes = self.read_bytes(store, pointer as u32, byte_length)?;
+        Ok(bytes
+            .chunks_exact(4)
+            .map(|chunk| i32::from_le_bytes(chunk.try_into().expect("four bytes")))
+            .collect())
+    }
+
+    pub(super) fn write_i32s(
+        &self,
+        store: &impl wasmer::AsStoreRef,
+        pointer: i32,
+        values: &[i32],
+    ) -> Result<(), SourceRuntimeError> {
+        if pointer < 0 {
+            return Err(SourceRuntimeError::InvalidResult(
+                "invalid descriptor pointer".into(),
+            ));
+        }
+        let bytes = values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect::<Vec<_>>();
+        self.write_bytes(store, pointer as u32, &bytes)
+    }
+
+    pub(super) fn read_result(
         &self,
         store: &impl wasmer::AsStoreRef,
         pointer: u32,
-        length: u32,
-    ) -> Result<String, SourceRuntimeError> {
-        String::from_utf8(self.read_bytes(store, pointer, length)?)
-            .map_err(|error| SourceRuntimeError::InvalidResult(error.to_string()))
+    ) -> Result<(bool, Vec<u8>), SourceRuntimeError> {
+        let header = self.read_bytes(store, pointer, 4)?;
+        let marker = i32::from_le_bytes(header.try_into().expect("four bytes"));
+        if marker == -1 {
+            let message_length = self.read_u32(store, pointer + 8)?;
+            if !(12..=MAX_RESULT_BYTES).contains(&message_length) {
+                return Err(SourceRuntimeError::InvalidResult(
+                    "invalid source error result".into(),
+                ));
+            }
+            return Ok((
+                true,
+                self.read_bytes(store, pointer + 12, message_length - 12)?,
+            ));
+        }
+        let length = u32::try_from(marker)
+            .ok()
+            .filter(|length| (8..=MAX_RESULT_BYTES).contains(length))
+            .ok_or_else(|| SourceRuntimeError::InvalidResult("invalid result length".into()))?;
+        Ok((false, self.read_bytes(store, pointer + 8, length - 8)?))
     }
 
     fn read_u32(
@@ -74,163 +195,61 @@ impl HostState {
         let bytes = self.read_bytes(store, pointer, 4)?;
         Ok(u32::from_le_bytes(bytes.try_into().expect("four bytes")))
     }
-
-    pub fn read_result_bytes(
-        &self,
-        store: &impl wasmer::AsStoreRef,
-        pointer: u32,
-    ) -> Result<Vec<u8>, SourceRuntimeError> {
-        let length = self.read_u32(store, pointer)?;
-        if length < 8 {
-            return Err(SourceRuntimeError::InvalidResult(
-                "result length is smaller than its header".into(),
-            ));
-        }
-        self.read_bytes(store, pointer + 8, length - 8)
-    }
 }
 
-pub fn build_imports(store: &mut Store, env: &FunctionEnv<HostState>) -> Imports {
+pub(super) fn build_imports(store: &mut Store, env: &FunctionEnv<HostState>) -> Imports {
     imports! {
         "env" => {
-            "print" => Function::new_typed_with_env(store, env, print),
-            "send_partial_result" => Function::new_typed_with_env(store, env, send_partial_result),
+            "print" => Function::new_typed_with_env(store, env, env::print),
+            "abort" => Function::new_typed_with_env(store, env, env::abort),
+            "send_partial_result" => Function::new_typed_with_env(store, env, env::send_partial_result),
         },
         "std" => {
-            "print" => Function::new_typed_with_env(store, env, print),
-            "abort" => Function::new_typed_with_env(store, env, abort),
-            "destroy" => Function::new_typed_with_env(store, env, destroy),
-            "buffer_len" => Function::new_typed_with_env(store, env, buffer_len),
-            "read_buffer" => Function::new_typed_with_env(store, env, read_buffer),
-            "current_date" => Function::new_typed_with_env(store, env, current_date),
-            "parse_date" => Function::new_typed_with_env(store, env, parse_date),
+            "print" => Function::new_typed_with_env(store, env, env::print),
+            "abort" => Function::new_typed_with_env(store, env, env::abort),
+            "destroy" => Function::new_typed_with_env(store, env, std::destroy),
+            "buffer_len" => Function::new_typed_with_env(store, env, std::buffer_len),
+            "read_buffer" => Function::new_typed_with_env(store, env, std::read_buffer),
+            "current_date" => Function::new_typed_with_env(store, env, std::current_date),
+            "utc_offset" => Function::new_typed_with_env(store, env, std::utc_offset),
+            "parse_date" => Function::new_typed_with_env(store, env, std::parse_date),
         },
         "net" => {
-            "init" => Function::new_typed_with_env(store, env, stub_i32_i32),
-            "send" => Function::new_typed_with_env(store, env, stub_i32_i32),
-            "send_all" => Function::new_typed_with_env(store, env, stub_i32_i32_i32),
-            "set_url" => Function::new_typed_with_env(store, env, stub_i32_i32_i32_i32),
-            "set_header" => Function::new_typed_with_env(store, env, stub_five_i32),
-            "set_body" => Function::new_typed_with_env(store, env, stub_i32_i32_i32_i32),
-            "data_len" => Function::new_typed_with_env(store, env, stub_i32_i32),
-            "read_data" => Function::new_typed_with_env(store, env, stub_i32_i32_i32_i32),
-            "html" => Function::new_typed_with_env(store, env, stub_i32_i32),
+            "init" => Function::new_typed_with_env(store, env, net::init),
+            "send" => Function::new_typed_with_env(store, env, net::send),
+            "send_all" => Function::new_typed_with_env(store, env, net::send_all),
+            "set_url" => Function::new_typed_with_env(store, env, net::set_url),
+            "set_header" => Function::new_typed_with_env(store, env, net::set_header),
+            "set_body" => Function::new_typed_with_env(store, env, net::set_body),
+            "set_timeout" => Function::new_typed_with_env(store, env, net::set_timeout),
+            "data_len" => Function::new_typed_with_env(store, env, net::data_len),
+            "read_data" => Function::new_typed_with_env(store, env, net::read_data),
+            "get_image" => Function::new_typed_with_env(store, env, net::get_image),
+            "get_status_code" => Function::new_typed_with_env(store, env, net::get_status_code),
+            "get_url" => Function::new_typed_with_env(store, env, net::get_url),
+            "get_header" => Function::new_typed_with_env(store, env, net::get_header),
+            "html" => Function::new_typed_with_env(store, env, net::html),
+            "set_rate_limit" => Function::new_typed_with_env(store, env, net::set_rate_limit),
         },
         "html" => {
-            "attr" => Function::new_typed_with_env(store, env, stub_i32_i32_i32_i32),
-            "html" => Function::new_typed_with_env(store, env, stub_i32_i32),
-            "text" => Function::new_typed_with_env(store, env, stub_i32_i32),
-            "get" => Function::new_typed_with_env(store, env, stub_i32_i32_i32),
-            "select" => Function::new_typed_with_env(store, env, stub_i32_i32_i32_i32),
-            "select_first" => Function::new_typed_with_env(store, env, stub_i32_i32_i32_i32),
-            "size" => Function::new_typed_with_env(store, env, stub_i32_i32),
+            "attr" => Function::new_typed_with_env(store, env, html::attr),
+            "get" => Function::new_typed_with_env(store, env, html::get),
+            "select" => Function::new_typed_with_env(store, env, html::select),
+            "select_first" => Function::new_typed_with_env(store, env, html::select_first),
+            "size" => Function::new_typed_with_env(store, env, html::size),
+            "text" => Function::new_typed_with_env(store, env, html::text),
+            "html" => Function::new_typed_with_env(store, env, html::html),
         },
         "defaults" => {
-            "get" => Function::new_typed_with_env(store, env, stub_i32_i32_i32),
-            "set" => Function::new_typed_with_env(store, env, stub_i32_i32_i32_i32_i32),
+            "get" => Function::new_typed_with_env(store, env, defaults::get),
+            "set" => Function::new_typed_with_env(store, env, defaults::set),
         },
         "canvas" => {
-            "get_image_width" => Function::new_typed_with_env(store, env, stub_i32_f32),
-            "get_image_height" => Function::new_typed_with_env(store, env, stub_i32_f32),
-            "new_context" => Function::new_typed_with_env(store, env, stub_f32_f32_i32),
-            "copy_image" => Function::new_typed_with_env(store, env, stub_copy_image),
-            "get_image" => Function::new_typed_with_env(store, env, stub_i32_i32),
+            "new_context" => Function::new_typed_with_env(store, env, canvas::new_context),
+            "copy_image" => Function::new_typed_with_env(store, env, canvas::copy_image),
+            "get_image" => Function::new_typed_with_env(store, env, canvas::get_image),
+            "get_image_width" => Function::new_typed_with_env(store, env, canvas::get_image_width),
+            "get_image_height" => Function::new_typed_with_env(store, env, canvas::get_image_height),
         },
     }
-}
-
-fn print(env: FunctionEnvMut<HostState>, pointer: i32, length: i32) {
-    if pointer < 0 || length <= 0 {
-        return;
-    }
-    match env
-        .data()
-        .read_string(&env, pointer as u32, length as u32)
-    {
-        Ok(message) => tracing::debug!(source = %env.data().source_id, %message, "漫画源日志"),
-        Err(error) => tracing::warn!(source = %env.data().source_id, %error, "无法读取漫画源日志"),
-    }
-}
-
-fn send_partial_result(_env: FunctionEnvMut<HostState>, _pointer: i32) {}
-
-fn abort(env: FunctionEnvMut<HostState>) {
-    tracing::warn!(source = %env.data().source_id, "漫画源主动终止执行");
-}
-
-fn destroy(mut env: FunctionEnvMut<HostState>, descriptor: i32) {
-    env.data_mut().descriptors.remove(descriptor);
-}
-
-fn buffer_len(env: FunctionEnvMut<HostState>, descriptor: i32) -> i32 {
-    env.data()
-        .descriptors
-        .get(descriptor)
-        .and_then(|value| i32::try_from(value.as_bytes().len()).ok())
-        .unwrap_or(-1)
-}
-
-fn read_buffer(mut env: FunctionEnvMut<HostState>, descriptor: i32, pointer: i32, size: i32) -> i32 {
-    if pointer < 0 || size < 0 {
-        return -3;
-    }
-    let Some(bytes) = env
-        .data()
-        .descriptors
-        .get(descriptor)
-        .map(|value| value.as_bytes().to_vec())
-    else {
-        return -1;
-    };
-    if size as usize > bytes.len() {
-        return -3;
-    }
-    env.data_mut()
-        .write_bytes(&env, pointer as u32, &bytes[..size as usize])
-        .map(|_| 0)
-        .unwrap_or(-3)
-}
-
-fn current_date(_env: FunctionEnvMut<HostState>) -> f64 {
-    chrono::Utc::now().timestamp() as f64
-}
-
-#[allow(clippy::too_many_arguments)]
-fn parse_date(
-    _env: FunctionEnvMut<HostState>,
-    _date_ptr: i32,
-    _date_len: i32,
-    _format_ptr: i32,
-    _format_len: i32,
-    _locale_ptr: i32,
-    _locale_len: i32,
-    _timezone_ptr: i32,
-    _timezone_len: i32,
-) -> f64 {
-    -5.0
-}
-
-fn stub_i32_i32(_env: FunctionEnvMut<HostState>, _a: i32) -> i32 { -1 }
-fn stub_i32_i32_i32(_env: FunctionEnvMut<HostState>, _a: i32, _b: i32) -> i32 { -1 }
-fn stub_i32_i32_i32_i32(_env: FunctionEnvMut<HostState>, _a: i32, _b: i32, _c: i32) -> i32 { -1 }
-fn stub_i32_i32_i32_i32_i32(_env: FunctionEnvMut<HostState>, _a: i32, _b: i32, _c: i32, _d: i32) -> i32 { -1 }
-fn stub_five_i32(_env: FunctionEnvMut<HostState>, _a: i32, _b: i32, _c: i32, _d: i32, _e: i32) -> i32 { -1 }
-fn stub_i32_f32(_env: FunctionEnvMut<HostState>, _a: i32) -> f32 { -1.0 }
-fn stub_f32_f32_i32(_env: FunctionEnvMut<HostState>, _a: f32, _b: f32) -> i32 { -1 }
-
-#[allow(clippy::too_many_arguments)]
-fn stub_copy_image(
-    _env: FunctionEnvMut<HostState>,
-    _context: i32,
-    _image: i32,
-    _src_x: f32,
-    _src_y: f32,
-    _src_width: f32,
-    _src_height: f32,
-    _dst_x: f32,
-    _dst_y: f32,
-    _dst_width: f32,
-    _dst_height: f32,
-) -> i32 {
-    -1
 }

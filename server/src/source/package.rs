@@ -166,6 +166,7 @@ pub struct SourcePackage {
     pub wasm: Arc<[u8]>,
     pub interface: SourceInterface,
     pub capabilities: SourceCapabilities,
+    wasm_fingerprint: [u8; 16],
 }
 
 #[derive(Debug, Error)]
@@ -226,6 +227,7 @@ impl SourcePackage {
         let interface = scan_wasm(&wasm)?;
         validate_interface(&interface)?;
         let capabilities = SourceCapabilities::from_interface(&interface);
+        let wasm_fingerprint = md5::compute(&wasm).0;
 
         Ok(Self {
             manifest,
@@ -234,7 +236,12 @@ impl SourcePackage {
             wasm: wasm.into(),
             interface,
             capabilities,
+            wasm_fingerprint,
         })
+    }
+
+    pub fn wasm_fingerprint(&self) -> [u8; 16] {
+        self.wasm_fingerprint
     }
 }
 
