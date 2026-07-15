@@ -15,6 +15,7 @@ mod media;
 mod reader;
 mod search;
 mod settings;
+mod source_api;
 mod sources;
 
 pub fn routes() -> Router<AppState> {
@@ -52,4 +53,8 @@ pub fn routes() -> Router<AppState> {
         .route("/settings/cache", delete(settings::clear_cache))
         // 漫画源
         .route("/sources", get(sources::list))
+        .route("/sources/:source_id/search", post(source_api::search))
+        .route("/sources/:source_id/manga", post(source_api::update))
+        .route("/sources/:source_id/pages", post(source_api::pages))
+        .route("/sources/:source_id/listings", post(source_api::listing))
 }

@@ -7,10 +7,12 @@ import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { useSourceCatalog } from '@/features/source/use-source-catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { ApiEndpointSection } from './api-endpoint-section'
 import { AppearanceSection } from './appearance-section'
 import { PrivacySection } from './privacy-section'
+import { SourceSection } from './source-section'
 import { CacheSection, VersionSection } from './system-sections'
 import { useSettingsData } from './use-settings-data'
 
@@ -19,11 +21,14 @@ export function SettingsPage() {
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const setHideCovers = useSettingsStore(state => state.setHideCovers)
   const reset = useSettingsStore(state => state.reset)
+  const { sources, selectedSourceId, selectSource, resetSelection, isLoading } =
+    useSourceCatalog()
   const { endpointState, systemInfo, refreshEndpoints, changeEndpoint, clearCache } =
     useSettingsData()
 
   function resetSettings() {
     reset()
+    resetSelection()
     setTheme('system')
     toast.success('设置已恢复默认')
   }
@@ -50,6 +55,15 @@ export function SettingsPage() {
           <Separator />
 
           <AppearanceSection theme={theme} onThemeChange={setTheme} />
+
+          <Separator />
+
+          <SourceSection
+            sources={sources}
+            selectedSourceId={selectedSourceId}
+            isLoading={isLoading}
+            onSourceChange={selectSource}
+          />
 
           <Separator />
 

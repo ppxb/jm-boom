@@ -5,7 +5,7 @@ use crate::{
     },
     bootstrap::config::AppConfig,
     cache, endpoint, image_work, jm, page_materializer,
-    source::SourceRegistry,
+    source::{SourceRegistry, SourceService},
 };
 use std::sync::Arc;
 
@@ -18,6 +18,7 @@ pub(crate) struct AppState {
     pub(crate) downloads: Arc<DownloadService>,
     pub(crate) settings: Arc<SettingsService>,
     pub(crate) sources: Arc<SourceRegistry>,
+    pub(crate) source_service: Arc<SourceService>,
 }
 
 impl AppState {
@@ -66,6 +67,7 @@ impl AppState {
         let settings = Arc::new(SettingsService::new(endpoints.clone(), cache));
         let access_gate = Arc::new(AccessGateService::from_env());
         let sources = Arc::new(SourceRegistry::load(config.data_dir.join("sources"))?);
+        let source_service = Arc::new(SourceService::new(sources.clone()));
         tracing::info!(count = sources.list().await.len(), "漫画源注册表已加载");
 
         endpoints.start_maintenance();
@@ -82,6 +84,7 @@ impl AppState {
             downloads,
             settings,
             sources,
+            source_service,
         })
     }
 }

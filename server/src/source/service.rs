@@ -4,8 +4,8 @@ use thiserror::Error;
 use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use super::{
-    Chapter, CompiledSource, FilterValue, Listing, Manga, MangaPageResult, Page, SourceInstance,
-    SourceRegistry, SourceRuntimeError,
+    Chapter, CompiledSource, FilterValue, Listing, Manga, MangaPageResult, Page, PageContent,
+    SourceInstance, SourceRegistry, SourceRuntimeError,
 };
 
 const DEFAULT_MAX_CONCURRENT_EXECUTIONS: usize = 8;
@@ -29,6 +29,8 @@ pub enum SourceServiceError {
     Worker(String),
     #[error("source service is shutting down")]
     ShuttingDown,
+    #[error("source returned an in-memory page that is not supported by the HTTP bridge")]
+    UnsupportedInMemoryPage,
 }
 
 impl SourceService {
@@ -75,8 +77,16 @@ impl SourceService {
         manga: Manga,
         chapter: Chapter,
     ) -> Result<Vec<Page>, SourceServiceError> {
-        self.execute(source_id, move |source| source.get_pages(manga, chapter))
-            .await
+        let pages = self
+            .execute(source_id, move |source| source.get_pages(manga, chapter))
+            .await?;
+        if pages
+            .iter()
+            .any(|page| matches!(&page.content, PageContent::Image(_)))
+        {
+            return Err(SourceServiceError::UnsupportedInMemoryPage);
+        }
+        Ok(pages)
     }
 
     pub async fn get_listing(

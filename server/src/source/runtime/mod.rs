@@ -100,11 +100,14 @@ impl SourceInstance {
 
     pub fn store<T: Serialize>(&mut self, value: &T) -> Result<i32, SourceRuntimeError> {
         let encoded = postcard::to_allocvec(value)?;
-        Ok(self
-            .environment
+        Ok(self.store_bytes(encoded))
+    }
+
+    pub fn store_bytes(&mut self, bytes: impl Into<Vec<u8>>) -> i32 {
+        self.environment
             .as_mut(&mut self.store)
             .descriptors
-            .insert(DescriptorValue::Encoded(encoded)))
+            .insert(DescriptorValue::Encoded(bytes.into()))
     }
 
     pub fn read_result<T: DeserializeOwned>(

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub type PageContext = HashMap<String, String>;
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum MangaStatus {
     #[default]
     Unknown,
@@ -15,6 +16,7 @@ pub enum MangaStatus {
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ContentRating {
     #[default]
     Unknown,
@@ -24,6 +26,7 @@ pub enum ContentRating {
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Viewer {
     #[default]
     Unknown,
@@ -34,6 +37,7 @@ pub enum Viewer {
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum UpdateStrategy {
     #[default]
     Always,
@@ -41,6 +45,7 @@ pub enum UpdateStrategy {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Manga {
     pub key: String,
     pub title: String,
@@ -59,12 +64,14 @@ pub struct Manga {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MangaPageResult {
     pub entries: Vec<Manga>,
     pub has_next_page: bool,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Chapter {
     pub key: String,
     pub title: Option<String>,
@@ -87,6 +94,7 @@ pub enum PageContent {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Page {
     pub content: PageContent,
     pub thumbnail: Option<String>,
@@ -95,6 +103,7 @@ pub struct Page {
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ListingKind {
     #[default]
     Default,
@@ -102,6 +111,7 @@ pub enum ListingKind {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Listing {
     pub id: String,
     pub name: String,
@@ -109,6 +119,7 @@ pub struct Listing {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum FilterValue {
     Text {
         id: String,
@@ -144,12 +155,14 @@ pub enum FilterValue {
 pub struct ImageRef(pub i32);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageRequest {
     pub url: Option<String>,
     pub headers: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageResponse {
     pub code: u16,
     pub headers: HashMap<String, String>,

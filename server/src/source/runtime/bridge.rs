@@ -8,7 +8,7 @@ impl SourceInstance {
         page: i32,
         filters: Vec<FilterValue>,
     ) -> Result<MangaPageResult, SourceRuntimeError> {
-        let query = self.store(&query)?;
+        let query = self.store_bytes(query.unwrap_or_default().into_bytes());
         let filters = match self.store(&filters) {
             Ok(descriptor) => descriptor,
             Err(error) => {

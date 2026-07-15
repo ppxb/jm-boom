@@ -62,5 +62,11 @@ export function useSettingsData() {
     }
   })
 
-  return { endpointState, systemInfo, refreshEndpoints, changeEndpoint, clearCache }
+  return {
+    endpointState,
+    systemInfo,
+    refreshEndpoints,
+    changeEndpoint,
+    clearCache
+  }
 }
