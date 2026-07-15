@@ -44,11 +44,12 @@ impl AppState {
         let endpoints = Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
         let jm = Arc::new(jm::JmClient::new()?);
         let comics = Arc::new(ComicService::new(jm.clone(), endpoints.clone()));
+        let image_work = image_work::ImageWorkBudget::new();
         let page_materializer = Arc::new(page_materializer::PageMaterializer::new(
             jm.clone(),
             endpoints.clone(),
             cache.clone(),
-            image_work::ImageWorkBudget::new(),
+            image_work.clone(),
         ));
         let downloads = Arc::new(
             DownloadService::new(db, jm.clone(), endpoints.clone(), page_materializer.clone())
@@ -65,10 +66,14 @@ impl AppState {
             page_materializer,
             downloads.clone(),
         ));
-        let settings = Arc::new(SettingsService::new(endpoints.clone(), cache));
+        let settings = Arc::new(SettingsService::new(endpoints.clone(), cache.clone()));
         let access_gate = Arc::new(AccessGateService::from_env());
         let sources = Arc::new(SourceRegistry::load(config.data_dir.join("sources"))?);
-        let source_service = Arc::new(SourceService::new(sources.clone()));
+        let source_service = Arc::new(SourceService::new(
+            sources.clone(),
+            cache.clone(),
+            image_work,
+        ));
         let source_catalog = Arc::new(SourceCatalogService::from_env(sources.clone())?);
         tracing::info!(count = sources.list().await.len(), "漫画源注册表已加载");
 

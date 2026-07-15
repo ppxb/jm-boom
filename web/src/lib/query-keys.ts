@@ -14,6 +14,8 @@ export const queryKeys = {
   readerManifest: (comicId: string) => ['jm-reader-manifest', comicId] as const,
   sourceManga: (sourceId: string, mangaKey: string) =>
     ['source-manga', sourceId, mangaKey] as const,
+  sourcePages: (sourceId: string, mangaKey: string, chapterKey: string) =>
+    ['source-pages', sourceId, mangaKey, chapterKey] as const,
   sourceSearch: (keyword: string, page: number, sourceIds: string[]) =>
     ['source-search', keyword, page, sourceIds] as const,
   weekFilters: () => ['week-filters'] as const,

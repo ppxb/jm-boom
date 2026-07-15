@@ -8,6 +8,8 @@
 - 前端使用 React 19、Vite、TanStack Router/Query、Zustand、shadcn/ui。
 - 后端负责匿名 JM API 请求、端点探测、阅读图片解扰、缓存和下载任务。
 - 新漫画源实现统一使用 `source` 命名：服务端可解析、注册和执行 `.aix` 包，通过编译缓存与有界阻塞任务提供搜索、详情、列表和页面 API；前端持久化当前源，源能力由 WASM 导入/导出决定，不按源 ID 编写分支。现有 JM 链路将在业务页面完成迁移后删除。
+- 源搜索按已安装源分组展示且不回退旧 JM；源阅读图片使用短期页面令牌同源代理，执行源提供的 `get_image_request` 与 `process_page_image`，并复用图片缓存、single-flight 和前台图片并发预算。
+- 源运行实例当前仍按调用创建；需要网页验证或跨调用 Cookie/默认值状态的源，后续必须先引入持久源会话，再接验证入口，不能依赖浏览器直接请求远程图片。
 - 源安装只接受服务端配置目录中的源 ID：默认目录为官方 `index.min.json`，可通过 `JM_BOOM_SOURCE_LIST_URL` 覆盖；目录和下载必须使用同域 HTTPS，包在落盘前校验大小、manifest ID、WASM 导入签名和 `start`。
 - 下载使用服务端有界队列：同时最多运行 2 个漫画任务，每个任务最多 5 个页面 job；Manager 统一控制状态转换与 worker 重调度，暂停、取消和删除通过通知退出，恢复与删除使用 generation 隔离旧 worker。
 - 下载文件独立保存在 `data/downloads/<task_id>/`，章节 manifest 持久化到 SQLite；阅读器在上游不可用时回退到离线 manifest 和页面文件，删除任务时同步删除对应 manifest 与文件目录。

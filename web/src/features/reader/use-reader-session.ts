@@ -27,10 +27,37 @@ export function useReaderSession({
 }) {
   const manifest = useReaderManifestQuery(comicId)
   const pages = manifest.data?.pages ?? EMPTY_MANIFEST_PAGES
+  const session = useReaderPageSession({
+    scopeId: comicId,
+    pages,
+    initialIndex,
+    pageStep
+  })
+
+  return {
+    ...session,
+    isManifestLoading: manifest.isLoading,
+    manifestError: manifest.isError ? manifest.error : null,
+    isFetching: manifest.isFetching,
+    retry: () => void manifest.refetch()
+  }
+}
+
+export function useReaderPageSession({
+  scopeId,
+  pages,
+  initialIndex = 0,
+  pageStep = 1
+}: {
+  scopeId: string
+  pages: ComicReadManifestPage[]
+  initialIndex?: number
+  pageStep?: number
+}) {
   const pageCount = pages.length
   const initialPageIndex = normalizePageIndex(initialIndex)
   const normalizedPageStep = normalizePageStep(pageStep)
-  const scope = `${comicId}:${initialPageIndex}`
+  const scope = `${scopeId}:${initialPageIndex}`
   const scopeRef = useRef(scope)
   const [position, setPosition] = useState<ReaderPosition>(() => ({
     scope,
@@ -125,14 +152,10 @@ export function useReaderSession({
     pageWindow,
     navigationCommand,
     isLastPage: pageCount > 0 && currentIndex >= pageCount - normalizedPageStep,
-    isManifestLoading: manifest.isLoading,
-    manifestError: manifest.isError ? manifest.error : null,
-    isFetching: manifest.isFetching,
     goToPreviousPage,
     goToNextPage,
     goToPage,
-    observePage,
-    retry: () => void manifest.refetch()
+    observePage
   }
 }
 

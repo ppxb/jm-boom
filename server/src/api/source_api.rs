@@ -1,14 +1,16 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
     http_error::HttpError,
+    image_work::ImageWorkPriority,
     source::{
-        Chapter, FilterValue, Listing, Manga, MangaPageResult, Page, PageContent, PageContext,
+        Chapter, FilterValue, Listing, Manga, MangaPageResult, PageContent, PageContext,
         SourceRuntimeError, SourceServiceError,
     },
     AppState,
@@ -149,11 +151,79 @@ pub(super) async fn pages(
         .source_service
         .get_pages(&source_id, request.manga, request.chapter)
         .await
-        .map_err(source_error)?
-        .into_iter()
-        .map(PageResponse::try_from)
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Json(PagesResponse { source_id, pages }))
+        .map_err(source_error)?;
+    let mut response_pages = Vec::with_capacity(pages.len());
+    for page in pages {
+        let content = match page.content {
+            PageContent::Url(url, context) => {
+                let token = app
+                    .source_service
+                    .register_page_asset(&source_id, url, context)
+                    .await
+                    .map_err(source_error)?;
+                PageContentResponse::Remote {
+                    url: format!("/api/sources/{source_id}/page-assets/{token}"),
+                    context: None,
+                }
+            }
+            PageContent::Text(text) => PageContentResponse::Text { text },
+            PageContent::Zip(url, path) => PageContentResponse::Archive { url, path },
+            PageContent::Image(_) => {
+                return Err(HttpError::new(
+                    StatusCode::NOT_IMPLEMENTED,
+                    "当前漫画源返回了内存图片，服务端尚未提供图片描述符桥接",
+                    false,
+                ));
+            }
+        };
+        response_pages.push(PageResponse {
+            content,
+            thumbnail: page.thumbnail,
+            has_description: page.has_description,
+            description: page.description,
+        });
+    }
+    Ok(Json(PagesResponse {
+        source_id,
+        pages: response_pages,
+    }))
+}
+
+pub(super) async fn page_asset(
+    State(app): State<AppState>,
+    Path((source_id, token)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, HttpError> {
+    let priority = source_image_priority(&headers);
+    let page = app
+        .source_service
+        .materialize_page_asset(&source_id, &token, priority)
+        .await
+        .map_err(source_error)?;
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, page.format.content_type()),
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=604800, stale-while-revalidate=86400",
+            ),
+        ],
+        page.data,
+    )
+        .into_response())
+}
+
+fn source_image_priority(headers: &HeaderMap) -> ImageWorkPriority {
+    if headers
+        .get("x-jm-boom-image-priority")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("prefetch"))
+    {
+        ImageWorkPriority::Prefetch
+    } else {
+        ImageWorkPriority::Foreground
+    }
 }
 
 pub(super) async fn listing(
@@ -176,31 +246,6 @@ pub(super) async fn listing(
     Ok(Json(ListingResponse { source_id, result }))
 }
 
-impl TryFrom<Page> for PageResponse {
-    type Error = HttpError;
-
-    fn try_from(page: Page) -> Result<Self, Self::Error> {
-        let content = match page.content {
-            PageContent::Url(url, context) => PageContentResponse::Remote { url, context },
-            PageContent::Text(text) => PageContentResponse::Text { text },
-            PageContent::Zip(url, path) => PageContentResponse::Archive { url, path },
-            PageContent::Image(_) => {
-                return Err(HttpError::new(
-                    StatusCode::NOT_IMPLEMENTED,
-                    "当前漫画源返回了内存图片，服务端尚未提供图片描述符桥接",
-                    false,
-                ));
-            }
-        };
-        Ok(Self {
-            content,
-            thumbnail: page.thumbnail,
-            has_description: page.has_description,
-            description: page.description,
-        })
-    }
-}
-
 fn source_error(error: SourceServiceError) -> HttpError {
     match error {
         SourceServiceError::NotInstalled(source_id) => HttpError::new(
@@ -213,6 +258,17 @@ fn source_error(error: SourceServiceError) -> HttpError {
             "当前漫画源返回了内存图片，服务端尚未提供图片描述符桥接",
             false,
         ),
+        SourceServiceError::PageAssetNotFound => HttpError::new(
+            StatusCode::NOT_FOUND,
+            "阅读图片已过期，请重新加载章节",
+            true,
+        ),
+        SourceServiceError::InvalidImage(message) => HttpError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("漫画源返回了无效图片: {message}"),
+            true,
+        ),
+        SourceServiceError::Cache(error) => HttpError::internal(error.to_string()),
         SourceServiceError::ShuttingDown => {
             HttpError::new(StatusCode::SERVICE_UNAVAILABLE, "漫画源服务正在关闭", true)
         }
@@ -259,10 +315,20 @@ fn default_true() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+    use axum::{
+        body::to_bytes,
+        http::{HeaderMap, HeaderValue, StatusCode},
+        response::IntoResponse,
+    };
 
-    use super::{source_error, PageContentResponse, PageResponse, SearchRequest, SearchResponse};
-    use crate::source::{MangaPageResult, SourceServiceError};
+    use super::{
+        source_error, source_image_priority, PageContentResponse, PageResponse, SearchRequest,
+        SearchResponse,
+    };
+    use crate::{
+        image_work::ImageWorkPriority,
+        source::{MangaPageResult, SourceServiceError},
+    };
 
     #[test]
     fn search_request_uses_stable_defaults() {
@@ -271,6 +337,20 @@ mod tests {
         assert_eq!(request.page, 1);
         assert!(request.query.is_none());
         assert!(request.filters.is_empty());
+    }
+
+    #[test]
+    fn maps_source_image_prefetch_header_to_shared_priority() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(
+            source_image_priority(&headers),
+            ImageWorkPriority::Foreground
+        );
+        headers.insert(
+            "x-jm-boom-image-priority",
+            HeaderValue::from_static("prefetch"),
+        );
+        assert_eq!(source_image_priority(&headers), ImageWorkPriority::Prefetch);
     }
 
     #[test]

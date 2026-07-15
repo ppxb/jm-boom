@@ -1,6 +1,6 @@
-use std::{io::Read, time::Duration};
+use std::{collections::HashMap, io::Read, time::Duration};
 
-use image::ImageReader;
+use image::{ImageReader, Limits, RgbaImage};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Method, Url,
@@ -22,6 +22,18 @@ const MISSING_RESPONSE: i32 = -8;
 const REQUEST_ERROR: i32 = -10;
 const FAILED_MEMORY_WRITE: i32 = -11;
 const NOT_AN_IMAGE: i32 = -12;
+const MAX_IMAGE_WIDTH: u32 = 16_384;
+const MAX_IMAGE_HEIGHT: u32 = 65_535;
+const MAX_IMAGE_PIXELS: u64 = 40_000_000;
+const MAX_IMAGE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
+
+pub(crate) struct ResponseSnapshot {
+    pub code: u16,
+    pub headers: HashMap<String, String>,
+    pub request_url: Option<String>,
+    pub request_headers: HashMap<String, String>,
+    pub data: Vec<u8>,
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum HttpMethod {
@@ -270,8 +282,11 @@ pub(super) fn read_data(
 }
 
 pub(super) fn get_image(mut env: FunctionEnvMut<HostState>, descriptor: i32) -> i32 {
-    let Some(bytes) = env
-        .data()
+    image_from_request(env.data_mut(), descriptor)
+}
+
+pub(crate) fn image_from_request(state: &mut HostState, descriptor: i32) -> i32 {
+    let Some(bytes) = state
         .descriptors
         .get(descriptor)
         .and_then(DescriptorValue::as_request)
@@ -280,15 +295,38 @@ pub(super) fn get_image(mut env: FunctionEnvMut<HostState>, descriptor: i32) -> 
     else {
         return MISSING_RESPONSE;
     };
-    let Ok(reader) = ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format() else {
+    let Some(image) = decode_image(bytes) else {
         return NOT_AN_IMAGE;
     };
-    let Ok(image) = reader.decode() else {
-        return NOT_AN_IMAGE;
-    };
-    env.data_mut()
+    state
         .descriptors
-        .insert(DescriptorValue::Image(ImageData::from(image.to_rgba8())))
+        .insert(DescriptorValue::Image(ImageData::from(image)))
+}
+
+pub(crate) fn create_get_request(state: &mut HostState, url: &str) -> Option<i32> {
+    let url = Url::parse(url).ok()?;
+    let mut request = NetRequest::new(HttpMethod::Get);
+    request.url = Some(url);
+    Some(
+        state
+            .descriptors
+            .insert(DescriptorValue::Request(Box::new(request))),
+    )
+}
+
+pub(crate) fn response_snapshot(state: &HostState, descriptor: i32) -> Option<ResponseSnapshot> {
+    let request = state
+        .descriptors
+        .get(descriptor)
+        .and_then(DescriptorValue::as_request)?;
+    let response = request.response.as_ref()?;
+    Some(ResponseSnapshot {
+        code: response.status,
+        headers: header_map(&response.headers),
+        request_url: request.url.as_ref().map(ToString::to_string),
+        request_headers: header_map(&request.headers),
+        data: response.data.clone(),
+    })
 }
 
 pub(super) fn html(mut env: FunctionEnvMut<HostState>, descriptor: i32) -> i32 {
@@ -376,8 +414,11 @@ pub(super) fn set_rate_limit(
 }
 
 fn send_one(env: &mut FunctionEnvMut<HostState>, descriptor: i32) -> i32 {
-    let Some(request) = env
-        .data()
+    send_request(env.data_mut(), descriptor)
+}
+
+pub(crate) fn send_request(state: &mut HostState, descriptor: i32) -> i32 {
+    let Some(request) = state
         .descriptors
         .get(descriptor)
         .and_then(DescriptorValue::as_request)
@@ -388,8 +429,7 @@ fn send_one(env: &mut FunctionEnvMut<HostState>, descriptor: i32) -> i32 {
     let Some(url) = request.url.clone() else {
         return INVALID_URL;
     };
-    let mut builder = env
-        .data()
+    let mut builder = state
         .http_client
         .request(request.method.as_reqwest(), url.clone())
         .headers(request.headers);
@@ -419,8 +459,7 @@ fn send_one(env: &mut FunctionEnvMut<HostState>, descriptor: i32) -> i32 {
         headers: response.headers().clone(),
         data,
     };
-    let Some(request) = env
-        .data_mut()
+    let Some(request) = state
         .descriptors
         .get_mut(descriptor)
         .and_then(DescriptorValue::as_request_mut)
@@ -429,4 +468,41 @@ fn send_one(env: &mut FunctionEnvMut<HostState>, descriptor: i32) -> i32 {
     };
     request.response = Some(result);
     SUCCESS
+}
+
+fn decode_image(bytes: Vec<u8>) -> Option<RgbaImage> {
+    let dimensions = ImageReader::new(std::io::Cursor::new(bytes.as_slice()))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()?;
+    if dimensions.0 > MAX_IMAGE_WIDTH || dimensions.1 > MAX_IMAGE_HEIGHT {
+        return None;
+    }
+    let pixels = u64::from(dimensions.0).checked_mul(u64::from(dimensions.1))?;
+    if pixels > MAX_IMAGE_PIXELS {
+        return None;
+    }
+
+    let mut reader = ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_IMAGE_WIDTH);
+    limits.max_image_height = Some(MAX_IMAGE_HEIGHT);
+    limits.max_alloc = Some(MAX_IMAGE_ALLOC_BYTES);
+    reader.limits(limits);
+    reader.decode().ok().map(|image| image.to_rgba8())
+}
+
+fn header_map(headers: &HeaderMap) -> HashMap<String, String> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_string(), value.to_string()))
+        })
+        .collect()
 }

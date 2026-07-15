@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { BookOpenIcon, UserRoundIcon } from 'lucide-react'
 
 import { BackTopButton } from '@/components/back-top-button'
@@ -120,12 +121,20 @@ function SourceComicDetail({
         </div>
       </section>
 
-      <SourceChapters chapters={manga.chapters ?? []} />
+      <SourceChapters sourceId={sourceId} mangaKey={manga.key} chapters={manga.chapters ?? []} />
     </div>
   )
 }
 
-function SourceChapters({ chapters }: { chapters: SourceChapter[] }) {
+function SourceChapters({
+  sourceId,
+  mangaKey,
+  chapters
+}: {
+  sourceId: string
+  mangaKey: string
+  chapters: SourceChapter[]
+}) {
   return (
     <section className="space-y-4">
       <div className="flex items-end justify-between gap-3">
@@ -133,7 +142,7 @@ function SourceChapters({ chapters }: { chapters: SourceChapter[] }) {
           <h2 className="text-xl font-semibold">章节</h2>
           <p className="text-sm text-muted-foreground">共 {chapters.length} 个章节</p>
         </div>
-        <span className="text-xs text-muted-foreground">阅读能力将在后续接入</span>
+        <span className="text-xs text-muted-foreground">选择章节开始阅读</span>
       </div>
 
       {chapters.length === 0 ? (
@@ -143,19 +152,27 @@ function SourceChapters({ chapters }: { chapters: SourceChapter[] }) {
       ) : (
         <div className="space-y-2">
           {chapters.map((chapter, index) => (
-            <Card key={chapter.key} size="sm" className="py-0">
-              <CardContent className="flex items-center justify-between gap-4 p-4">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">
-                    {chapter.title || formatChapterNumber(chapter, index)}
+            <Link
+              key={chapter.key}
+              to="/reader/$comicId"
+              params={{ comicId: chapter.key }}
+              search={{ albumId: '', sourceId, mangaKey }}
+              className="block"
+            >
+              <Card size="sm" className="py-0 transition-colors hover:bg-muted/40">
+                <CardContent className="flex items-center justify-between gap-4 p-4">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">
+                      {chapter.title || formatChapterNumber(chapter, index)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatChapterNumber(chapter, index)}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatChapterNumber(chapter, index)}
-                  </div>
-                </div>
-                <BookOpenIcon className="size-4 shrink-0 text-muted-foreground" />
-              </CardContent>
-            </Card>
+                  <BookOpenIcon className="size-4 shrink-0 text-muted-foreground" />
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       )}

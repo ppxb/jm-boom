@@ -58,5 +58,9 @@ pub fn routes() -> Router<AppState> {
         .route("/sources/:source_id/search", post(source_api::search))
         .route("/sources/:source_id/manga", post(source_api::update))
         .route("/sources/:source_id/pages", post(source_api::pages))
+        .route(
+            "/sources/:source_id/page-assets/:token",
+            get(source_api::page_asset),
+        )
         .route("/sources/:source_id/listings", post(source_api::listing))
 }

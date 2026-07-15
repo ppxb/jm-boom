@@ -1,4 +1,5 @@
-import { apiClient } from './client'
+import { apiClient, resolveApiUrl } from './client'
+import type { ComicReadManifestPage } from './reader'
 
 export type SourceInfo = {
   id: string
@@ -98,6 +99,38 @@ export type SourceDetailResponse = {
   manga: SourceManga
 }
 
+export type SourcePage = {
+  content:
+    | {
+        type: 'remote'
+        data: {
+          url: string
+          context: Record<string, string> | null
+        }
+      }
+    | {
+        type: 'text'
+        data: {
+          text: string
+        }
+      }
+    | {
+        type: 'archive'
+        data: {
+          url: string
+          path: string
+        }
+      }
+  thumbnail: string | null
+  hasDescription: boolean
+  description: string | null
+}
+
+export type SourcePagesResponse = {
+  sourceId: string
+  pages: SourcePage[]
+}
+
 export type SourceSearchGroup = {
   source: InstalledSource
   entries: SourceManga[]
@@ -165,6 +198,32 @@ export async function getSourceManga(sourceId: string, manga: SourceManga) {
   return response.manga
 }
 
+export async function getSourceReaderPages(
+  sourceId: string,
+  manga: SourceManga,
+  chapter: SourceChapter
+): Promise<ComicReadManifestPage[]> {
+  const response = await apiClient.post<SourcePagesResponse>(
+    `/api/sources/${encodeURIComponent(sourceId)}/pages`,
+    { manga, chapter }
+  )
+  const unsupportedPage = response.pages.find(page => page.content.type !== 'remote')
+  if (unsupportedPage) {
+    throw new Error(`当前阅读器暂不支持 ${unsupportedPage.content.type} 类型页面`)
+  }
+  return response.pages.map((page, index) => {
+    const content = page.content
+    if (content.type !== 'remote') {
+      throw new Error('漫画源页面类型在解析过程中发生变化')
+    }
+    return {
+      index,
+      name: String(index + 1).padStart(3, '0'),
+      path: resolveApiUrl(content.data.url)
+    }
+  })
+}
+
 export function createSourceMangaStub(key: string): SourceManga {
   return {
     key,
@@ -181,6 +240,21 @@ export function createSourceMangaStub(key: string): SourceManga {
     updateStrategy: 'always',
     nextUpdateTime: null,
     chapters: null
+  }
+}
+
+export function createSourceChapterStub(key: string): SourceChapter {
+  return {
+    key,
+    title: null,
+    chapterNumber: null,
+    volumeNumber: null,
+    dateUploaded: null,
+    scanlators: null,
+    url: null,
+    language: null,
+    thumbnail: null,
+    locked: false
   }
 }
 

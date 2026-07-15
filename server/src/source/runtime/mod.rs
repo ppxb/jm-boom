@@ -214,4 +214,52 @@ impl SourceInstance {
             .descriptors
             .remove(descriptor);
     }
+
+    fn create_default_image_request(&mut self, url: &str) -> Result<i32, SourceRuntimeError> {
+        host::net::create_get_request(self.environment.as_mut(&mut self.store), url)
+            .ok_or_else(|| SourceRuntimeError::Host("invalid image URL".into()))
+    }
+
+    fn send_image_request(&mut self, descriptor: i32) -> Result<(), SourceRuntimeError> {
+        let result = host::net::send_request(self.environment.as_mut(&mut self.store), descriptor);
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(SourceRuntimeError::Execution(format!(
+                "image request failed with host code {result}"
+            )))
+        }
+    }
+
+    fn image_response_snapshot(
+        &self,
+        descriptor: i32,
+    ) -> Result<host::net::ResponseSnapshot, SourceRuntimeError> {
+        host::net::response_snapshot(self.environment.as_ref(&self.store), descriptor)
+            .ok_or_else(|| SourceRuntimeError::Host("missing image response".into()))
+    }
+
+    fn image_from_request(&mut self, descriptor: i32) -> Result<i32, SourceRuntimeError> {
+        let image =
+            host::net::image_from_request(self.environment.as_mut(&mut self.store), descriptor);
+        if image >= 0 {
+            Ok(image)
+        } else {
+            Err(SourceRuntimeError::Execution(format!(
+                "image decode failed with host code {image}"
+            )))
+        }
+    }
+
+    fn encode_image(&self, descriptor: i32) -> Result<Vec<u8>, SourceRuntimeError> {
+        let image = self
+            .environment
+            .as_ref(&self.store)
+            .descriptors
+            .get(descriptor)
+            .and_then(DescriptorValue::as_image)
+            .ok_or_else(|| SourceRuntimeError::Host("processed image is missing".into()))?;
+        let encoder = webp::Encoder::from_rgba(image.as_raw(), image.width(), image.height());
+        Ok(encoder.encode(80.0).to_vec())
+    }
 }
