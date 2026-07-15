@@ -1,12 +1,10 @@
 mod comments;
 mod home;
-mod search;
 
 pub(crate) use comments::ComicComments;
 pub(crate) use home::{
     HomeFeed, HomeSectionList, HomeSectionMode, HomeSectionRequest, WeekFilters, WeekItems,
 };
-pub(crate) use search::{ComicSearch, ComicSearchRequest};
 
 use crate::{
     domain::{comic::ComicDetail, reader::ChapterManifest},

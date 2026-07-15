@@ -1,6 +1,6 @@
 use super::serde_ext::{
-    lossy_string_vec_from_array_or_scalar, optional_string_from_any, string_from_any,
-    string_from_any_or_default, u32_from_any,
+    lossy_string_vec_from_array_or_scalar, string_from_any, string_from_any_or_default,
+    u32_from_any,
 };
 use serde::Deserialize;
 
@@ -17,14 +17,6 @@ pub struct Comic {
     pub tags: Vec<String>,
 }
 
-/// Search result
-#[derive(Debug)]
-pub struct SearchResult {
-    pub total: u32,
-    pub content: Vec<Comic>,
-    pub redirect_aid: Option<String>,
-}
-
 /// Home feed section
 #[derive(Debug)]
 pub struct HomeSection {
@@ -37,16 +29,6 @@ pub struct HomeSection {
 }
 
 // ============ Internal Payload Models ============
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct SearchPayload {
-    #[serde(default, deserialize_with = "u32_from_any")]
-    pub total: u32,
-    #[serde(default, deserialize_with = "optional_string_from_any")]
-    pub redirect_aid: Option<String>,
-    #[serde(default)]
-    pub content: Vec<ComicPayload>,
-}
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ComicPayload {

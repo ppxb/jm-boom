@@ -43,17 +43,6 @@ impl ComicSummary {
             tags,
         }
     }
-
-    pub fn from_detail(detail: ComicDetail) -> Self {
-        Self::new(
-            detail.id,
-            detail.title,
-            detail.authors.join(" / "),
-            detail.description,
-            detail.image,
-            detail.tags,
-        )
-    }
 }
 
 #[derive(Debug, Clone)]

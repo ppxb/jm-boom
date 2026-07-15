@@ -11,7 +11,7 @@ import {
 import { queryKeys } from '@/lib/query-keys'
 import { useSourceStore } from '@/stores/source-store'
 
-export function useSourceCatalog() {
+export function useSourceCatalog({ includeCatalog = true }: { includeCatalog?: boolean } = {}) {
   const selectedSourceId = useSourceStore(state => state.selectedSourceId)
   const setSelectedSourceId = useSourceStore(state => state.setSelectedSourceId)
   const resetSelection = useSourceStore(state => state.reset)
@@ -26,6 +26,7 @@ export function useSourceCatalog() {
   const catalogQuery = useQuery({
     queryKey: queryKeys.sourceCatalog(),
     queryFn: () => getSourceCatalog(),
+    enabled: includeCatalog,
     staleTime: 5 * 60 * 1000,
     retry: false,
     refetchOnWindowFocus: false

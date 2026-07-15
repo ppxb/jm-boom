@@ -12,8 +12,10 @@ export const queryKeys = {
   ranking: (page: number, category: string, order: string) =>
     ['jm-ranking', page, category, order] as const,
   readerManifest: (comicId: string) => ['jm-reader-manifest', comicId] as const,
-  search: (keyword: string, page: number, sortBy: number) =>
-    ['jm-search', keyword, page, sortBy] as const,
+  sourceManga: (sourceId: string, mangaKey: string) =>
+    ['source-manga', sourceId, mangaKey] as const,
+  sourceSearch: (keyword: string, page: number, sourceIds: string[]) =>
+    ['source-search', keyword, page, sourceIds] as const,
   weekFilters: () => ['week-filters'] as const,
   weekItems: (categoryId: string, typeId: string) => ['jm-week-items', categoryId, typeId] as const
 }

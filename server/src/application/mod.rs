@@ -8,8 +8,8 @@ mod settings;
 pub use access_gate::AccessGateService;
 pub use comic::ComicService;
 pub(crate) use comic::{
-    ComicComments, ComicSearch, ComicSearchRequest, HomeFeed, HomeSectionList, HomeSectionMode,
-    HomeSectionRequest, WeekFilters, WeekItems,
+    ComicComments, HomeFeed, HomeSectionList, HomeSectionMode, HomeSectionRequest, WeekFilters,
+    WeekItems,
 };
 pub use cover::{CoverService, CoverServiceError};
 pub use download::DownloadService;

@@ -1,9 +1,7 @@
 use super::{
     crypto,
     error::JmError,
-    models::{
-        Comic, ComicDetailPayload, HomeSection, HomeSectionPayload, SearchPayload, SearchResult,
-    },
+    models::{Comic, ComicDetailPayload, HomeSection, HomeSectionPayload},
     signature::JmRequestSignature,
     JmResult,
 };
@@ -50,33 +48,6 @@ impl JmClient {
             .map_err(|e| JmError::Network(e.to_string()))?;
 
         decode_response(response, &url, &signature).await
-    }
-
-    /// Search comics
-    pub async fn search(
-        &self,
-        endpoint: &str,
-        keyword: &str,
-        page: u32,
-        order: &str,
-    ) -> JmResult<SearchResult> {
-        let payload: SearchPayload = self
-            .get(
-                endpoint,
-                "search",
-                &[
-                    ("search_query", keyword.to_string()),
-                    ("page", page.to_string()),
-                    ("o", order.to_string()),
-                ],
-            )
-            .await?;
-
-        Ok(SearchResult {
-            total: payload.total,
-            content: payload.content.into_iter().map(Comic::from).collect(),
-            redirect_aid: payload.redirect_aid,
-        })
     }
 
     /// Get comic detail

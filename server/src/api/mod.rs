@@ -13,7 +13,6 @@ mod downloads;
 mod home;
 mod media;
 mod reader;
-mod search;
 mod settings;
 mod source_api;
 mod sources;
@@ -23,8 +22,6 @@ pub fn routes() -> Router<AppState> {
         // 本地部署轻量访问门禁
         .route("/auth/config", get(auth::config))
         .route("/auth/login", post(auth::login))
-        // 搜索
-        .route("/search", get(search::search_comics))
         // 漫画详情
         .route("/comics/:id", get(comics::get_comic_detail))
         .route("/comics/:id/comments", get(comics::get_comments))
