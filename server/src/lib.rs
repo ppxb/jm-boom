@@ -12,6 +12,7 @@ mod jm;
 mod keyed_lock;
 mod page_materializer;
 mod reader;
+pub mod source;
 
 pub(crate) use bootstrap::state::AppState;
 

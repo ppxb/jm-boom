@@ -15,6 +15,7 @@ mod media;
 mod reader;
 mod search;
 mod settings;
+mod sources;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -49,4 +50,6 @@ pub fn routes() -> Router<AppState> {
         .route("/settings/endpoints/probe", post(settings::probe_endpoints))
         .route("/settings/system", get(settings::get_system_info))
         .route("/settings/cache", delete(settings::clear_cache))
+        // 漫画源
+        .route("/sources", get(sources::list))
 }
