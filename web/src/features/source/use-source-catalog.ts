@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -9,12 +8,8 @@ import {
   type InstalledSource
 } from '@/lib/api/source'
 import { queryKeys } from '@/lib/query-keys'
-import { useSourceStore } from '@/stores/source-store'
 
 export function useSourceCatalog({ includeCatalog = true }: { includeCatalog?: boolean } = {}) {
-  const selectedSourceId = useSourceStore(state => state.selectedSourceId)
-  const setSelectedSourceId = useSourceStore(state => state.setSelectedSourceId)
-  const resetSelection = useSourceStore(state => state.reset)
   const queryClient = useQueryClient()
   const sourcesQuery = useQuery({
     queryKey: queryKeys.installedSources(),
@@ -40,7 +35,6 @@ export function useSourceCatalog({ includeCatalog = true }: { includeCatalog?: b
       ])
       queryClient.invalidateQueries({ queryKey: queryKeys.installedSources() })
       queryClient.invalidateQueries({ queryKey: queryKeys.sourceCatalog() })
-      setSelectedSourceId(installed.info.id)
       toast.success(`已安装 ${installed.info.name}`)
     },
     onError: error => {
@@ -48,25 +42,9 @@ export function useSourceCatalog({ includeCatalog = true }: { includeCatalog?: b
     }
   })
 
-  useEffect(() => {
-    const sources = sourcesQuery.data
-    if (!sources) return
-
-    const nextSourceId = sources.some(source => source.info.id === selectedSourceId)
-      ? selectedSourceId
-      : (sources[0]?.info.id ?? null)
-    if (nextSourceId !== selectedSourceId) {
-      setSelectedSourceId(nextSourceId)
-    }
-  }, [selectedSourceId, setSelectedSourceId, sourcesQuery.data])
-
   return {
     sources: sourcesQuery.data ?? [],
     catalog: catalogQuery.data ?? [],
-    selectedSourceId,
-    selectedSource: sourcesQuery.data?.find(source => source.info.id === selectedSourceId),
-    selectSource: setSelectedSourceId,
-    resetSelection,
     installSource: installMutation.mutate,
     installingSourceId: installMutation.isPending ? (installMutation.variables ?? null) : null,
     isLoading: sourcesQuery.isLoading,

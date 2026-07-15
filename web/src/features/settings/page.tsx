@@ -24,9 +24,6 @@ export function SettingsPage() {
   const {
     sources,
     catalog,
-    selectedSourceId,
-    selectSource,
-    resetSelection,
     installSource,
     installingSourceId,
     isLoading,
@@ -38,7 +35,6 @@ export function SettingsPage() {
 
   function resetSettings() {
     reset()
-    resetSelection()
     setTheme('system')
     toast.success('设置已恢复默认')
   }
@@ -70,9 +66,7 @@ export function SettingsPage() {
 
           <SourceSection
             sources={sources}
-            selectedSourceId={selectedSourceId}
             isLoading={isLoading}
-            onSourceChange={selectSource}
             catalog={catalog}
             isCatalogLoading={isCatalogLoading}
             catalogError={catalogError}
