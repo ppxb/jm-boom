@@ -1,16 +1,14 @@
 use crate::AppState;
 use axum::{
-    routing::{delete, get, post, put},
+    routing::{delete, get, post},
     Router,
 };
 
 mod auth;
 mod comic_dto;
-mod comic_summary;
 mod comics;
 mod covers;
 mod downloads;
-mod home;
 mod media;
 mod reader;
 mod settings;
@@ -34,18 +32,9 @@ pub fn routes() -> Router<AppState> {
         .route("/downloads/:id/resume", post(downloads::resume))
         .route("/downloads/:id/cancel", post(downloads::cancel))
         .route("/downloads/:id", delete(downloads::remove))
-        // 主页
-        .route("/home/feed", get(home::get_home_feed))
-        .route("/home/sections", get(home::get_home_section_list))
-        .route("/home/weekly/filters", get(home::get_week_filters))
-        .route("/home/weekly/items", get(home::get_week_items))
         // 阅读器
         .route("/reader/:chapter_id/manifest", get(reader::get_manifest))
         .route("/reader/:chapter_id/pages/:page", get(reader::get_page))
-        // 服务端上游端点管理
-        .route("/settings/endpoints", get(settings::get_endpoints))
-        .route("/settings/endpoints", put(settings::set_endpoint))
-        .route("/settings/endpoints/probe", post(settings::probe_endpoints))
         .route("/settings/system", get(settings::get_system_info))
         .route("/settings/cache", delete(settings::clear_cache))
         // 漫画源

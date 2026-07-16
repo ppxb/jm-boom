@@ -1,19 +1,11 @@
 use serde::Deserialize;
 
-pub(crate) fn string_from_any_or_default<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(string_from_value(value))
-}
-
 pub(crate) fn optional_string_from_any<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let value = serde_json::Value::deserialize(deserializer)?;
-    let value = string_from_value(value).trim().to_string();
+    let value = scalar_string(value).unwrap_or_default().trim().to_string();
     Ok((!value.is_empty()).then_some(value))
 }
 
@@ -76,8 +68,4 @@ fn scalar_string(value: serde_json::Value) -> Option<String> {
         serde_json::Value::Null => Some(String::new()),
         _ => None,
     }
-}
-
-fn string_from_value(value: serde_json::Value) -> String {
-    scalar_string(value).unwrap_or_default()
 }

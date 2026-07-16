@@ -2,7 +2,7 @@ import { ComicRail, ComicRailItem } from '@/components/comic'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
-export function HomeFeedSkeleton() {
+export function SourcePreviewSkeleton() {
   return (
     <>
       {Array.from({ length: 2 }).map((_, index) => (

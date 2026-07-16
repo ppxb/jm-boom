@@ -1,4 +1,6 @@
-use super::{SourceCapabilities, SourceInfo, SourcePackage, SourcePackageError};
+use super::{
+    Listing, ListingKind, SourceCapabilities, SourceInfo, SourcePackage, SourcePackageError,
+};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -13,6 +15,7 @@ use tokio::sync::{Mutex, RwLock};
 pub struct InstalledSource {
     pub info: SourceInfo,
     pub capabilities: SourceCapabilities,
+    pub listings: Vec<Listing>,
     pub filter_count: usize,
     pub setting_count: usize,
 }
@@ -22,6 +25,20 @@ impl From<&SourcePackage> for InstalledSource {
         Self {
             info: package.manifest.info.clone(),
             capabilities: package.capabilities.clone(),
+            listings: package
+                .manifest
+                .listings
+                .iter()
+                .map(|listing| Listing {
+                    id: listing.id.clone(),
+                    name: listing.name.clone(),
+                    kind: if listing.kind == Some(1) {
+                        ListingKind::List
+                    } else {
+                        ListingKind::Default
+                    },
+                })
+                .collect(),
             filter_count: package.filters.len(),
             setting_count: package.settings.len(),
         }

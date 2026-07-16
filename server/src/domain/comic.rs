@@ -16,36 +16,6 @@ pub struct ComicDetail {
 }
 
 #[derive(Debug, Clone)]
-pub struct ComicSummary {
-    pub id: String,
-    pub title: String,
-    pub author: String,
-    pub description: String,
-    pub image: String,
-    pub tags: Vec<String>,
-}
-
-impl ComicSummary {
-    pub fn new(
-        id: String,
-        title: String,
-        author: String,
-        description: String,
-        image: String,
-        tags: Vec<String>,
-    ) -> Self {
-        Self {
-            id,
-            title,
-            author,
-            description,
-            image,
-            tags,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct ComicComment {
     pub id: String,
     pub comic_id: Option<String>,

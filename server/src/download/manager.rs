@@ -640,7 +640,7 @@ mod tests {
                 .expect("create image cache"),
         );
         let endpoints = Arc::new(
-            EndpointManager::new(db.clone())
+            EndpointManager::new()
                 .await
                 .expect("create endpoint manager"),
         );

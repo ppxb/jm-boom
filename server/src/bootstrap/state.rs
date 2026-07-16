@@ -41,7 +41,7 @@ impl AppState {
         let cache = Arc::new(cache::ImageCache::new(db.clone(), cache_config).await?);
         cache.start_maintenance();
 
-        let endpoints = Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
+        let endpoints = Arc::new(endpoint::EndpointManager::new().await?);
         let jm = Arc::new(jm::JmClient::new()?);
         let comics = Arc::new(ComicService::new(jm.clone(), endpoints.clone()));
         let image_work = image_work::ImageWorkBudget::new();
@@ -66,7 +66,7 @@ impl AppState {
             page_materializer,
             downloads.clone(),
         ));
-        let settings = Arc::new(SettingsService::new(endpoints.clone(), cache.clone()));
+        let settings = Arc::new(SettingsService::new(cache.clone()));
         let access_gate = Arc::new(AccessGateService::from_env());
         let sources = Arc::new(SourceRegistry::load(config.data_dir.join("sources"))?);
         let source_service = Arc::new(SourceService::new(

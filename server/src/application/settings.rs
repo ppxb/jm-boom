@@ -1,30 +1,14 @@
-use crate::{
-    cache::{CacheStats, ImageCache},
-    endpoint::{EndpointManager, EndpointState},
-};
+use crate::cache::{CacheStats, ImageCache};
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct SettingsService {
-    endpoints: Arc<EndpointManager>,
     cache: Arc<ImageCache>,
 }
 
 impl SettingsService {
-    pub fn new(endpoints: Arc<EndpointManager>, cache: Arc<ImageCache>) -> Self {
-        Self { endpoints, cache }
-    }
-
-    pub async fn endpoints(&self) -> EndpointState {
-        self.endpoints.state().await
-    }
-
-    pub async fn refresh_endpoints(&self) -> EndpointState {
-        self.endpoints.refresh().await
-    }
-
-    pub async fn set_endpoint(&self, endpoint: Option<String>) -> anyhow::Result<EndpointState> {
-        self.endpoints.set_selected(endpoint).await
+    pub fn new(cache: Arc<ImageCache>) -> Self {
+        Self { cache }
     }
 
     pub async fn clear_cache(&self) -> anyhow::Result<()> {

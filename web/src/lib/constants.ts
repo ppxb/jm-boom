@@ -11,7 +11,7 @@ export const TIME = {
 
 // Cache configuration
 export const CACHE = {
-  // List queries (home, ranking, weekly, etc.)
+  // Source listing queries
   LIST_STALE_TIME: 30 * TIME.MINUTE,
   LIST_GC_TIME: 6 * TIME.HOUR,
 
@@ -27,9 +27,6 @@ export const CACHE = {
   READER_STALE_TIME: TIME.HOUR,
   READER_GC_TIME: 2 * TIME.HOUR,
 
-  // Long-lived filters
-  FILTERS_STALE_TIME: 12 * TIME.HOUR,
-  FILTERS_GC_TIME: 24 * TIME.HOUR
 } as const
 
 // Reader configuration

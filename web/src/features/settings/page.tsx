@@ -9,7 +9,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { useSourceCatalog } from '@/features/source/use-source-catalog'
 import { useSettingsStore } from '@/stores/settings-store'
-import { ApiEndpointSection } from './api-endpoint-section'
 import { AppearanceSection } from './appearance-section'
 import { PrivacySection } from './privacy-section'
 import { SourceSection } from './source-section'
@@ -30,8 +29,7 @@ export function SettingsPage() {
     isCatalogLoading,
     catalogError
   } = useSourceCatalog()
-  const { endpointState, systemInfo, refreshEndpoints, changeEndpoint, clearCache } =
-    useSettingsData()
+  const { systemInfo, clearCache } = useSettingsData()
 
   function resetSettings() {
     reset()
@@ -72,17 +70,6 @@ export function SettingsPage() {
             catalogError={catalogError}
             installingSourceId={installingSourceId}
             onInstall={installSource}
-          />
-
-          <Separator />
-
-          <ApiEndpointSection
-            state={endpointState.data}
-            isLoading={endpointState.isLoading}
-            isRefreshing={refreshEndpoints.isPending}
-            isChanging={changeEndpoint.isPending}
-            onEndpointChange={endpoint => changeEndpoint.mutate(endpoint)}
-            onRefresh={() => refreshEndpoints.mutate()}
           />
 
           <Separator />

@@ -41,8 +41,15 @@ export type SourceCapabilities = {
 export type InstalledSource = {
   info: SourceInfo
   capabilities: SourceCapabilities
+  listings: SourceListing[]
   filterCount: number
   settingCount: number
+}
+
+export type SourceListing = {
+  id: string
+  name: string
+  kind: 'default' | 'list'
 }
 
 export type AvailableSource = {
@@ -129,6 +136,14 @@ export type SourcePage = {
 export type SourcePagesResponse = {
   sourceId: string
   pages: SourcePage[]
+}
+
+export type SourceListingResponse = {
+  sourceId: string
+  result: {
+    entries: SourceManga[]
+    hasNextPage: boolean
+  }
 }
 
 export type SourceSearchGroup = {
@@ -222,6 +237,18 @@ export async function getSourceReaderPages(
       path: resolveApiUrl(content.data.url)
     }
   })
+}
+
+export async function getSourceListing(
+  sourceId: string,
+  listing: SourceListing,
+  page = 1
+) {
+  const response = await apiClient.post<SourceListingResponse>(
+    `/api/sources/${encodeURIComponent(sourceId)}/listings`,
+    { listing, page }
+  )
+  return response.result
 }
 
 export function createSourceMangaStub(key: string): SourceManga {

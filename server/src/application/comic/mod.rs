@@ -1,10 +1,6 @@
 mod comments;
-mod home;
 
 pub(crate) use comments::ComicComments;
-pub(crate) use home::{
-    HomeFeed, HomeSectionList, HomeSectionMode, HomeSectionRequest, WeekFilters, WeekItems,
-};
 
 use crate::{
     domain::{comic::ComicDetail, reader::ChapterManifest},

@@ -1,156 +1,153 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useEffect } from 'react'
 
-import { ComicGrid, ComicGridSkeleton } from '@/components/comic'
+import { ComicCard, ComicGridSkeleton } from '@/components/comic'
 import { EmptyState } from '@/components/empty-state'
-import { PageHeader } from '@/components/page-header'
 import { ListPagination } from '@/components/list-pagination'
 import { PageBackButton } from '@/components/page-back-button'
+import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
-import { getHomeSectionList, type HomeSectionListMode } from '@/lib/api/home'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useSourceCatalog } from '@/features/source/use-source-catalog'
+import {
+  getSourceListing,
+  mapSourceManga,
+  type InstalledSource,
+  type SourceManga
+} from '@/lib/api/source'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
-import { rankingCategoryApiValue } from '@/lib/filters'
 import { parsePositivePage, parseStringSearch } from '@/lib/utils'
-import { SectionFilters } from '@/features/section-list/section-filters'
-import {
-  isHomeSectionListMode,
-  parseListCategory,
-  parseListOrder,
-  parseListWeek,
-  sectionModeDescription,
-  sectionModeTitle
-} from '@/features/section-list/section-utils'
 
-type HomeSectionListSearch = {
-  mode: HomeSectionListMode
+type SourceListingSearch = {
+  sourceId: string
+  listingId: string
   page: number
-  sectionId: string
-  title: string
-  filterValue: string
-  rankTag: string
-  category: string
-  week: string
-  order: string
 }
 
 export const Route = createFileRoute('/_app/explore/list')({
-  validateSearch: (search: Record<string, unknown>): HomeSectionListSearch => {
-    const mode = isHomeSectionListMode(search.mode) ? search.mode : 'promote'
-    const rankTag = parseStringSearch(search.rankTag)
-
-    return {
-      mode,
-      page: parsePositivePage(search.page),
-      sectionId: parseStringSearch(search.sectionId),
-      title: parseStringSearch(search.title),
-      filterValue: parseStringSearch(search.filterValue),
-      rankTag,
-      category: parseListCategory(mode, rankTag, search.category),
-      week: parseListWeek(search.week),
-      order: parseListOrder(search.order)
-    }
-  },
-  component: HomeSectionListPage
+  validateSearch: (search: Record<string, unknown>): SourceListingSearch => ({
+    sourceId: parseStringSearch(search.sourceId),
+    listingId: parseStringSearch(search.listingId),
+    page: parsePositivePage(search.page)
+  }),
+  component: SourceListingPage
 })
 
-function HomeSectionListPage() {
+function SourceListingPage() {
   const navigate = useNavigate({ from: Route.fullPath })
+  const queryClient = useQueryClient()
   const search = Route.useSearch()
+  const { sources, isLoading: isSourceListLoading } = useSourceCatalog({
+    includeCatalog: false
+  })
+  const source = sources.find(item => item.info.id === search.sourceId) ?? null
+  const listings = source?.listings ?? []
+  const listing =
+    listings.find(item => item.id === search.listingId) ?? listings[0] ?? null
+
+  useEffect(() => {
+    if (!source || !listing || listing.id === search.listingId) return
+    void navigate({
+      replace: true,
+      resetScroll: false,
+      search: {
+        sourceId: source.info.id,
+        listingId: listing.id,
+        page: 1
+      }
+    })
+  }, [listing, navigate, search.listingId, source])
 
   const query = useQuery({
-    queryKey: queryKeys.homeSectionList(search),
-    queryFn: () =>
-      getHomeSectionList({
-        mode: search.mode,
-        page: search.page,
-        sectionId: search.sectionId,
-        sectionTitle: search.title,
-        filterValue: search.filterValue,
-        category:
-          search.mode === 'ranking'
-            ? rankingCategoryApiValue(search.category, search.rankTag)
-            : search.mode === 'weekly'
-              ? search.category
-              : null,
-        week: search.mode === 'weekly' ? search.week : null,
-        order: search.mode === 'ranking' ? search.order : null
-      }),
+    queryKey: queryKeys.sourceListing(
+      source?.info.id ?? search.sourceId,
+      listing?.id ?? search.listingId,
+      search.page
+    ),
+    queryFn: () => getSourceListing(source!.info.id, listing!, search.page),
+    enabled: source != null && listing != null,
     staleTime: CACHE.LIST_STALE_TIME,
     gcTime: CACHE.LIST_GC_TIME,
     refetchOnMount: false,
     refetchOnWindowFocus: false
   })
-  const items = query.data?.items ?? []
-  const title = query.data?.title || search.title || sectionModeTitle(search.mode)
 
-  function updateCategory(value: string) {
+  function changeListing(listingId: string) {
+    if (!source) return
     void navigate({
       replace: true,
       resetScroll: false,
-      search: {
-        ...search,
-        page: 1,
-        category: parseListCategory(search.mode, search.rankTag, value)
-      }
+      search: { sourceId: source.info.id, listingId, page: 1 }
     })
   }
 
-  function updateWeek(value: string) {
+  function changePage(page: number) {
+    if (!source || !listing) return
     void navigate({
       replace: true,
       resetScroll: false,
-      search: {
-        ...search,
-        page: 1,
-        week: parseListWeek(value)
-      }
+      search: { sourceId: source.info.id, listingId: listing.id, page }
     })
   }
 
-  function updateOrder(value: string) {
+  function openManga(manga: SourceManga) {
+    if (!source) return
+    queryClient.setQueryData(queryKeys.sourceManga(source.info.id, manga.key), manga)
     void navigate({
-      replace: true,
-      resetScroll: false,
-      search: {
-        ...search,
-        page: 1,
-        order: parseListOrder(value)
-      }
+      to: '/comic/$comicId',
+      params: { comicId: manga.key },
+      search: { sourceId: source.info.id }
     })
   }
 
-  function updatePage(page: number) {
-    void navigate({
-      replace: true,
-      resetScroll: false,
-      search: {
-        ...search,
-        page
-      }
-    })
+  if (isSourceListLoading) {
+    return <ComicGridSkeleton count={12} />
   }
+
+  if (!source) {
+    return (
+      <section className="space-y-6">
+        <PageBackButton />
+        <EmptyState emoji="(･o･;)" title="漫画源未安装或已被移除" />
+      </section>
+    )
+  }
+
+  if (!listing) {
+    return (
+      <section className="space-y-6">
+        <PageBackButton />
+        <PageHeader title={source.info.name} description="该源暂未提供探索列表" />
+        <EmptyState emoji="(･o･;)" title="暂无可浏览分类" />
+      </section>
+    )
+  }
+
+  const entries = query.data?.entries ?? []
 
   return (
     <section className="space-y-6">
       <PageBackButton />
-      <PageHeader title={title} description={sectionModeDescription(search.mode)} />
+      <PageHeader title={source.info.name} description={listing.name} />
 
-      <SectionFilters
-        mode={search.mode}
-        rankTag={search.rankTag}
-        category={search.category}
-        week={search.week}
-        order={search.order}
-        onCategoryChange={updateCategory}
-        onWeekChange={updateWeek}
-        onOrderChange={updateOrder}
-      />
+      {listings.length > 1 ? (
+        <Tabs value={listing.id} onValueChange={changeListing}>
+          <TabsList className="max-w-full justify-start overflow-x-auto">
+            {listings.map(item => (
+              <TabsTrigger key={item.id} value={item.id}>
+                {item.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      ) : null}
 
       {query.isError ? (
         <EmptyState
           emoji="Ò︵Ó"
-          title="数据加载失败"
+          title="漫画源列表加载失败"
           actions={
             <Button type="button" variant="outline" size="sm" onClick={() => query.refetch()}>
               重试
@@ -159,19 +156,50 @@ function HomeSectionListPage() {
         />
       ) : query.isLoading ? (
         <ComicGridSkeleton count={12} />
-      ) : items.length === 0 ? (
-        <EmptyState emoji="(･o･;)" title="暂无内容" />
+      ) : entries.length === 0 ? (
+        <EmptyState emoji="(･o･;)" title="这个分类暂无内容" />
       ) : (
         <>
-          <ComicGrid items={items} />
+          <SourceMangaGrid source={source} entries={entries} onOpenManga={openManga} />
           <ListPagination
             page={search.page}
-            hasMore={query.data?.hasMore ?? false}
+            hasMore={query.data?.hasNextPage ?? false}
             disabled={query.isFetching}
-            onPageChange={updatePage}
+            onPageChange={changePage}
           />
         </>
       )}
     </section>
+  )
+}
+
+function SourceMangaGrid({
+  source,
+  entries,
+  onOpenManga
+}: {
+  source: InstalledSource
+  entries: SourceManga[]
+  onOpenManga: (manga: SourceManga) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
+      {entries.map(manga => {
+        const comic = mapSourceManga(manga)
+        return (
+          <ComicCard
+            key={`${source.info.id}:${manga.key}`}
+            comic={comic}
+            ratio="square"
+            onOpen={() => onOpenManga(manga)}
+            metadata={
+              <p className="line-clamp-1 text-xs text-muted-foreground">
+                {comic.author || '未知作者'}
+              </p>
+            }
+          />
+        )
+      })}
+    </div>
   )
 }

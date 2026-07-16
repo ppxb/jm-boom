@@ -1,4 +1,4 @@
-use super::{EndpointManager, EndpointMode, FALLBACK_ENDPOINTS};
+use super::{EndpointManager, FALLBACK_ENDPOINTS};
 use crate::jm::{JmClient, JmError, JmResult};
 use std::{collections::HashSet, future::Future, pin::Pin, time::Instant};
 
@@ -8,19 +8,6 @@ impl EndpointManager {
     pub(super) async fn request_candidates(&self) -> Vec<String> {
         let inner = self.inner.read().await;
         let mut candidates = Vec::new();
-
-        if inner.mode == EndpointMode::Manual {
-            if let Some(selected) = inner.selected_endpoint.as_ref() {
-                let selected_available = inner
-                    .endpoints
-                    .iter()
-                    .find(|probe| probe.endpoint == *selected)
-                    .map(|probe| probe.available);
-                if selected_available != Some(false) {
-                    push_unique(&mut candidates, selected);
-                }
-            }
-        }
 
         push_unique(&mut candidates, &inner.current_endpoint);
 
