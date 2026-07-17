@@ -15,9 +15,7 @@ function ReaderRoute() {
   const { comicId } = Route.useParams()
   const search = Route.useSearch()
 
-  return (
-    <ReaderPage key={`${comicId}:${search.page ?? 1}`} comicId={comicId} search={search} />
-  )
+  return <ReaderPage key={`${comicId}:${search.page ?? 1}`} comicId={comicId} search={search} />
 }
 
 function parseOptionalPage(value: unknown) {

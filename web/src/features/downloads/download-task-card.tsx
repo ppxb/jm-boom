@@ -67,18 +67,20 @@ export function DownloadTaskCard({
             }
           : undefined
       }
-      coverOverlay={!selectable ? (
-        <DownloadCoverOverlay
-          task={task}
-          progressPercent={progressPercent}
-          isCancelling={isCancelling}
-          isPausing={isPausing}
-          isResuming={isResuming}
-          onCancel={onCancel}
-          onPause={onPause}
-          onResume={onResume}
-        />
-      ) : undefined}
+      coverOverlay={
+        !selectable ? (
+          <DownloadCoverOverlay
+            task={task}
+            progressPercent={progressPercent}
+            isCancelling={isCancelling}
+            isPausing={isPausing}
+            isResuming={isResuming}
+            onCancel={onCancel}
+            onPause={onPause}
+            onResume={onResume}
+          />
+        ) : undefined
+      }
       metadata={
         <>
           <p className="line-clamp-1 text-xs text-muted-foreground">{formatChapterSummary(task)}</p>
@@ -130,35 +132,35 @@ function DownloadCoverOverlay({
         <StatusBadge status={task.status} progressPercent={progressPercent} />
       </div>
       {hasActions ? (
-        <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/75 via-transparent to-black/25 opacity-100 transition-opacity sm:bg-black/50 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+        <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/75 via-transparent to-black/25 opacity-100 transition-opacity sm:bg-black/50 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
           <div
             className="pointer-events-auto absolute inset-0 flex flex-wrap items-center justify-center gap-2"
             onClick={event => event.stopPropagation()}
             onKeyDown={event => event.stopPropagation()}
           >
-          {canPause ? (
-            <ActionButton label="暂停下载" disabled={isPausing} onClick={onPause}>
-              <PauseIcon className="size-4" />
-            </ActionButton>
-          ) : null}
-          {canResume ? (
-            <ActionButton
-              label={task.status === 'failed' ? '重新下载' : '恢复下载'}
-              disabled={isResuming}
-              onClick={onResume}
-            >
-              {task.status === 'failed' ? (
-                <RotateCcwIcon className="size-4" />
-              ) : (
-                <PlayIcon className="size-4" />
-              )}
-            </ActionButton>
-          ) : null}
-          {canCancel ? (
-            <ActionButton label="取消下载" disabled={isCancelling} onClick={onCancel}>
-              <BanIcon className="size-4" />
-            </ActionButton>
-          ) : null}
+            {canPause ? (
+              <ActionButton label="暂停下载" disabled={isPausing} onClick={onPause}>
+                <PauseIcon className="size-4" />
+              </ActionButton>
+            ) : null}
+            {canResume ? (
+              <ActionButton
+                label={task.status === 'failed' ? '重新下载' : '恢复下载'}
+                disabled={isResuming}
+                onClick={onResume}
+              >
+                {task.status === 'failed' ? (
+                  <RotateCcwIcon className="size-4" />
+                ) : (
+                  <PlayIcon className="size-4" />
+                )}
+              </ActionButton>
+            ) : null}
+            {canCancel ? (
+              <ActionButton label="取消下载" disabled={isCancelling} onClick={onCancel}>
+                <BanIcon className="size-4" />
+              </ActionButton>
+            ) : null}
           </div>
         </div>
       ) : null}

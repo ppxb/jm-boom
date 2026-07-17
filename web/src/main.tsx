@@ -17,9 +17,7 @@ export const router = createRouter({
   scrollRestoration: true,
   // Prefetched chapters can mount without a loading gap, so the persistent
   // strip scroller must be reset explicitly instead of inheriting the prior chapter's offset.
-  scrollToTopSelectors: [
-    `[data-scroll-restoration-id="${READER.STRIP_SCROLL_RESTORATION_ID}"]`
-  ]
+  scrollToTopSelectors: [`[data-scroll-restoration-id="${READER.STRIP_SCROLL_RESTORATION_ID}"]`]
 })
 
 function parseSearchParams(searchString: string) {

@@ -5,10 +5,7 @@ import { cn } from '@/lib/utils'
 export function ReaderLoading({ label, className }: { label: string; className?: string }) {
   return (
     <div
-      className={cn(
-        'flex flex-col items-center justify-center gap-3 text-neutral-400',
-        className
-      )}
+      className={cn('flex flex-col items-center justify-center gap-3 text-neutral-400', className)}
     >
       <LoaderCircleIcon className="size-6 animate-spin" />
       <span className="text-xs">{label}</span>

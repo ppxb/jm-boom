@@ -54,9 +54,7 @@ export function ReaderProgressSlider({
 
   return (
     <Tooltip open={showTooltip}>
-      <div
-        className="flex h-5 w-full items-center"
-      >
+      <div className="flex h-5 w-full items-center">
         <Slider
           aria-label="阅读进度"
           aria-valuetext={`第 ${displayIndex + 1} 张，共 ${pageCount} 张`}
@@ -85,10 +83,7 @@ export function ReaderProgressSlider({
           }}
         />
       </div>
-      <TooltipContent
-        side="top"
-        sideOffset={6}
-      >
+      <TooltipContent side="top" sideOffset={6}>
         第 {safePreviewIndex + 1} 页
       </TooltipContent>
     </Tooltip>

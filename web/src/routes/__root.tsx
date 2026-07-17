@@ -1,4 +1,10 @@
-import { createRootRoute, Outlet, redirect, useRouter, useRouterState } from '@tanstack/react-router'
+import {
+  createRootRoute,
+  Outlet,
+  redirect,
+  useRouter,
+  useRouterState
+} from '@tanstack/react-router'
 import { ArrowLeftIcon, CircleAlertIcon, HomeIcon } from 'lucide-react'
 import { useState } from 'react'
 

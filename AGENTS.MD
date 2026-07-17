@@ -23,7 +23,7 @@
 - 服务启动后立即在后台探测内置兜底与动态发现端点，完成前使用两个兜底故障切换，完成后自动模式选择最优端点；后台每 2 小时刷新一次，设置页手动探测与定时探测串行执行，手动选择优先保留。
 - Docker 使用单容器同源部署：Axum 托管 `web/dist` 并提供 SPA fallback，`/api` 未知路由保持 JSON 404；运行数据统一持久化到 `/app/data`。
 - Docker 通过 `JM_BOOM_ACCESS_PASSWORD` 启用轻量前端访问门禁；服务端仅校验登录请求，前端使用 `sessionStorage` 控制页面进入，业务 API 暂不鉴权，后续再升级为正式 Session/JWT。
-- 公开镜像发布到 `ghcr.io/ppxb/jm-boom`，首个容器版本为 `0.5.0`；Git tag `v*.*.*` 触发 GitHub Actions 构建 AMD64/ARM64 镜像并发布版本、`latest` 与 `sha-*` 标签。
+- 公开镜像发布到 `ghcr.io/ppxb/jm-boom`，首个容器版本为 `0.5.0`；Git tag `v*.*.*` 触发 GitHub Actions 构建 AMD64/ARM64 镜像并发布版本、`latest` 与 `sha-*` 标签，镜像 manifest 成功后创建带自动生成 Release Notes 的 GitHub Release。
 - 产品界面采用移动端优先、桌面端完整适配的响应式方案；主导航在所有尺寸下都使用底部胶囊形态，不恢复桌面左侧导航。
 - 书架、探索、收藏、下载和设置统一使用 `AppPage` 页面外壳；漫画详情与阅读器保留独立布局。
 - 主导航固定为书架、探索、收藏、下载、设置。书架使用 `ShellIcon`；收藏、下载、设置沿用现有图标。

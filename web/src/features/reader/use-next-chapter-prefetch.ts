@@ -52,14 +52,12 @@ export function useNextChapterPrefetch({
           return
         }
 
-        const manifest = queryClient.getQueryData<
-          Awaited<ReturnType<typeof getComicReadManifest>>
-        >(queryKeys.readerManifest(nextReadId))
+        const manifest = queryClient.getQueryData<Awaited<ReturnType<typeof getComicReadManifest>>>(
+          queryKeys.readerManifest(nextReadId)
+        )
         setReaderPreloadScope(
           preloadScope,
-          manifest?.pages
-            .slice(0, READER.PREFETCH_AHEAD_PAGES)
-            .map(page => page.path) ?? []
+          manifest?.pages.slice(0, READER.PREFETCH_AHEAD_PAGES).map(page => page.path) ?? []
         )
       })
       .catch(error => {

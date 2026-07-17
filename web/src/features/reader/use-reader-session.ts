@@ -72,10 +72,7 @@ export function useReaderSession({
     () => requestNavigation(currentIndex + normalizedPageStep),
     [currentIndex, normalizedPageStep, requestNavigation]
   )
-  const goToPage = useCallback(
-    (index: number) => requestNavigation(index),
-    [requestNavigation]
-  )
+  const goToPage = useCallback((index: number) => requestNavigation(index), [requestNavigation])
   const observePage = useCallback(
     (index: number) => {
       if (pageCount <= 0) {

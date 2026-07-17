@@ -14,10 +14,7 @@ export function useReaderPreload({
   currentIndex: number
 }) {
   const scope = `reader:${readId}`
-  const paths = useMemo(
-    () => selectPreloadPaths(pages, currentIndex),
-    [currentIndex, pages]
-  )
+  const paths = useMemo(() => selectPreloadPaths(pages, currentIndex), [currentIndex, pages])
 
   useEffect(() => {
     setReaderPreloadScope(scope, paths)
