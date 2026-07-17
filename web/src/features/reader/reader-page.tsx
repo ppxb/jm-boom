@@ -26,6 +26,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const readerReadMode = useSettingsStore(state => state.readerReadMode)
   const readerPageDirection = useSettingsStore(state => state.readerPageDirection)
   const readerDoublePageMode = useSettingsStore(state => state.readerDoublePageMode)
+  const readerCompactMenuEnabled = useSettingsStore(state => state.readerCompactMenuEnabled)
   const isStripMode = readerReadMode === 'strip'
   const isDoublePageMode = !isStripMode && readerDoublePageMode
   const pageStep = isDoublePageMode ? 2 : 1
@@ -265,6 +266,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
         currentIndex={currentIndex}
         pageCount={pageCount}
         doublePageMode={isDoublePageMode}
+        compactMenuEnabled={readerCompactMenuEnabled}
         visible={showReaderBottomBar}
         onPageChange={goToPage}
       />

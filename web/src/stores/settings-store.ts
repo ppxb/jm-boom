@@ -14,6 +14,7 @@ type SettingsState = {
   readerReadMode: ReaderReadMode
   readerPageDirection: ReaderPageDirection
   readerDoublePageMode: boolean
+  readerCompactMenuEnabled: boolean
   readerAutoReadEnabled: boolean
   readerAutoReadStripIntervalMs: number
   readerAutoReadPageIntervalMs: number
@@ -23,6 +24,7 @@ type SettingsState = {
   setReaderReadMode: (readerReadMode: string) => void
   setReaderPageDirection: (readerPageDirection: string) => void
   setReaderDoublePageMode: (readerDoublePageMode: boolean) => void
+  setReaderCompactMenuEnabled: (readerCompactMenuEnabled: boolean) => void
   setReaderAutoReadEnabled: (readerAutoReadEnabled: boolean) => void
   setReaderAutoReadStripIntervalMs: (readerAutoReadStripIntervalMs: number) => void
   setReaderAutoReadPageIntervalMs: (readerAutoReadPageIntervalMs: number) => void
@@ -36,6 +38,7 @@ const DEFAULT_SETTINGS = {
   readerReadMode: READER_READ_MODES[0],
   readerPageDirection: READER_PAGE_DIRECTIONS[0],
   readerDoublePageMode: false,
+  readerCompactMenuEnabled: true,
   readerAutoReadEnabled: false,
   readerAutoReadStripIntervalMs: 1600,
   readerAutoReadPageIntervalMs: 3000,
@@ -47,6 +50,7 @@ const DEFAULT_SETTINGS = {
   | 'readerReadMode'
   | 'readerPageDirection'
   | 'readerDoublePageMode'
+  | 'readerCompactMenuEnabled'
   | 'readerAutoReadEnabled'
   | 'readerAutoReadStripIntervalMs'
   | 'readerAutoReadPageIntervalMs'
@@ -74,6 +78,7 @@ export const useSettingsStore = create<SettingsState>()(
         })
       },
       setReaderDoublePageMode: readerDoublePageMode => set({ readerDoublePageMode }),
+      setReaderCompactMenuEnabled: readerCompactMenuEnabled => set({ readerCompactMenuEnabled }),
       setReaderAutoReadEnabled: readerAutoReadEnabled => set({ readerAutoReadEnabled }),
       setReaderAutoReadStripIntervalMs: value => {
         set({
@@ -115,6 +120,7 @@ export const useSettingsStore = create<SettingsState>()(
         readerReadMode: state.readerReadMode,
         readerPageDirection: state.readerPageDirection,
         readerDoublePageMode: state.readerDoublePageMode,
+        readerCompactMenuEnabled: state.readerCompactMenuEnabled,
         readerAutoReadEnabled: state.readerAutoReadEnabled,
         readerAutoReadStripIntervalMs: state.readerAutoReadStripIntervalMs,
         readerAutoReadPageIntervalMs: state.readerAutoReadPageIntervalMs,

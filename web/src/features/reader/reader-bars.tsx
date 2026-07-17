@@ -82,6 +82,7 @@ export function ReaderBottomBar({
   currentIndex,
   pageCount,
   doublePageMode,
+  compactMenuEnabled,
   visible,
   onPageChange
 }: {
@@ -94,6 +95,7 @@ export function ReaderBottomBar({
   currentIndex: number
   pageCount: number
   doublePageMode: boolean
+  compactMenuEnabled: boolean
   visible: boolean
   onPageChange: (index: number) => void
 }) {
@@ -107,6 +109,10 @@ export function ReaderBottomBar({
       : `${currentIndex + 1} / ${pageCount}`
 
   if (!visible) {
+    if (!compactMenuEnabled) {
+      return null
+    }
+
     return (
       <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 flex h-8 w-24 -translate-x-1/2 items-center justify-center rounded-2xl border border-border/60 bg-background/85 px-3 text-xs text-muted-foreground backdrop-blur sm:bottom-8">
         <span className="tabular-nums">{pageLabel}</span>

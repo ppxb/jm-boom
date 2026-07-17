@@ -30,6 +30,7 @@ export function ReaderSettingsMenu() {
   const readerReadMode = useSettingsStore(state => state.readerReadMode)
   const readerPageDirection = useSettingsStore(state => state.readerPageDirection)
   const readerDoublePageMode = useSettingsStore(state => state.readerDoublePageMode)
+  const readerCompactMenuEnabled = useSettingsStore(state => state.readerCompactMenuEnabled)
   const readerAutoReadEnabled = useSettingsStore(state => state.readerAutoReadEnabled)
   const readerAutoReadStripIntervalMs = useSettingsStore(
     state => state.readerAutoReadStripIntervalMs
@@ -41,6 +42,7 @@ export function ReaderSettingsMenu() {
   const setReaderReadMode = useSettingsStore(state => state.setReaderReadMode)
   const setReaderPageDirection = useSettingsStore(state => state.setReaderPageDirection)
   const setReaderDoublePageMode = useSettingsStore(state => state.setReaderDoublePageMode)
+  const setReaderCompactMenuEnabled = useSettingsStore(state => state.setReaderCompactMenuEnabled)
   const setReaderAutoReadEnabled = useSettingsStore(state => state.setReaderAutoReadEnabled)
   const setReaderAutoReadStripIntervalMs = useSettingsStore(
     state => state.setReaderAutoReadStripIntervalMs
@@ -116,8 +118,19 @@ export function ReaderSettingsMenu() {
         <DropdownMenuSeparator />
         <div className="flex items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
+            <div className="text-sm text-popover-foreground">页码胶囊</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">是否显示页码胶囊</div>
+          </div>
+          <Switch
+            checked={readerCompactMenuEnabled}
+            onCheckedChange={setReaderCompactMenuEnabled}
+          />
+        </div>
+        <DropdownMenuSeparator />
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
+          <div className="min-w-0">
             <div className="text-sm text-popover-foreground">自动阅读</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">隐藏控制栏时自动推进</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">是否开启自动推进</div>
           </div>
           <Switch checked={readerAutoReadEnabled} onCheckedChange={setReaderAutoReadEnabled} />
         </div>
