@@ -1,18 +1,13 @@
 import { LoaderCircleIcon } from 'lucide-react'
+import { useCallback } from 'react'
 
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle
-} from '@/components/ui/drawer'
+import { EmptyState } from '@/components/empty-state'
+import { SideDrawerContent } from '@/components/side-drawer-content'
+import { Button } from '@/components/ui/button'
+import { Drawer, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import type { ComicComment } from '@/lib/api/comic'
 import { formatNumber } from '@/lib/format'
 import { CommentSkeletonList } from './shared'
-import { EmptyState } from '@/components/empty-state'
-import { Button } from '@/components/ui/button'
-import { useCallback } from 'react'
 
 const CHINESE_DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
@@ -59,13 +54,16 @@ export function CommentsDrawer({ open, onOpenChange, state }: CommentsDrawerProp
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="h-full w-[82vw] max-w-[320px] overflow-hidden rounded-l-2xl p-0 before:inset-0 before:rounded-l-2xl before:rounded-r-none data-[vaul-drawer-direction=right]:w-[82vw] data-[vaul-drawer-direction=right]:max-w-[320px] data-[vaul-drawer-direction=right]:sm:w-[420px] data-[vaul-drawer-direction=right]:sm:max-w-[420px]">
+      <SideDrawerContent>
         <DrawerHeader className="border-b border-border/70 p-6">
           <DrawerTitle>评论</DrawerTitle>
           <DrawerDescription>共 {formatNumber(state.total)} 条评论</DrawerDescription>
         </DrawerHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6" onScroll={handleScroll}>
+        <div
+          className="min-h-0 flex-1 scroll-fade-y overflow-y-auto px-6 pb-6"
+          onScroll={handleScroll}
+        >
           {state.isLoading ? (
             <CommentSkeletonList />
           ) : state.isError ? (
@@ -89,7 +87,7 @@ export function CommentsDrawer({ open, onOpenChange, state }: CommentsDrawerProp
             </div>
           )}
         </div>
-      </DrawerContent>
+      </SideDrawerContent>
     </Drawer>
   )
 }

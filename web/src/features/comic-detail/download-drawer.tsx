@@ -1,12 +1,12 @@
 import { DownloadIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { SideDrawerContent } from '@/components/side-drawer-content'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Drawer,
-  DrawerContent,
   DrawerDescription,
   DrawerFooter,
   DrawerHeader,
@@ -74,7 +74,7 @@ export function ComicDownloadDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="h-full w-[460px] overflow-hidden rounded-l-2xl p-0 before:inset-0 before:rounded-l-2xl before:rounded-r-none data-[vaul-drawer-direction=right]:w-[460px] data-[vaul-drawer-direction=right]:sm:max-w-[460px]">
+      <SideDrawerContent>
         <DrawerHeader>
           <DrawerTitle>选择下载章节</DrawerTitle>
           <DrawerDescription className="line-clamp-2">{comicTitle}</DrawerDescription>
@@ -95,7 +95,7 @@ export function ComicDownloadDrawer({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        <div className="min-h-0 flex-1 scroll-fade-y overflow-y-auto px-4 py-3">
           <div className="space-y-2">
             {chapters.map(chapter => {
               const checked = selectedChapterIds.has(chapter.chapterId)
@@ -130,7 +130,7 @@ export function ComicDownloadDrawer({
             下载选中章节
           </Button>
         </DrawerFooter>
-      </DrawerContent>
+      </SideDrawerContent>
     </Drawer>
   )
 }

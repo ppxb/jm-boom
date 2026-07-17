@@ -1,17 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { XIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { SideDrawerContent } from '@/components/side-drawer-content'
 import { Badge } from '@/components/ui/badge'
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle
-} from '@/components/ui/drawer'
+import { Drawer, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { cn } from '@/lib/utils'
 import { listDownloadedChapters } from '@/lib/api/download'
 import { queryKeys } from '@/lib/query-keys'
@@ -66,25 +59,13 @@ export function ReaderChapterDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="h-full w-[82vw] max-w-[280px] overflow-hidden rounded-l-xl border-l border-border bg-background/90 p-0 text-foreground shadow-2xl backdrop-blur-xl before:hidden data-[vaul-drawer-direction=right]:w-[82vw] data-[vaul-drawer-direction=right]:max-w-[280px] data-[vaul-drawer-direction=right]:sm:w-[420px] data-[vaul-drawer-direction=right]:sm:max-w-[420px]">
-        <DrawerHeader className="relative border-b border-border pr-12">
-          <DrawerTitle className="text-foreground">章节目录</DrawerTitle>
-          <DrawerDescription className="line-clamp-1 text-muted-foreground">
-            {title || '当前作品'}
-          </DrawerDescription>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="关闭章节目录"
-            className="absolute top-4 right-4 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={() => onOpenChange(false)}
-          >
-            <XIcon className="size-4" />
-          </Button>
+      <SideDrawerContent>
+        <DrawerHeader className="border-b border-border/70">
+          <DrawerTitle>章节目录</DrawerTitle>
+          <DrawerDescription className="line-clamp-1">{title || '当前作品'}</DrawerDescription>
         </DrawerHeader>
 
-        <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        <nav className="min-h-0 flex-1 scroll-fade-y overflow-y-auto px-4 py-3">
           <div ref={listRef} className="space-y-2">
             {displayChapters.map(chapter => {
               const isCurrent = chapter.id === currentReadId
@@ -127,7 +108,7 @@ export function ReaderChapterDrawer({
             })}
           </div>
         </nav>
-      </DrawerContent>
+      </SideDrawerContent>
     </Drawer>
   )
 }

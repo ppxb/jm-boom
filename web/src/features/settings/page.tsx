@@ -30,7 +30,7 @@ export function SettingsPage() {
 
   return (
     <AppPage contentClassName="max-w-5xl gap-8" showBackTop={false}>
-      <PageHeader title="设置" description="APP 设置及缓存管理" inlineActions>
+      <PageHeader title="设置" description="APP 设置及账号管理" inlineActions>
         <Button
           type="button"
           variant="outline"
