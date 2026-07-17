@@ -61,7 +61,7 @@ export function CommentsDrawer({ open, onOpenChange, state }: CommentsDrawerProp
         </DrawerHeader>
 
         <div
-          className="min-h-0 flex-1 scroll-fade-y overflow-y-auto px-6 pb-6"
+          className="min-h-0 flex-1 scroll-fade-y overflow-y-auto px-6 pt-2 pb-6"
           onScroll={handleScroll}
         >
           {state.isLoading ? (

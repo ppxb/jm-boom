@@ -1,9 +1,4 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient
-} from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -45,7 +40,7 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
   })
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-background px-4 pt-6 pb-20 text-foreground sm:px-6 md:pb-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <PageBackButton />
 
@@ -147,13 +142,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
       isActive = false
       clearReaderPreloadScope(readerPreloadScope)
     }
-  }, [
-    isCoverSettled,
-    queryClient,
-    readerPreloadScope,
-    readingTarget.page,
-    readingTarget.readId
-  ])
+  }, [isCoverSettled, queryClient, readerPreloadScope, readingTarget.page, readingTarget.readId])
 
   function handleFavoriteToggle() {
     const favorited = toggleFavorite({

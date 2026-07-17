@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator'
 import type { ComicDetail } from '@/domain/comic'
 import { getComicDisplayChapterCount } from '@/lib/comic'
 import { formatNumber } from '@/lib/format'
+import { ComicDetailFloatingActions } from './floating-actions'
 import type { ComicReadingTarget } from './reading-target'
 import { ComicCover } from './shared'
 
@@ -51,14 +52,14 @@ export function ComicHero({
         className="mx-auto w-full max-w-60 md:max-w-none"
       />
 
-      <div className="min-w-0 space-y-5 py-1">
+      <div className="min-w-0 space-y-5 py-1 text-center md:text-left">
         <Badge variant="default">JM {comic.id}</Badge>
 
         <div className="space-y-2">
           <h1 className="text-2xl leading-tight font-bold tracking-normal sm:text-3xl lg:text-4xl">
             {comic.title}
           </h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground md:justify-start">
             <UserRoundIcon className="size-4" />
             <SearchLinks items={comic.authors} fallback="N/A" className="min-w-0" />
           </div>
@@ -68,11 +69,22 @@ export function ComicHero({
         <StatsRow comic={comic} onCommentsClick={onCommentsClick} />
         <Separator />
 
-        <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
+        <p className="mx-auto max-w-3xl text-left text-sm leading-7 text-muted-foreground md:mx-0">
           {comic.description || '暂无简介'}
         </p>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="md:hidden">
+          <ComicDetailFloatingActions
+            albumId={comic.id}
+            readingTarget={readingTarget}
+            isFavorite={isFavorite}
+            downloadBusy={downloadBusy}
+            onFavoriteClick={onFavoriteClick}
+            onDownloadClick={onDownloadClick}
+          />
+        </div>
+
+        <div className="hidden flex-wrap gap-2 md:flex">
           <Button asChild>
             <Link
               to="/reader/$comicId"
@@ -189,39 +201,35 @@ function PillGroup({
   }
 
   return (
-    <div
-      className={
-        mobileProminent
-          ? 'flex flex-wrap items-center gap-2.5 sm:gap-2'
-          : 'flex flex-wrap items-center gap-2'
-      }
-    >
+    <div className="flex flex-col items-start gap-2 md:flex-row md:items-center">
       <span
         className={
           mobileProminent
-            ? 'w-12 text-sm text-muted-foreground sm:w-10 sm:text-xs'
-            : 'w-10 text-xs text-muted-foreground'
+            ? 'text-sm text-muted-foreground md:w-10 md:text-xs'
+            : 'text-xs text-muted-foreground md:w-10'
         }
       >
         {title}
       </span>
-      {items.map(item => (
-        <Badge
-          key={`${title}-${item}`}
-          variant={variant}
-          asChild
-          className={mobileProminent ? 'h-7 px-3 text-sm sm:h-5 sm:px-2 sm:text-xs' : undefined}
-        >
-          <Link
-            to="/explore/search"
-            search={{
-              q: item
-            }}
+      <div className="flex flex-wrap justify-start gap-2">
+        {items.map(item => (
+          <Badge
+            key={`${title}-${item}`}
+            variant={variant}
+            asChild
+            className={mobileProminent ? 'h-7 px-3 text-sm md:h-5 md:px-2 md:text-xs' : undefined}
           >
-            {item}
-          </Link>
-        </Badge>
-      ))}
+            <Link
+              to="/explore/search"
+              search={{
+                q: item
+              }}
+            >
+              {item}
+            </Link>
+          </Badge>
+        ))}
+      </div>
     </div>
   )
 }
