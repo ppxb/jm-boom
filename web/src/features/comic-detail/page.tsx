@@ -24,7 +24,7 @@ import {
   type DownloadChapterOption
 } from './download-drawer'
 import { enqueueComicDownload } from '@/lib/api/download'
-import { useLocalFavoritesStore } from '@/stores/local-favorites-store'
+import { addFavorite, listFavorites, removeFavorite } from '@/lib/api/favorite'
 import { useReadingHistoryStore } from '@/stores/reading-history-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { resolveComicReadingTarget } from './reading-target'
@@ -68,8 +68,14 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
 }
 function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const queryClient = useQueryClient()
-  const isFavorite = useLocalFavoritesStore(state => state.items.some(item => item.id === comic.id))
-  const toggleFavorite = useLocalFavoritesStore(state => state.toggle)
+  const favorites = useQuery({
+    queryKey: queryKeys.favorites(),
+    queryFn: listFavorites,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true
+  })
+  const isFavorite = favorites.data?.items.some(item => item.id === comic.id) ?? false
   const readingHistory = useReadingHistoryStore(state =>
     state.items.find(item => item.id === comic.id)
   )
@@ -144,17 +150,26 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     }
   }, [isCoverSettled, queryClient, readerPreloadScope, readingTarget.page, readingTarget.readId])
 
-  function handleFavoriteToggle() {
-    const favorited = toggleFavorite({
-      id: comic.id,
-      title: comic.title,
-      author: comic.authors.join(' / '),
-      description: comic.description,
-      image: comic.image,
-      tags: comic.tags
-    })
-    toast.success(favorited ? '已添加到本地收藏' : '已取消本地收藏')
-  }
+  const favoriteMutation = useMutation({
+    mutationFn: () =>
+      isFavorite
+        ? removeFavorite(comic.id)
+        : addFavorite({
+            id: comic.id,
+            title: comic.title,
+            author: comic.authors.join(' / '),
+            description: comic.description,
+            image: comic.image,
+            tags: comic.tags
+          }),
+    onSuccess: result => {
+      queryClient.setQueryData(queryKeys.favorites(), result)
+      toast.success(isFavorite ? '已取消收藏' : '已添加收藏')
+    },
+    onError: error => {
+      toast.error(error instanceof Error ? error.message : '收藏操作失败')
+    }
+  })
   const downloadMutation = useMutation({
     mutationFn: (chapters: DownloadChapterOption[]) =>
       enqueueComicDownload({
@@ -213,9 +228,10 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         isFavorite={isFavorite}
         onCommentsClick={() => setIsCommentsOpen(true)}
         onDownloadClick={handleDownloadClick}
-        onFavoriteClick={handleFavoriteToggle}
+        onFavoriteClick={() => favoriteMutation.mutate()}
         onCoverSettled={() => setSettledCoverUrl(comic.image)}
         downloadBusy={downloadMutation.isPending}
+        favoriteBusy={favorites.isLoading || favoriteMutation.isPending}
       />
 
       <ChaptersSection albumId={albumId} comicId={comic.id} chapters={comic.chapters} />

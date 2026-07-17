@@ -1,7 +1,7 @@
 use crate::{
     application::{
-        AccessGateService, ComicService, CoverService, DownloadService, ReaderService,
-        SettingsService,
+        AccessGateService, ComicService, CoverService, DownloadService, FavoriteService,
+        ReaderService, SettingsService,
     },
     bootstrap::config::AppConfig,
     cache, endpoint, image_work, jm, page_materializer,
@@ -15,6 +15,7 @@ pub(crate) struct AppState {
     pub(crate) covers: Arc<CoverService>,
     pub(crate) reader: Arc<ReaderService>,
     pub(crate) downloads: Arc<DownloadService>,
+    pub(crate) favorites: Arc<FavoriteService>,
     pub(crate) settings: Arc<SettingsService>,
 }
 
@@ -46,6 +47,7 @@ impl AppState {
             cache.clone(),
             image_work::ImageWorkBudget::new(),
         ));
+        let favorites = Arc::new(FavoriteService::new(db.clone()));
         let downloads = Arc::new(
             DownloadService::new(db, jm.clone(), endpoints.clone(), page_materializer.clone())
                 .await?,
@@ -76,6 +78,7 @@ impl AppState {
             covers,
             reader,
             downloads,
+            favorites,
             settings,
         })
     }

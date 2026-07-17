@@ -2,6 +2,7 @@ mod access_gate;
 mod comic;
 mod cover;
 mod download;
+mod favorite;
 mod reader;
 mod settings;
 
@@ -13,5 +14,6 @@ pub(crate) use comic::{
 };
 pub use cover::{CoverService, CoverServiceError};
 pub use download::DownloadService;
+pub use favorite::{FavoriteInput, FavoriteItem, FavoriteService};
 pub use reader::ReaderService;
 pub use settings::SettingsService;

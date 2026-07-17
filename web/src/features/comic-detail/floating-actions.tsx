@@ -9,6 +9,7 @@ export function ComicDetailFloatingActions({
   readingTarget,
   isFavorite,
   downloadBusy,
+  favoriteBusy,
   onFavoriteClick,
   onDownloadClick
 }: {
@@ -16,6 +17,7 @@ export function ComicDetailFloatingActions({
   readingTarget: ComicReadingTarget
   isFavorite: boolean
   downloadBusy: boolean
+  favoriteBusy: boolean
   onFavoriteClick: () => void
   onDownloadClick: () => void
 }) {
@@ -42,6 +44,7 @@ export function ComicDetailFloatingActions({
         size="icon"
         aria-label={favoriteLabel}
         title={favoriteLabel}
+        disabled={favoriteBusy}
         onClick={onFavoriteClick}
       >
         {isFavorite ? (

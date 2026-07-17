@@ -10,6 +10,7 @@ mod comic_summary;
 mod comics;
 mod covers;
 mod downloads;
+mod favorites;
 mod home;
 mod media;
 mod reader;
@@ -27,6 +28,13 @@ pub fn routes() -> Router<AppState> {
         .route("/comics/:id", get(comics::get_comic_detail))
         .route("/comics/:id/comments", get(comics::get_comments))
         .route("/covers/:id", get(covers::get_cover))
+        // 单实例共享收藏
+        .route("/favorites", get(favorites::list).delete(favorites::clear))
+        .route("/favorites/import", post(favorites::import))
+        .route(
+            "/favorites/:id",
+            put(favorites::upsert).delete(favorites::remove),
+        )
         // 服务端离线缓存任务
         .route("/downloads", get(downloads::list))
         .route("/downloads", post(downloads::enqueue))

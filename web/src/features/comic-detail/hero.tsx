@@ -30,7 +30,8 @@ export function ComicHero({
   onDownloadClick,
   onFavoriteClick,
   onCoverSettled,
-  downloadBusy = false
+  downloadBusy = false,
+  favoriteBusy = false
 }: {
   comic: ComicDetail
   readingTarget: ComicReadingTarget
@@ -40,6 +41,7 @@ export function ComicHero({
   onFavoriteClick: () => void
   onCoverSettled: () => void
   downloadBusy?: boolean
+  favoriteBusy?: boolean
 }) {
   return (
     <section className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
@@ -79,6 +81,7 @@ export function ComicHero({
             readingTarget={readingTarget}
             isFavorite={isFavorite}
             downloadBusy={downloadBusy}
+            favoriteBusy={favoriteBusy}
             onFavoriteClick={onFavoriteClick}
             onDownloadClick={onDownloadClick}
           />
@@ -98,7 +101,11 @@ export function ComicHero({
               {readingTarget.isContinue ? '继续阅读' : '开始阅读'}
             </Link>
           </Button>
-          <Button variant={isFavorite ? 'secondary' : 'outline'} onClick={onFavoriteClick}>
+          <Button
+            variant={isFavorite ? 'secondary' : 'outline'}
+            disabled={favoriteBusy}
+            onClick={onFavoriteClick}
+          >
             {isFavorite ? (
               <BookmarkCheckIcon className="size-4" />
             ) : (
