@@ -1,16 +1,11 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useEffect, useMemo, useState } from 'react'
 
 import { BackTopButton } from '@/components/back-top-button'
 import { PageBackButton } from '@/components/page-back-button'
 import type { ComicDetail } from '@/domain/comic'
-import {
-  getComicComments,
-  getComicDetail,
-  getComicState,
-  type ComicStateResult
-} from '@/lib/api/comic'
+import { getComicDetail, getComicState, type ComicStateResult } from '@/lib/api/comic'
 import { SINGLE_CHAPTER_TITLE, sortComicChapters } from '@/lib/comic'
 import { getComicReadManifest } from '@/lib/api/reader'
 import { CACHE, READER } from '@/lib/constants'
@@ -208,31 +203,6 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
       toast.error(error instanceof Error ? error.message : '下载任务创建失败')
     }
   })
-  const commentsQuery = useInfiniteQuery({
-    queryKey: queryKeys.comicComments(comic.id),
-    queryFn: ({ pageParam }) => getComicComments({ comicId: comic.id, page: pageParam }),
-    initialPageParam: 1,
-    enabled: isCommentsOpen,
-    staleTime: CACHE.COMMENTS_STALE_TIME,
-    gcTime: CACHE.COMMENTS_GC_TIME,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    getNextPageParam: (lastPage, allPages) => {
-      const loadedCount = allPages.reduce((sum, page) => sum + page.comments.length, 0)
-
-      if (lastPage.comments.length === 0 || loadedCount >= lastPage.total) {
-        return undefined
-      }
-
-      return lastPage.page + 1
-    }
-  })
-  const comments = useMemo(
-    () => commentsQuery.data?.pages.flatMap(page => page.comments) ?? [],
-    [commentsQuery.data]
-  )
-  const commentTotal = commentsQuery.data?.pages[0]?.total ?? comic.commentCount
-
   function handleDownloadClick() {
     if (downloadChapters.length <= 1) {
       downloadMutation.mutate(downloadChapters)
@@ -261,19 +231,10 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
       <RelatedPanel items={comic.relatedComics} />
 
       <CommentsDrawer
+        comicId={comic.id}
+        total={comic.commentCount}
         open={isCommentsOpen}
         onOpenChange={setIsCommentsOpen}
-        state={{
-          isLoading: commentsQuery.isLoading,
-          isFetchingNextPage: commentsQuery.isFetchingNextPage,
-          isError: commentsQuery.isError,
-          errorMessage: commentsQuery.error?.message,
-          total: commentTotal,
-          comments,
-          hasNextPage: commentsQuery.hasNextPage,
-          onRetry: () => commentsQuery.refetch(),
-          onLoadMore: () => commentsQuery.fetchNextPage({ cancelRefetch: false })
-        }}
       />
       <ComicDownloadDrawer
         open={isDownloadOpen}

@@ -47,7 +47,7 @@ export function ComicDetailSkeleton() {
 
 export function CommentSkeletonList() {
   return (
-    <div className="space-y-3">
+    <div className="min-h-full space-y-3 pb-2">
       {Array.from({ length: UI.COMMENT_SKELETON_COUNT }).map((_, index) => (
         <div key={index} className="space-y-3 px-px py-1">
           <div className="space-y-2">

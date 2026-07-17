@@ -62,6 +62,14 @@ export type ComicCommentsResult = {
   comments: ComicComment[]
 }
 
+type ComicCommentResponse = Omit<ComicComment, 'replies'> & {
+  replies: ComicCommentResponse[]
+}
+
+type ComicCommentsResponse = Omit<ComicCommentsResult, 'comments'> & {
+  comments: ComicCommentResponse[]
+}
+
 export async function getComicDetail(comicId: string): Promise<ComicDetailResult> {
   const response = await apiClient.get<ComicDetailResponse>(`/api/comics/${comicId}`)
 
@@ -81,7 +89,27 @@ export async function getComicComments({
   comicId: string
   page?: number
 }): Promise<ComicCommentsResult> {
-  return apiClient.get(`/api/comics/${comicId}/comments`, { page })
+  const response = await apiClient.get<ComicCommentsResponse>(`/api/comics/${comicId}/comments`, {
+    page
+  })
+
+  return {
+    ...response,
+    comments: response.comments.map(mapComicComment)
+  }
+}
+
+function mapComicComment(comment: ComicCommentResponse): ComicComment {
+  return {
+    ...comment,
+    content: htmlToText(comment.content),
+    replies: comment.replies.map(mapComicComment)
+  }
+}
+
+function htmlToText(value: string) {
+  const { body } = new DOMParser().parseFromString(value, 'text/html')
+  return body.textContent?.trim() ?? ''
 }
 
 function mapComicDetail(response: ComicDetailResponse): ComicDetail {

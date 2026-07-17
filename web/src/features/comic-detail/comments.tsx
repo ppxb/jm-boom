@@ -1,12 +1,15 @@
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { LoaderCircleIcon } from 'lucide-react'
-import { useCallback } from 'react'
+import { memo, useCallback, useMemo, type UIEvent } from 'react'
 
 import { EmptyState } from '@/components/empty-state'
 import { SideDrawerContent } from '@/components/side-drawer-content'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-import type { ComicComment } from '@/lib/api/comic'
+import { getComicComments, type ComicComment } from '@/lib/api/comic'
+import { CACHE } from '@/lib/constants'
 import { formatNumber } from '@/lib/format'
+import { queryKeys } from '@/lib/query-keys'
 import { CommentSkeletonList } from './shared'
 
 const CHINESE_DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
@@ -15,29 +18,49 @@ const CHINESE_DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   day: 'numeric'
 })
 
-export type CommentsState = {
-  isLoading: boolean
-  isFetchingNextPage: boolean
-  isError: boolean
-  errorMessage?: string
-  total: number
-  comments: ComicComment[]
-  hasNextPage: boolean
-  onRetry: () => void
-  onLoadMore: () => void
-}
-
 type CommentsDrawerProps = {
+  comicId: string
+  total: number
   open: boolean
   onOpenChange: (open: boolean) => void
-  state: CommentsState
 }
 
-export function CommentsDrawer({ open, onOpenChange, state }: CommentsDrawerProps) {
-  const { hasNextPage, isFetchingNextPage, onLoadMore } = state
+export function CommentsDrawer({ comicId, total, open, onOpenChange }: CommentsDrawerProps) {
+  const commentsQuery = useInfiniteQuery({
+    queryKey: queryKeys.comicComments(comicId),
+    queryFn: ({ pageParam }) => getComicComments({ comicId, page: pageParam }),
+    initialPageParam: 1,
+    enabled: open,
+    staleTime: CACHE.COMMENTS_STALE_TIME,
+    gcTime: CACHE.COMMENTS_GC_TIME,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    getNextPageParam: (lastPage, allPages) => {
+      const loadedCount = allPages.reduce((sum, page) => sum + page.comments.length, 0)
+
+      if (lastPage.comments.length === 0 || loadedCount >= lastPage.total) {
+        return undefined
+      }
+
+      return lastPage.page + 1
+    }
+  })
+  const comments = useMemo(
+    () => commentsQuery.data?.pages.flatMap(page => page.comments) ?? [],
+    [commentsQuery.data]
+  )
+  const {
+    fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetchingNextPage,
+    isLoading,
+    refetch
+  } = commentsQuery
+  const commentTotal = commentsQuery.data?.pages[0]?.total ?? total
 
   const handleScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
+    (event: UIEvent<HTMLDivElement>) => {
       if (!hasNextPage || isFetchingNextPage) {
         return
       }
@@ -46,10 +69,10 @@ export function CommentsDrawer({ open, onOpenChange, state }: CommentsDrawerProp
       const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight
 
       if (distanceToBottom <= 80) {
-        onLoadMore()
+        void fetchNextPage({ cancelRefetch: false })
       }
     },
-    [hasNextPage, isFetchingNextPage, onLoadMore]
+    [fetchNextPage, hasNextPage, isFetchingNextPage]
   )
 
   return (
@@ -57,33 +80,41 @@ export function CommentsDrawer({ open, onOpenChange, state }: CommentsDrawerProp
       <SideDrawerContent>
         <DrawerHeader className="border-b border-border/70 p-6">
           <DrawerTitle>评论</DrawerTitle>
-          <DrawerDescription>共 {formatNumber(state.total)} 条评论</DrawerDescription>
+          <DrawerDescription>共 {formatNumber(commentTotal)} 条评论</DrawerDescription>
         </DrawerHeader>
 
         <div
           className="min-h-0 flex-1 scroll-fade-y overflow-y-auto px-6 pt-2 pb-6"
           onScroll={handleScroll}
         >
-          {state.isLoading ? (
+          {isLoading ? (
             <CommentSkeletonList />
-          ) : state.isError ? (
+          ) : isError ? (
             <EmptyState
               emoji="Ò︵Ó"
               title="数据加载失败"
               actions={
-                <Button type="button" variant="outline" size="sm" onClick={state.onRetry}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetch()}
+                >
                   重试
                 </Button>
               }
             />
-          ) : state.comments.length === 0 ? (
+          ) : comments.length === 0 ? (
             <EmptyState emoji="(･o･;)" title="暂无评论" />
           ) : (
             <div className="space-y-5">
-              {state.comments.map(comment => (
+              {comments.map(comment => (
                 <CommentItem key={comment.id} comment={comment} />
               ))}
-              <CommentsEndState state={state} />
+              <CommentsEndState
+                isFetchingNextPage={isFetchingNextPage}
+                hasNextPage={hasNextPage}
+              />
             </div>
           )}
         </div>
@@ -92,8 +123,14 @@ export function CommentsDrawer({ open, onOpenChange, state }: CommentsDrawerProp
   )
 }
 
-function CommentsEndState({ state }: { state: CommentsState }) {
-  if (state.isFetchingNextPage) {
+function CommentsEndState({
+  isFetchingNextPage,
+  hasNextPage
+}: {
+  isFetchingNextPage: boolean
+  hasNextPage: boolean
+}) {
+  if (isFetchingNextPage) {
     return (
       <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
         <LoaderCircleIcon className="size-3.5 animate-spin" />
@@ -104,14 +141,13 @@ function CommentsEndState({ state }: { state: CommentsState }) {
 
   return (
     <p className="py-2 text-center text-xs text-muted-foreground">
-      {state.hasNextPage ? '继续向下滚动加载更多' : '暂无更多评论'}
+      {hasNextPage ? '继续向下滚动加载更多' : '暂无更多评论'}
     </p>
   )
 }
 
-function CommentItem({ comment }: { comment: ComicComment }) {
+const CommentItem = memo(function CommentItem({ comment }: { comment: ComicComment }) {
   const name = getCommentAuthorName(comment)
-  const content = getCommentText(comment, '这条评论没有内容')
 
   return (
     <div className="space-y-3 px-px py-1">
@@ -120,7 +156,7 @@ function CommentItem({ comment }: { comment: ComicComment }) {
         <div className="text-xs text-muted-foreground">{formatCommentTime(comment.time)}</div>
       </div>
 
-      <p className="text-xs text-card-foreground">{content}</p>
+      <p className="text-xs text-card-foreground">{comment.content}</p>
 
       {comment.replies.length > 0 ? (
         <div className="space-y-2 rounded-md bg-muted/60 p-3">
@@ -131,34 +167,24 @@ function CommentItem({ comment }: { comment: ComicComment }) {
       ) : null}
     </div>
   )
-}
+})
 
-function ReplyItem({ reply }: { reply: ComicComment }) {
+const ReplyItem = memo(function ReplyItem({ reply }: { reply: ComicComment }) {
   const name = getCommentAuthorName(reply)
-  const content = getCommentText(reply, '这条回复没有内容')
 
   return (
     <div className="text-xs">
       <span className="font-medium">{name}</span>
-      <span className="text-muted-foreground"> ：{content}</span>
+      <span className="text-muted-foreground"> ：{reply.content}</span>
     </div>
   )
-}
+})
 
 function getCommentAuthorName(comment: ComicComment) {
-  return comment.nickname || comment.username || `用户 ${comment.userId}`
-}
-
-function getCommentText(comment: ComicComment, emptyText: string) {
-  return htmlToText(comment.content) || emptyText
+  return comment.nickname || comment.username || '用户 ' + comment.userId
 }
 
 function formatCommentTime(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '' : CHINESE_DATE_FORMATTER.format(date)
-}
-
-function htmlToText(value: string) {
-  const { body } = new DOMParser().parseFromString(value, 'text/html')
-  return body.textContent?.trim() ?? ''
 }
