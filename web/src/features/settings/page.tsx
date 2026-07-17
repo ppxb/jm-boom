@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { useSettingsStore } from '@/stores/settings-store'
 import { ApiEndpointSection } from './api-endpoint-section'
+import { AccountSection } from './account-section'
 import { AppearanceSection } from './appearance-section'
 import { PrivacySection } from './privacy-section'
 import { CacheSection, VersionSection } from './system-sections'
@@ -19,7 +20,16 @@ export function SettingsPage() {
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const setHideCovers = useSettingsStore(state => state.setHideCovers)
   const reset = useSettingsStore(state => state.reset)
-  const { endpointState, systemInfo, refreshEndpoints, changeEndpoint, clearCache } =
+  const {
+    endpointState,
+    systemInfo,
+    account,
+    refreshEndpoints,
+    changeEndpoint,
+    clearCache,
+    saveAccount,
+    removeAccount
+  } =
     useSettingsData()
 
   function resetSettings() {
@@ -65,6 +75,17 @@ export function SettingsPage() {
           <Separator />
 
           <PrivacySection hideCovers={hideCovers} onHideCoversChange={setHideCovers} />
+
+          <Separator />
+
+          <AccountSection
+            state={account.data}
+            isLoading={account.isLoading}
+            isSaving={saveAccount.isPending}
+            isClearing={removeAccount.isPending}
+            onSave={input => saveAccount.mutate(input)}
+            onClear={() => removeAccount.mutate()}
+          />
 
           <Separator />
 

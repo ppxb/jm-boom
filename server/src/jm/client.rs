@@ -11,7 +11,8 @@ use crate::domain::comic::{ComicChapter, ComicDetail, RelatedComic};
 use once_cell::sync::OnceCell;
 use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 
 static HTTP_CLIENT: OnceCell<Client> = OnceCell::new();
 
@@ -20,6 +21,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 13; jm-boom Build/TQ1A.230
 /// JM API client
 pub struct JmClient {
     pub(crate) client: Client,
+    jwt_token: Arc<RwLock<Option<String>>>,
 }
 
 impl JmClient {
@@ -27,6 +29,7 @@ impl JmClient {
     pub fn new() -> JmResult<Self> {
         Ok(Self {
             client: get_or_create_client()?,
+            jwt_token: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -40,16 +43,51 @@ impl JmClient {
         let signature = JmRequestSignature::new();
         let url = format!("{endpoint}/{path}");
 
-        let response = self
+        let mut request = self
             .client
             .get(&url)
             .apply_request_signature(&url, &signature)?
-            .query(query)
+            .query(query);
+        if let Some(jwt) = self.jwt_token.read().await.as_ref() {
+            request = request.header("Authorization", format!("Bearer {jwt}"));
+        }
+        let response = request
             .send()
             .await
             .map_err(|e| JmError::Network(e.to_string()))?;
 
         decode_response(response, &url, &signature).await
+    }
+
+    pub async fn post_form<T: DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        path: &str,
+        fields: &[(String, String)],
+        authenticated: bool,
+    ) -> JmResult<T> {
+        let signature = JmRequestSignature::new();
+        let url = format!("{endpoint}/{path}");
+        let mut request = self
+            .client
+            .post(&url)
+            .apply_request_signature(&url, &signature)?
+            .form(fields);
+        if authenticated {
+            if let Some(jwt) = self.jwt_token.read().await.as_ref() {
+                request = request.header("Authorization", format!("Bearer {jwt}"));
+            }
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| JmError::Network(error.to_string()))?;
+
+        decode_response(response, &url, &signature).await
+    }
+
+    pub async fn set_jwt_token(&self, token: Option<String>) {
+        *self.jwt_token.write().await = token;
     }
 
     /// Search comics
@@ -241,10 +279,7 @@ async fn decode_response<T: DeserializeOwned>(
     url: &str,
     signature: &JmRequestSignature,
 ) -> JmResult<T> {
-    if !response.status().is_success() {
-        return Err(JmError::Http(format!("HTTP {}: {url}", response.status())));
-    }
-
+    let status = response.status();
     let body = response
         .text()
         .await
@@ -257,6 +292,14 @@ async fn decode_response<T: DeserializeOwned>(
 
     let envelope: ApiResponse<T> =
         serde_json::from_str(body).map_err(|e| JmError::Payload(e.to_string()))?;
+
+    if !status.is_success() {
+        return Err(JmError::Api(
+            envelope
+                .error_msg
+                .unwrap_or_else(|| format!("HTTP {}: {url}", status)),
+        ));
+    }
 
     if envelope.code != 200 {
         return Err(JmError::Api(

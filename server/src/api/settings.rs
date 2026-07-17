@@ -1,10 +1,23 @@
-use crate::{cache::CacheStats, endpoint::EndpointState, http_error::HttpError, AppState};
+use crate::{
+    application::AccountInput, cache::CacheStats, endpoint::EndpointState, http_error::HttpError,
+    AppState,
+};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct EndpointSelection {
     endpoint: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct AccountUpdate {
+    username: String,
+    password: Option<String>,
+    #[serde(rename = "autoLogin")]
+    auto_login: bool,
+    #[serde(rename = "autoSignIn")]
+    auto_sign_in: bool,
 }
 
 #[derive(Serialize)]
@@ -16,6 +29,31 @@ pub struct SystemInfo {
 
 pub async fn get_endpoints(State(app): State<AppState>) -> Json<EndpointState> {
     Json(app.settings.endpoints().await)
+}
+
+pub async fn get_account(State(app): State<AppState>) -> Json<crate::application::AccountState> {
+    Json(app.account.state().await)
+}
+
+pub async fn update_account(
+    State(app): State<AppState>,
+    Json(payload): Json<AccountUpdate>,
+) -> Result<Json<crate::application::AccountState>, crate::jm::JmError> {
+    app.account
+        .save_and_login(AccountInput {
+            username: payload.username,
+            password: payload.password,
+            auto_login: payload.auto_login,
+            auto_sign_in: payload.auto_sign_in,
+        })
+        .await
+        .map(Json)
+}
+
+pub async fn clear_account(
+    State(app): State<AppState>,
+) -> Result<Json<crate::application::AccountState>, HttpError> {
+    app.account.clear().await.map(Json).map_err(internal_error)
 }
 
 pub async fn probe_endpoints(State(app): State<AppState>) -> Json<EndpointState> {

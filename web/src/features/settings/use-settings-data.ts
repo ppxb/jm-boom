@@ -2,11 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
+  clearAccount,
   clearServerCache,
+  getAccountState,
   getEndpointState,
   getSystemInfo,
   refreshApiEndpoints,
-  setApiEndpoint
+  setApiEndpoint,
+  updateAccount
 } from '@/lib/api/setting'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -27,6 +30,18 @@ export function useSettingsData() {
     retry: false,
     refetchOnMount: 'always',
     refetchOnWindowFocus: false
+  })
+  const account = useQuery({
+    queryKey: queryKeys.settingsAccount(),
+    queryFn: getAccountState,
+    staleTime: 10_000,
+    refetchInterval: query => {
+      const state = query.state.data
+      return state?.loginStatus === 'loggingIn' || state?.signInStatus === 'signingIn'
+        ? 1000
+        : false
+    },
+    refetchOnWindowFocus: true
   })
 
   const refreshEndpoints = useMutation({
@@ -62,5 +77,36 @@ export function useSettingsData() {
     }
   })
 
-  return { endpointState, systemInfo, refreshEndpoints, changeEndpoint, clearCache }
+  const saveAccount = useMutation({
+    mutationFn: updateAccount,
+    onSuccess: data => {
+      queryClient.setQueryData(queryKeys.settingsAccount(), data)
+      toast.success('JM 账号设置已保存')
+    },
+    onError: error => {
+      toast.error(error instanceof Error ? error.message : 'JM 账号登录失败')
+    }
+  })
+
+  const removeAccount = useMutation({
+    mutationFn: clearAccount,
+    onSuccess: data => {
+      queryClient.setQueryData(queryKeys.settingsAccount(), data)
+      toast.success('JM 账号已清除')
+    },
+    onError: error => {
+      toast.error(error instanceof Error ? error.message : '清除 JM 账号失败')
+    }
+  })
+
+  return {
+    endpointState,
+    systemInfo,
+    account,
+    refreshEndpoints,
+    changeEndpoint,
+    clearCache,
+    saveAccount,
+    removeAccount
+  }
 }

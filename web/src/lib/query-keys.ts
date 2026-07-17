@@ -1,5 +1,6 @@
 export const queryKeys = {
   apiEndpointDiscovery: () => ['jm-api-endpoint-discovery'] as const,
+  settingsAccount: () => ['jm-settings-account'] as const,
   settingsSystem: () => ['jm-settings-system'] as const,
   comicComments: (comicId: string) => ['jm-comic-comments', comicId] as const,
   comicDetail: (comicId: string) => ['jm-comic-detail', comicId] as const,

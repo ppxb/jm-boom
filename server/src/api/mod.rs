@@ -62,4 +62,10 @@ pub fn routes() -> Router<AppState> {
         .route("/settings/endpoints/probe", post(settings::probe_endpoints))
         .route("/settings/system", get(settings::get_system_info))
         .route("/settings/cache", delete(settings::clear_cache))
+        .route(
+            "/settings/account",
+            get(settings::get_account)
+                .put(settings::update_account)
+                .delete(settings::clear_account),
+        )
 }

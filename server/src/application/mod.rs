@@ -1,4 +1,5 @@
 mod access_gate;
+mod account;
 mod comic;
 mod cover;
 mod download;
@@ -8,6 +9,7 @@ mod reader;
 mod settings;
 
 pub use access_gate::AccessGateService;
+pub use account::{AccountInput, AccountService, AccountState};
 pub use comic::ComicService;
 pub(crate) use comic::{
     ComicComments, ComicSearch, ComicSearchRequest, HomeFeed, HomeSectionList, HomeSectionMode,

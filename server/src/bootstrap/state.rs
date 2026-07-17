@@ -1,7 +1,7 @@
 use crate::{
     application::{
-        AccessGateService, ComicService, CoverService, DownloadService, FavoriteService,
-        ReaderService, ReadingHistoryService, SettingsService,
+        AccessGateService, AccountService, ComicService, CoverService, DownloadService,
+        FavoriteService, ReaderService, ReadingHistoryService, SettingsService,
     },
     bootstrap::config::AppConfig,
     cache, endpoint, image_work, jm, page_materializer,
@@ -11,6 +11,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) access_gate: Arc<AccessGateService>,
+    pub(crate) account: Arc<AccountService>,
     pub(crate) comics: Arc<ComicService>,
     pub(crate) covers: Arc<CoverService>,
     pub(crate) reader: Arc<ReaderService>,
@@ -41,6 +42,8 @@ impl AppState {
 
         let endpoints = Arc::new(endpoint::EndpointManager::new(db.clone()).await?);
         let jm = Arc::new(jm::JmClient::new()?);
+        let account =
+            Arc::new(AccountService::new(db.clone(), jm.clone(), endpoints.clone()).await?);
         let comics = Arc::new(ComicService::new(jm.clone(), endpoints.clone()));
         let page_materializer = Arc::new(page_materializer::PageMaterializer::new(
             jm.clone(),
@@ -69,6 +72,7 @@ impl AppState {
         let access_gate = Arc::new(AccessGateService::from_env());
 
         endpoints.start_maintenance();
+        account.start_auto_login();
         let download_service = downloads.clone();
         tokio::spawn(async move {
             download_service.resume_pending().await;
@@ -76,6 +80,7 @@ impl AppState {
 
         Ok(Self {
             access_gate,
+            account,
             comics,
             covers,
             reader,
