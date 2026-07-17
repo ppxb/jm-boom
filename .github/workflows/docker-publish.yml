@@ -123,28 +123,3 @@ jobs:
             "${args[@]}" \
             "${build_tag_base}-amd64" \
             "${build_tag_base}-arm64"
-
-  release:
-    if: github.event_name == 'push'
-    needs: [version, merge]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Create GitHub release with generated notes
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${GITHUB_REF_NAME}"
-
-          if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            echo "GitHub release '$tag' already exists; skipping creation."
-            exit 0
-          fi
-
-          gh release create "$tag" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --verify-tag \
-            --title "$tag" \
-            --generate-notes
