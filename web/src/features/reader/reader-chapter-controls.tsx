@@ -128,6 +128,7 @@ function ChapterNavButton({
         params={{ comicId: chapter.id }}
         aria-label={label}
         replace
+        resetScroll
         search={toReaderChapterSearch({ albumId })}
       >
         {children}

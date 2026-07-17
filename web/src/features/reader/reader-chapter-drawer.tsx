@@ -77,6 +77,7 @@ export function ReaderChapterDrawer({
                   to="/reader/$comicId"
                   params={{ comicId: chapter.id }}
                   replace
+                  resetScroll
                   search={toReaderChapterSearch({ albumId })}
                   aria-current={isCurrent ? 'page' : undefined}
                   data-current-chapter={isCurrent ? 'true' : undefined}

@@ -7,15 +7,16 @@ import { queryKeys } from '@/lib/query-keys'
 import { clearReaderPreloadScope, setReaderPreloadScope } from '@/lib/reader-preload'
 import type { ReaderChapterItem } from './types'
 
-const NEXT_CHAPTER_PREFETCH_PROGRESS = 0.8
 export function useNextChapterPrefetch({
   currentIndex,
   pageCount,
-  nextChapter
+  nextChapter,
+  stripPrefetchRequested = false
 }: {
   currentIndex: number
   pageCount: number
   nextChapter: ReaderChapterItem | null
+  stripPrefetchRequested?: boolean
 }) {
   const queryClient = useQueryClient()
   const prefetchedChapterRef = useRef('')
@@ -24,7 +25,7 @@ export function useNextChapterPrefetch({
   const shouldPrefetch =
     nextReadId.length > 0 &&
     pageCount > 0 &&
-    shouldPrefetchNextChapter(currentIndex, pageCount)
+    shouldPrefetchNextChapter(currentIndex, pageCount, stripPrefetchRequested)
 
   useEffect(() => {
     if (!shouldPrefetch) {
@@ -86,12 +87,17 @@ export function useNextChapterPrefetch({
   )
 }
 
-function shouldPrefetchNextChapter(currentIndex: number, pageCount: number) {
+export function shouldPrefetchNextChapter(
+  currentIndex: number,
+  pageCount: number,
+  stripPrefetchRequested = false
+) {
   const remainingPages = pageCount - currentIndex - 1
   const progress = pageCount > 0 ? (currentIndex + 1) / pageCount : 0
 
   return (
+    stripPrefetchRequested ||
     remainingPages <= READER.PREFETCH_AHEAD_PAGES ||
-    progress >= NEXT_CHAPTER_PREFETCH_PROGRESS
+    progress >= READER.NEXT_CHAPTER_PREFETCH_PROGRESS
   )
 }

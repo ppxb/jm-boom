@@ -108,7 +108,7 @@ export function ReaderBottomBar({
 
   if (!visible) {
     return (
-      <div className="pointer-events-none absolute bottom-24 left-1/2 z-30 flex h-8 w-24 -translate-x-1/2 items-center justify-center rounded-2xl border border-border/60 bg-background/85 px-3 text-xs text-muted-foreground backdrop-blur sm:bottom-8">
+      <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 flex h-8 w-24 -translate-x-1/2 items-center justify-center rounded-2xl border border-border/60 bg-background/85 px-3 text-xs text-muted-foreground backdrop-blur sm:bottom-8">
         <span className="tabular-nums">{pageLabel}</span>
       </div>
     )
@@ -116,7 +116,7 @@ export function ReaderBottomBar({
 
   return (
     <footer
-      className="absolute bottom-24 left-1/2 z-30 flex w-[360px] max-w-[calc(100vw-24px)] -translate-x-1/2 flex-col rounded-2xl border border-border/60 bg-background/85 p-4 text-foreground backdrop-blur sm:bottom-8 sm:w-[480px] sm:max-w-[calc(100vw-48px)] sm:gap-2 sm:p-3 lg:w-[480px]"
+      className="absolute bottom-8 left-1/2 z-30 flex w-[360px] max-w-[calc(100vw-24px)] -translate-x-1/2 flex-col rounded-2xl border border-border/60 bg-background/85 p-4 text-foreground backdrop-blur sm:bottom-8 sm:w-[480px] sm:max-w-[calc(100vw-48px)] sm:gap-2 sm:p-3 lg:w-[480px]"
       onClick={event => event.stopPropagation()}
       onTouchMove={event => event.stopPropagation()}
     >

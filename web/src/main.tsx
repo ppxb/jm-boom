@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { createRouter, RouterProvider, stringifySearchWith } from '@tanstack/react-router'
 
 import { Providers } from '@/components/providers'
+import { READER } from '@/lib/constants'
 
 import { routeTree } from './routeTree.gen'
 import './styles/globals.css'
@@ -13,7 +14,12 @@ export const router = createRouter({
   stringifySearch: stringifySearchWith(JSON.stringify),
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 5000,
-  scrollRestoration: true
+  scrollRestoration: true,
+  // Prefetched chapters can mount without a loading gap, so the persistent
+  // strip scroller must be reset explicitly instead of inheriting the prior chapter's offset.
+  scrollToTopSelectors: [
+    `[data-scroll-restoration-id="${READER.STRIP_SCROLL_RESTORATION_ID}"]`
+  ]
 })
 
 function parseSearchParams(searchString: string) {

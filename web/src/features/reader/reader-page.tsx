@@ -1,5 +1,5 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { ReaderBottomBar, ReaderTopBar } from './reader-bars'
 import { ReaderHotZones } from './reader-hot-zones'
@@ -31,6 +31,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const pageStep = isDoublePageMode ? 2 : 1
   const stripScrollRef = useRef<HTMLDivElement | null>(null)
   const nextChapterNavigationRef = useRef<string | null>(null)
+  const [stripPrefetchRequested, setStripPrefetchRequested] = useState(false)
   const {
     isVisible: isToolbarVisible,
     toggle: toggleToolbar,
@@ -109,6 +110,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
       to: '/reader/$comicId',
       params: { comicId: availableNextChapter.id },
       replace: true,
+      resetScroll: true,
       search: toReaderChapterSearch({
         albumId
       })
@@ -133,6 +135,9 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     hideToolbar()
     goToNextPageOrChapter()
   }, [goToNextPageOrChapter, hideToolbar])
+  const requestStripPrefetch = useCallback(() => {
+    setStripPrefetchRequested(true)
+  }, [])
   const scrollStripBy = useCallback(
     (direction: 1 | -1) => {
       const container = stripScrollRef.current
@@ -169,7 +174,8 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   useNextChapterPrefetch({
     currentIndex,
     pageCount,
-    nextChapter: availableNextChapter
+    nextChapter: availableNextChapter,
+    stripPrefetchRequested
   })
 
   const showReaderTopBar = isToolbarVisible
@@ -233,6 +239,8 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
             onCurrentIndexChange={observePage}
             onUserScroll={hideToolbar}
             onScrollPastEnd={goToNextChapter}
+            onPrefetchThreshold={requestStripPrefetch}
+            hasNextChapter={availableNextChapter != null}
           />
         ) : pageSrc.length > 0 ? (
           <ReaderImageWindow
