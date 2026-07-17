@@ -49,7 +49,7 @@ export const HISTORY = {
 
 // UI configuration
 export const UI = {
-  CHAPTER_PAGE_SIZE: 10,
+  CHAPTER_PAGE_SIZE: 5,
   COMMENT_SKELETON_COUNT: 6,
   SHOW_COVER_MASK: true
 } as const
