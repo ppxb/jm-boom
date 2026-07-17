@@ -12,19 +12,7 @@ import {
   DrawerHeader,
   DrawerTitle
 } from '@/components/ui/drawer'
-import type { ComicChapter } from '@/domain/comic'
-import type { DownloadChapterRequest } from '@/lib/api/download'
-import { formatComicChapterTitle } from '@/lib/comic'
-
-export type DownloadChapterOption = DownloadChapterRequest
-
-export function toDownloadChapterOptions(chapters: ComicChapter[]) {
-  return chapters.map((chapter, index) => ({
-    chapterId: chapter.id,
-    title: formatComicChapterTitle(chapter, index),
-    order: index + 1
-  }))
-}
+import type { DownloadChapterOption } from './use-comic-download'
 
 export function ComicDownloadDrawer({
   open,
