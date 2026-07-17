@@ -41,6 +41,13 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
     refetchOnMount: false,
     refetchOnWindowFocus: false
   })
+  const comicState = useQuery({
+    queryKey: queryKeys.comicState(comicId),
+    queryFn: () => getComicState(comicId),
+    staleTime: 10_000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true
+  })
 
   return (
     <main className="min-h-screen bg-background px-4 pt-6 pb-24 text-foreground sm:px-6 md:pb-6 lg:px-8">
@@ -62,24 +69,29 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
         ) : detail.data == null ? (
           <EmptyState emoji="(･o･;)" title="暂无详情" />
         ) : (
-          <ComicDetailView comic={detail.data.comic} />
+          <ComicDetailView
+            comic={detail.data.comic}
+            state={comicState.data}
+            stateLoading={comicState.isLoading}
+          />
         )}
       </div>
       <BackTopButton />
     </main>
   )
 }
-function ComicDetailView({ comic }: { comic: ComicDetail }) {
+function ComicDetailView({
+  comic,
+  state,
+  stateLoading
+}: {
+  comic: ComicDetail
+  state: ComicStateResult | undefined
+  stateLoading: boolean
+}) {
   const queryClient = useQueryClient()
-  const comicState = useQuery({
-    queryKey: queryKeys.comicState(comic.id),
-    queryFn: () => getComicState(comic.id),
-    staleTime: 10_000,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true
-  })
-  const isFavorite = comicState.data?.isFavorite ?? false
-  const readingHistory = comicState.data?.history ?? undefined
+  const isFavorite = state?.isFavorite ?? false
+  const readingHistory = state?.history ?? undefined
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
@@ -223,7 +235,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         onFavoriteClick={() => favoriteMutation.mutate()}
         onCoverSettled={() => setSettledCoverUrl(comic.image)}
         downloadBusy={downloadMutation.isPending}
-        favoriteBusy={comicState.isLoading || favoriteMutation.isPending}
+        favoriteBusy={stateLoading || favoriteMutation.isPending}
       />
 
       <ChaptersSection albumId={albumId} comicId={comic.id} chapters={comic.chapters} />
