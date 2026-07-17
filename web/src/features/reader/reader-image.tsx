@@ -6,6 +6,14 @@ import type { ReaderPageDirection } from '@/stores/settings-store'
 import { ReaderLoading } from './reader-state'
 import type { ReaderWindowPage } from './types'
 
+type ImageSize = { width: number; height: number }
+
+// Remembers the natural dimensions of images that have already decoded so that
+// remounting a page (e.g. scrolling back in the virtualized strip) can restore
+// its exact aspect ratio and skip the loading placeholder instead of visibly
+// re-fetching and reflowing.
+const loadedImageSizes = new Map<string, ImageSize>()
+
 export function ReaderImageWindow({
   pages,
   currentIndex,
@@ -171,7 +179,9 @@ export function ReaderPageImage({
   src,
   label,
   wrapperClassName,
+  placeholderClassName,
   imageClassName,
+  fitContainer = false,
   loading = 'eager',
   decoding = 'async',
   showLoadingIndicator = true,
@@ -181,19 +191,26 @@ export function ReaderPageImage({
   src: string
   label: string
   wrapperClassName?: string
+  placeholderClassName?: string
   imageClassName?: string
+  fitContainer?: boolean
   loading?: 'eager' | 'lazy'
   decoding?: 'sync' | 'async' | 'auto'
   showLoadingIndicator?: boolean
   loadingIndicatorClassName?: string
   onLoad?: (image: HTMLImageElement) => void
 }) {
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading')
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(() =>
+    loadedImageSizes.has(src) ? 'loaded' : 'loading'
+  )
+  const [size, setSize] = useState<ImageSize | null>(() => loadedImageSizes.get(src) ?? null)
   const [attempt, setAttempt] = useState(0)
   const requestSrc = attempt > 0 ? appendRetryParam(src, attempt) : src
 
   useEffect(() => {
-    setStatus('loading')
+    const cached = loadedImageSizes.get(src)
+    setStatus(cached ? 'loaded' : 'loading')
+    setSize(cached ?? null)
     setAttempt(0)
   }, [src])
 
@@ -201,8 +218,10 @@ export function ReaderPageImage({
     <div
       className={cn(
         'relative flex items-center justify-center overflow-hidden bg-neutral-950',
-        wrapperClassName
+        wrapperClassName,
+        status !== 'loaded' && !size ? placeholderClassName : undefined
       )}
+      style={size ? { aspectRatio: `${size.width} / ${size.height}` } : undefined}
     >
       {status === 'loading' && showLoadingIndicator ? (
         <ReaderLoading
@@ -235,14 +254,24 @@ export function ReaderPageImage({
         className={cn(
           'transition-opacity duration-200 select-none',
           status === 'loaded' ? 'opacity-100' : 'opacity-0',
-          imageClassName
+          // Once the natural size is known, fill the aspect-ratio wrapper exactly
+          // instead of letting the image compute its own height. Both paths round
+          // independently, and a sub-pixel gap would expose the black backdrop as
+          // a hairline between stacked pages.
+          fitContainer && size ? 'absolute inset-0 h-full w-full' : imageClassName
         )}
         draggable={false}
         loading={loading}
         decoding={decoding}
         onLoad={event => {
+          const image = event.currentTarget
+          if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+            const nextSize = { width: image.naturalWidth, height: image.naturalHeight }
+            loadedImageSizes.set(src, nextSize)
+            setSize(nextSize)
+          }
           setStatus('loaded')
-          onLoad?.(event.currentTarget)
+          onLoad?.(image)
         }}
         onError={() => setStatus('error')}
       />

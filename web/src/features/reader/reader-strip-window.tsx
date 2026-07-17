@@ -97,6 +97,7 @@ export function ReaderStripWindow({
     overscan: STRIP_OVERSCAN_PAGES,
     paddingEnd: STRIP_END_PADDING_PX,
     onChange: handleVirtualizerChange,
+    measureElement: measurePageHeight,
     useAnimationFrameWithResizeObserver: true
   })
   const virtualPages = virtualizer.getVirtualItems()
@@ -212,14 +213,16 @@ export function ReaderStripWindow({
               ref={virtualizer.measureElement}
               data-index={virtualPage.index}
               data-reader-page-index={virtualPage.index}
-              className="absolute top-0 left-0 flex min-h-[64vh] w-full justify-center bg-neutral-950"
+              className="absolute top-0 left-0 flex w-full justify-center bg-neutral-950"
               style={{ transform: `translateY(${virtualPage.start}px)` }}
             >
               <ReaderPageImage
                 src={page.path}
                 label={`第 ${virtualPage.index + 1} 页`}
-                wrapperClassName="min-h-[64vh] w-full"
+                wrapperClassName="w-full"
+                placeholderClassName="min-h-[64vh]"
                 imageClassName="block h-auto w-full object-contain"
+                fitContainer
                 loading={isActive ? 'eager' : 'lazy'}
                 decoding={isActive ? 'sync' : 'async'}
                 showLoadingIndicator={isActive}
@@ -255,6 +258,24 @@ function resolveActiveIndex(
   return virtualPages.reduce((nearest, page) =>
     Math.abs(page.start - trackingPoint) < Math.abs(nearest.start - trackingPoint) ? page : nearest
   ).index
+}
+
+// TanStack's default measurement rounds the observed height to the nearest
+// pixel. Rounding up places the next page a fraction below the previous page's
+// real bottom, exposing the black backdrop as a hairline between pages. Flooring
+// instead lets pages overlap by a sub-pixel (hidden by overflow) so the strip
+// stays seamless.
+function measurePageHeight(
+  element: Element,
+  _entry: ResizeObserverEntry | undefined,
+  instance: Virtualizer<HTMLDivElement, HTMLElement>
+) {
+  const height = element.getBoundingClientRect().height
+  if (height > 0) {
+    return Math.floor(height)
+  }
+
+  return (element as HTMLElement).offsetHeight || instance.options.estimateSize(0)
 }
 
 function getWindowWidth() {
