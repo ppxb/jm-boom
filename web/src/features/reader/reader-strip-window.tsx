@@ -58,10 +58,7 @@ export function ReaderStripWindow({
       return 0
     }
 
-    const targetIndex = Math.min(
-      Math.max(currentIndex, 0),
-      pages.length - 1
-    )
+    const targetIndex = Math.min(Math.max(currentIndex, 0), pages.length - 1)
 
     return targetIndex * estimatePageSize()
   }, [currentIndex, estimatePageSize, pages.length])
@@ -191,7 +188,7 @@ export function ReaderStripWindow({
   return (
     <div
       ref={containerRef}
-      className="h-screen w-screen scrollbar-none overflow-y-auto overscroll-contain bg-neutral-950"
+      className="h-dvh w-screen scrollbar-none overflow-y-auto overscroll-contain bg-neutral-950"
       onScroll={handleScroll}
       onTouchMove={onUserScroll}
       onWheel={handleWheel}
@@ -246,8 +243,7 @@ function resolveActiveIndex(
   }
 
   const viewportHeight = virtualizer.scrollRect?.height ?? 0
-  const trackingPoint =
-    scrollOffset + viewportHeight * STRIP_TRACKING_VIEWPORT_RATIO
+  const trackingPoint = scrollOffset + viewportHeight * STRIP_TRACKING_VIEWPORT_RATIO
   const activePage = virtualPages.find(
     page => trackingPoint >= page.start && trackingPoint < page.end
   )

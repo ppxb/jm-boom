@@ -31,7 +31,7 @@ export function ReaderImageWindow({
   }
 
   return (
-    <div className="pointer-events-none relative h-screen w-screen overflow-hidden">
+    <div className="pointer-events-none relative h-dvh w-screen overflow-hidden">
       {pages.map(page => {
         const offset =
           pageDirection === 'rtl' ? currentIndex - page.index : page.index - currentIndex
@@ -41,7 +41,7 @@ export function ReaderImageWindow({
           <div
             key={page.index}
             className={cn(
-              'absolute inset-0 flex h-screen w-screen items-center justify-center transition-transform duration-200 ease-out will-change-transform',
+              'absolute inset-0 flex h-dvh w-screen items-center justify-center transition-transform duration-200 ease-out will-change-transform',
               isCurrent ? 'z-10' : 'z-0'
             )}
             style={{ transform: `translate3d(${offset * 100}%, 0, 0)` }}
@@ -49,8 +49,8 @@ export function ReaderImageWindow({
             <ReaderPageImage
               src={page.src}
               label={`第 ${page.index + 1} 页`}
-              wrapperClassName="h-screen w-screen"
-              imageClassName="h-screen w-screen object-contain"
+              wrapperClassName="h-dvh w-screen"
+              imageClassName="h-dvh w-screen object-contain"
               loading="eager"
               decoding={isCurrent ? 'sync' : 'async'}
             />
@@ -84,7 +84,7 @@ function ReaderDoublePageWindow({
   const visibleIndexes = showNextSlot ? [leftIndex, rightIndex] : [currentIndex]
 
   return (
-    <div className="pointer-events-none flex h-screen w-screen items-center justify-center overflow-hidden px-6 py-6">
+    <div className="pointer-events-none flex h-dvh w-screen items-center justify-center overflow-hidden px-6 py-6">
       <div
         className={cn(
           'flex h-full w-full items-center justify-center gap-2',

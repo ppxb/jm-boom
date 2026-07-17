@@ -189,7 +189,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
 
   return (
     <main
-      className="relative flex h-screen overflow-hidden bg-neutral-950 text-neutral-50"
+      className="relative flex h-dvh overflow-hidden bg-neutral-950 text-neutral-50"
       onClick={toggleToolbar}
       onTouchMove={hideToolbar}
     >
@@ -214,7 +214,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
       <section
         className={cn(
           'flex min-w-0 flex-1 items-center justify-center',
-          isStripMode ? 'h-screen' : null
+          isStripMode ? 'h-dvh' : null
         )}
       >
         {isManifestLoading ? (

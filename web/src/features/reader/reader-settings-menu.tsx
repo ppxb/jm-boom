@@ -78,7 +78,7 @@ export function ReaderSettingsMenu() {
             单页
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="strip" className={READER_SETTING_ITEM_CLASS}>
-            竖向阅读
+            条漫
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         {isSingleMode ? (
@@ -119,10 +119,7 @@ export function ReaderSettingsMenu() {
             <div className="text-sm text-popover-foreground">自动阅读</div>
             <div className="mt-0.5 text-xs text-muted-foreground">隐藏控制栏时自动推进</div>
           </div>
-          <Switch
-            checked={readerAutoReadEnabled}
-            onCheckedChange={setReaderAutoReadEnabled}
-          />
+          <Switch checked={readerAutoReadEnabled} onCheckedChange={setReaderAutoReadEnabled} />
         </div>
         {readerAutoReadEnabled ? (
           <div className="space-y-3 px-3 pt-1 pb-3">
