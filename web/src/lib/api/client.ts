@@ -90,9 +90,7 @@ async function readErrorResponse(response: Response) {
         typeof data.error === 'string' && data.error.length > 0 ? data.error : fallbackMessage,
       data,
       retryable:
-        typeof data.retryable === 'boolean'
-          ? data.retryable
-          : isRetryableStatus(response.status)
+        typeof data.retryable === 'boolean' ? data.retryable : isRetryableStatus(response.status)
     }
   }
 
@@ -141,8 +139,9 @@ export const apiClient = {
       body: JSON.stringify(data)
     }),
 
-  put: <T>(path: string, data?: unknown) =>
+  put: <T>(path: string, data?: unknown, options?: RequestInit) =>
     request<T>(path, {
+      ...options,
       method: 'PUT',
       body: JSON.stringify(data)
     }),

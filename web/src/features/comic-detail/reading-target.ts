@@ -1,6 +1,6 @@
 import type { ComicDetail } from '@/domain/comic'
 import { resolveComicStartReadingId } from '@/lib/comic'
-import type { ReadingHistoryItem } from '@/stores/reading-history-store'
+import type { ReadingHistoryItem } from '@/lib/api/history'
 
 export type ComicReadingTarget = {
   readId: string

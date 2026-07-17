@@ -41,15 +41,15 @@ export const READER = {
   DEFAULT_CHAPTER_TITLE: '正文'
 } as const
 
-// Local reading history configuration
+// Reading history configuration
 export const HISTORY = {
-  MAX_ITEMS: 500,
   PERSIST_INTERVAL: 5 * TIME.SECOND
 } as const
 
 // UI configuration
 export const UI = {
   CHAPTER_PAGE_SIZE: 5,
+  COLLECTION_PAGE_SIZE: 20,
   COMMENT_SKELETON_COUNT: 6,
   SHOW_COVER_MASK: true
 } as const

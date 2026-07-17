@@ -1,15 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2Icon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppPage } from '@/components/app-page'
 import { ComicGrid } from '@/components/comic'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { EmptyState } from '@/components/empty-state'
+import { ListPagination } from '@/components/list-pagination'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { clearFavorites, listFavorites } from '@/lib/api/favorite'
+import { UI } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 
 export const Route = createFileRoute('/_app/favorites')({
@@ -36,6 +39,17 @@ function FavoritesPage() {
     }
   })
   const items = favorites.data?.items ?? []
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(items.length / UI.COLLECTION_PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const visibleItems = items.slice(
+    (safePage - 1) * UI.COLLECTION_PAGE_SIZE,
+    safePage * UI.COLLECTION_PAGE_SIZE
+  )
+
+  useEffect(() => {
+    setPage(current => Math.min(current, pageCount))
+  }, [pageCount])
 
   return (
     <AppPage>
@@ -79,8 +93,17 @@ function FavoritesPage() {
       ) : items.length === 0 ? (
         <EmptyState className="min-h-0 flex-1" emoji="(･o･;)" title="暂无收藏" />
       ) : (
-        <ComicGrid items={items} />
+        <ComicGrid items={visibleItems} />
       )}
+
+      {items.length > UI.COLLECTION_PAGE_SIZE ? (
+        <ListPagination
+          page={safePage}
+          hasMore={safePage < pageCount}
+          disabled={clearMutation.isPending}
+          onPageChange={setPage}
+        />
+      ) : null}
     </AppPage>
   )
 }

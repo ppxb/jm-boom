@@ -7,6 +7,7 @@ export const queryKeys = {
   downloadedChapters: () => ['jm-downloaded-chapters'] as const,
   favorites: () => ['jm-favorites'] as const,
   homeFeed: () => ['jm-home-feed'] as const,
+  readingHistory: () => ['jm-reading-history'] as const,
   homeSectionList: (search: unknown) => ['jm-home-section-list', search] as const,
   ranking: (page: number, category: string, order: string) =>
     ['jm-ranking', page, category, order] as const,

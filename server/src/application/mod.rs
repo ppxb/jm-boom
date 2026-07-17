@@ -3,6 +3,7 @@ mod comic;
 mod cover;
 mod download;
 mod favorite;
+mod history;
 mod reader;
 mod settings;
 
@@ -15,5 +16,6 @@ pub(crate) use comic::{
 pub use cover::{CoverService, CoverServiceError};
 pub use download::DownloadService;
 pub use favorite::{FavoriteInput, FavoriteItem, FavoriteService};
+pub use history::{ReadingHistoryInput, ReadingHistoryItem, ReadingHistoryService};
 pub use reader::ReaderService;
 pub use settings::SettingsService;

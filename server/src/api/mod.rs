@@ -11,6 +11,7 @@ mod comics;
 mod covers;
 mod downloads;
 mod favorites;
+mod history;
 mod home;
 mod media;
 mod reader;
@@ -35,6 +36,11 @@ pub fn routes() -> Router<AppState> {
             "/favorites/:id",
             put(favorites::upsert).delete(favorites::remove),
         )
+        // 单实例共享阅读历史
+        .route("/history", get(history::list).delete(history::clear))
+        .route("/history/import", post(history::import))
+        .route("/history/remove", post(history::remove_many))
+        .route("/history/:id", put(history::upsert).delete(history::remove))
         // 服务端离线缓存任务
         .route("/downloads", get(downloads::list))
         .route("/downloads", post(downloads::enqueue))

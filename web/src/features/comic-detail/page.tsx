@@ -25,7 +25,7 @@ import {
 } from './download-drawer'
 import { enqueueComicDownload } from '@/lib/api/download'
 import { addFavorite, listFavorites, removeFavorite } from '@/lib/api/favorite'
-import { useReadingHistoryStore } from '@/stores/reading-history-store'
+import { listReadingHistory } from '@/lib/api/history'
 import { useSettingsStore } from '@/stores/settings-store'
 import { resolveComicReadingTarget } from './reading-target'
 
@@ -76,9 +76,14 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
     refetchOnWindowFocus: true
   })
   const isFavorite = favorites.data?.items.some(item => item.id === comic.id) ?? false
-  const readingHistory = useReadingHistoryStore(state =>
-    state.items.find(item => item.id === comic.id)
-  )
+  const history = useQuery({
+    queryKey: queryKeys.readingHistory(),
+    queryFn: listReadingHistory,
+    staleTime: 10_000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true
+  })
+  const readingHistory = history.data?.items.find(item => item.id === comic.id)
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)

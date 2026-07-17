@@ -1,7 +1,13 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { HISTORY, READER } from '@/lib/constants'
-import { useReadingHistoryStore } from '@/stores/reading-history-store'
+import {
+  upsertReadingHistory,
+  type ReadingHistoryItem,
+  type ReadingHistoryListResult
+} from '@/lib/api/history'
+import { queryKeys } from '@/lib/query-keys'
 
 interface UseReaderHistorySyncProps {
   comicId: string
@@ -24,8 +30,8 @@ export function useReaderHistorySync({
   currentIndex,
   pageCount
 }: UseReaderHistorySyncProps) {
-  const upsertReadingHistory = useReadingHistoryStore(state => state.upsert)
-  const pendingHistoryRef = useRef<Parameters<typeof upsertReadingHistory>[0] | null>(null)
+  const queryClient = useQueryClient()
+  const pendingHistoryRef = useRef<Omit<ReadingHistoryItem, 'lastReadAt'> | null>(null)
   const lastPersistedAtRef = useRef(0)
   const historyItem = useMemo(
     () =>
@@ -44,17 +50,38 @@ export function useReaderHistorySync({
     [albumId, author, chapter, comicId, coverUrl, currentIndex, pageCount, title]
   )
 
-  const flushPendingHistory = useCallback(() => {
-    const pendingHistory = pendingHistoryRef.current
+  const flushPendingHistory = useCallback(
+    (keepalive = false) => {
+      const pendingHistory = pendingHistoryRef.current
 
-    if (!pendingHistory) {
-      return
-    }
+      if (!pendingHistory) {
+        return
+      }
 
-    pendingHistoryRef.current = null
-    lastPersistedAtRef.current = Date.now()
-    upsertReadingHistory(pendingHistory)
-  }, [upsertReadingHistory])
+      pendingHistoryRef.current = null
+      const lastReadAt = Date.now()
+      lastPersistedAtRef.current = lastReadAt
+      const nextItem = { ...pendingHistory, lastReadAt }
+      queryClient.setQueryData<ReadingHistoryListResult>(queryKeys.readingHistory(), current => ({
+        items: mergeHistoryItem(current?.items ?? [], nextItem)
+      }))
+      void upsertReadingHistory(nextItem, keepalive)
+        .then(result =>
+          queryClient.setQueryData<ReadingHistoryListResult>(
+            queryKeys.readingHistory(),
+            current => ({
+              items: mergeHistoryLists(current?.items ?? [], result.items)
+            })
+          )
+        )
+        .catch(error => {
+          if (import.meta.env.DEV) {
+            console.debug('Reading history sync failed', error)
+          }
+        })
+    },
+    [queryClient]
+  )
 
   useEffect(() => {
     pendingHistoryRef.current = historyItem
@@ -71,11 +98,29 @@ export function useReaderHistorySync({
   }, [flushPendingHistory, historyItem])
 
   useEffect(() => {
-    window.addEventListener('pagehide', flushPendingHistory)
+    const handlePageHide = () => flushPendingHistory(true)
+    window.addEventListener('pagehide', handlePageHide)
 
     return () => {
-      window.removeEventListener('pagehide', flushPendingHistory)
+      window.removeEventListener('pagehide', handlePageHide)
       flushPendingHistory()
     }
   }, [flushPendingHistory])
+}
+
+function mergeHistoryItem(items: ReadingHistoryItem[], nextItem: ReadingHistoryItem) {
+  return [nextItem, ...items.filter(item => item.id !== nextItem.id)]
+}
+
+function mergeHistoryLists(current: ReadingHistoryItem[], incoming: ReadingHistoryItem[]) {
+  const itemsById = new Map(current.map(item => [item.id, item]))
+
+  for (const item of incoming) {
+    const existing = itemsById.get(item.id)
+    if (!existing || item.lastReadAt >= existing.lastReadAt) {
+      itemsById.set(item.id, item)
+    }
+  }
+
+  return [...itemsById.values()].sort((left, right) => right.lastReadAt - left.lastReadAt)
 }

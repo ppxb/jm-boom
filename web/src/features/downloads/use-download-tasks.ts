@@ -31,7 +31,9 @@ export function useDownloadTasks() {
     queryFn: listDownloadTasks,
     refetchInterval: query =>
       hasActiveTasks(query.state.data?.tasks ?? EMPTY_DOWNLOAD_TASKS) ? 1000 : false,
-    refetchOnWindowFocus: false
+    staleTime: 10_000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true
   })
   const cancelTask = useTaskMutation(cancelDownloadTask, '已取消下载任务')
   const pauseTask = useTaskMutation(pauseDownloadTask, '已暂停下载任务')
