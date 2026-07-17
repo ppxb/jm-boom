@@ -5,7 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { BackTopButton } from '@/components/back-top-button'
 import { PageBackButton } from '@/components/page-back-button'
 import type { ComicDetail } from '@/domain/comic'
-import { getComicComments, getComicDetail } from '@/lib/api/comic'
+import {
+  getComicComments,
+  getComicDetail,
+  getComicState,
+  type ComicStateResult
+} from '@/lib/api/comic'
 import { SINGLE_CHAPTER_TITLE, sortComicChapters } from '@/lib/comic'
 import { getComicReadManifest } from '@/lib/api/reader'
 import { CACHE, READER } from '@/lib/constants'
@@ -24,8 +29,11 @@ import {
   type DownloadChapterOption
 } from './download-drawer'
 import { enqueueComicDownload } from '@/lib/api/download'
-import { addFavorite, listFavorites, removeFavorite } from '@/lib/api/favorite'
-import { listReadingHistory } from '@/lib/api/history'
+import {
+  addFavorite,
+  removeFavorite,
+  type FavoriteListResult
+} from '@/lib/api/favorite'
 import { useSettingsStore } from '@/stores/settings-store'
 import { resolveComicReadingTarget } from './reading-target'
 
@@ -68,22 +76,15 @@ export function ComicDetailPage({ comicId }: { comicId: string }) {
 }
 function ComicDetailView({ comic }: { comic: ComicDetail }) {
   const queryClient = useQueryClient()
-  const favorites = useQuery({
-    queryKey: queryKeys.favorites(),
-    queryFn: listFavorites,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true
-  })
-  const isFavorite = favorites.data?.items.some(item => item.id === comic.id) ?? false
-  const history = useQuery({
-    queryKey: queryKeys.readingHistory(),
-    queryFn: listReadingHistory,
+  const comicState = useQuery({
+    queryKey: queryKeys.comicState(comic.id),
+    queryFn: () => getComicState(comic.id),
     staleTime: 10_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true
   })
-  const readingHistory = history.data?.items.find(item => item.id === comic.id)
+  const isFavorite = comicState.data?.isFavorite ?? false
+  const readingHistory = comicState.data?.history ?? undefined
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
@@ -156,20 +157,36 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
   }, [isCoverSettled, queryClient, readerPreloadScope, readingTarget.page, readingTarget.readId])
 
   const favoriteMutation = useMutation({
-    mutationFn: () =>
-      isFavorite
-        ? removeFavorite(comic.id)
-        : addFavorite({
-            id: comic.id,
-            title: comic.title,
-            author: comic.authors.join(' / '),
-            description: comic.description,
-            image: comic.image,
-            tags: comic.tags
-          }),
+    mutationFn: async () => {
+      if (isFavorite) {
+        await removeFavorite(comic.id)
+        return { isFavorite: false as const }
+      }
+
+      const item = await addFavorite({
+        id: comic.id,
+        title: comic.title,
+        author: comic.authors.join(' / '),
+        description: comic.description,
+        image: comic.image,
+        tags: comic.tags
+      })
+      return { isFavorite: true as const, item }
+    },
     onSuccess: result => {
-      queryClient.setQueryData(queryKeys.favorites(), result)
-      toast.success(isFavorite ? '已取消收藏' : '已添加收藏')
+      queryClient.setQueryData<ComicStateResult>(queryKeys.comicState(comic.id), current => ({
+        isFavorite: result.isFavorite,
+        history: current?.history ?? null
+      }))
+      queryClient.setQueryData<FavoriteListResult>(queryKeys.favorites(), current => {
+        if (!current) {
+          return current
+        }
+
+        const items = current.items.filter(item => item.id !== comic.id)
+        return { items: result.isFavorite ? [result.item, ...items] : items }
+      })
+      toast.success(result.isFavorite ? '已添加收藏' : '已取消收藏')
     },
     onError: error => {
       toast.error(error instanceof Error ? error.message : '收藏操作失败')
@@ -236,7 +253,7 @@ function ComicDetailView({ comic }: { comic: ComicDetail }) {
         onFavoriteClick={() => favoriteMutation.mutate()}
         onCoverSettled={() => setSettledCoverUrl(comic.image)}
         downloadBusy={downloadMutation.isPending}
-        favoriteBusy={favorites.isLoading || favoriteMutation.isPending}
+        favoriteBusy={comicState.isLoading || favoriteMutation.isPending}
       />
 
       <ChaptersSection albumId={albumId} comicId={comic.id} chapters={comic.chapters} />

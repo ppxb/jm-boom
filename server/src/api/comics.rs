@@ -1,12 +1,15 @@
 use crate::{
     api::comic_dto::{map_comic_detail, ComicDetailResponse},
+    api::history::ReadingHistoryResponse,
     application::ComicComments,
     domain::comic::ComicComment as DomainComicComment,
+    http_error::HttpError,
     jm::JmResult,
     AppState,
 };
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -20,6 +23,30 @@ pub async fn get_comic_detail(
         .await
         .map(map_comic_detail)
         .map(Json)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComicStateResponse {
+    is_favorite: bool,
+    history: Option<ReadingHistoryResponse>,
+}
+
+pub async fn get_comic_state(
+    State(app): State<AppState>,
+    Path(comic_id): Path<String>,
+) -> Result<Json<ComicStateResponse>, HttpError> {
+    validate_comic_id(&comic_id)?;
+    let (is_favorite, history) = tokio::try_join!(
+        app.favorites.contains(&comic_id),
+        app.history.get(&comic_id)
+    )
+    .map_err(state_error)?;
+
+    Ok(Json(ComicStateResponse {
+        is_favorite,
+        history: history.map(ReadingHistoryResponse::from),
+    }))
 }
 
 #[derive(Deserialize)]
@@ -98,4 +125,20 @@ impl From<DomainComicComment> for ComicComment {
 
 fn default_page() -> u32 {
     1
+}
+
+fn validate_comic_id(comic_id: &str) -> Result<(), HttpError> {
+    if comic_id.is_empty() || !comic_id.chars().all(|character| character.is_ascii_digit()) {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "漫画 ID 必须为数字",
+            false,
+        ));
+    }
+    Ok(())
+}
+
+fn state_error(error: anyhow::Error) -> HttpError {
+    tracing::error!(%error, "漫画状态查询失败");
+    HttpError::internal("漫画状态查询失败")
 }

@@ -88,26 +88,60 @@ impl ReadingHistoryService {
             .collect())
     }
 
+    pub async fn get(&self, comic_id: &str) -> anyhow::Result<Option<ReadingHistoryItem>> {
+        let row = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                i64,
+                i64,
+                i64,
+            ),
+        >(
+            "SELECT comic_id, title, author, image, chapter_id, chapter_title, \
+             page_index, page_count, last_read_at \
+             FROM reading_history WHERE comic_id = ?",
+        )
+        .bind(comic_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        Ok(row.map(
+            |(
+                comic_id,
+                title,
+                author,
+                image,
+                chapter_id,
+                chapter_title,
+                page_index,
+                page_count,
+                last_read_at,
+            )| ReadingHistoryItem {
+                comic_id,
+                title,
+                author,
+                image,
+                chapter_id,
+                chapter_title,
+                page_index,
+                page_count,
+                last_read_at,
+            },
+        ))
+    }
+
     pub async fn upsert(&self, comic_id: &str, input: ReadingHistoryInput) -> anyhow::Result<()> {
         let last_read_at = input
             .last_read_at
             .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
         let mut transaction = self.db.begin().await?;
         persist_item(&mut transaction, comic_id, input, last_read_at).await?;
-        transaction.commit().await?;
-        Ok(())
-    }
-
-    pub async fn import(&self, items: Vec<(String, ReadingHistoryInput)>) -> anyhow::Result<()> {
-        let mut transaction = self.db.begin().await?;
-
-        for (comic_id, input) in items {
-            let last_read_at = input
-                .last_read_at
-                .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-            persist_item(&mut transaction, &comic_id, input, last_read_at).await?;
-        }
-
         transaction.commit().await?;
         Ok(())
     }
@@ -190,24 +224,14 @@ mod tests {
         assert_eq!(items[0].chapter_id, "chapter-new");
         assert_eq!(items[0].page_index, 3);
         assert_eq!(items[1].comic_id, "2");
-    }
-
-    #[tokio::test]
-    async fn older_import_does_not_overwrite_newer_server_progress() {
-        let service = test_service().await;
-        service
-            .upsert("1", test_input("server", 8, 20))
+        let item = service
+            .get("1")
             .await
-            .expect("insert server progress");
-        service
-            .import(vec![("1".into(), test_input("browser", 2, 10))])
-            .await
-            .expect("import browser progress");
-
-        let item = service.list().await.expect("list history").remove(0);
-        assert_eq!(item.chapter_id, "server");
-        assert_eq!(item.page_index, 8);
-        assert_eq!(item.last_read_at, 20);
+            .expect("get history")
+            .expect("history item");
+        assert_eq!(item.chapter_id, "chapter-new");
+        assert_eq!(item.page_index, 3);
+        assert!(service.get("3").await.expect("missing history").is_none());
     }
 
     async fn test_service() -> ReadingHistoryService {

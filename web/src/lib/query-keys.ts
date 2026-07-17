@@ -3,6 +3,7 @@ export const queryKeys = {
   settingsSystem: () => ['jm-settings-system'] as const,
   comicComments: (comicId: string) => ['jm-comic-comments', comicId] as const,
   comicDetail: (comicId: string) => ['jm-comic-detail', comicId] as const,
+  comicState: (comicId: string) => ['jm-comic-state', comicId] as const,
   downloadTasks: () => ['jm-download-tasks'] as const,
   downloadedChapters: () => ['jm-downloaded-chapters'] as const,
   favorites: () => ['jm-favorites'] as const,

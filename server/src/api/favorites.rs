@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,25 +14,7 @@ pub struct FavoriteListResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FavoriteResponse {
-    id: String,
-    title: String,
-    author: String,
-    description: String,
-    image: String,
-    tags: Vec<String>,
-    favorited_at: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportFavoritesRequest {
-    items: Vec<ImportFavoriteItem>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportFavoriteItem {
+pub(crate) struct FavoriteResponse {
     id: String,
     title: String,
     author: String,
@@ -49,55 +31,32 @@ pub async fn list(State(app): State<AppState>) -> Result<Json<FavoriteListRespon
 pub async fn upsert(
     State(app): State<AppState>,
     Path(comic_id): Path<String>,
-    Json(mut input): Json<FavoriteInput>,
-) -> Result<Json<FavoriteListResponse>, HttpError> {
+    Json(input): Json<FavoriteInput>,
+) -> Result<Json<FavoriteResponse>, HttpError> {
     validate_comic_id(&comic_id)?;
-    input.favorited_at = None;
     app.favorites
         .upsert(&comic_id, input)
         .await
-        .map_err(internal_error)?;
-    favorite_list(&app).await.map(Json)
-}
-
-pub async fn import(
-    State(app): State<AppState>,
-    Json(payload): Json<ImportFavoritesRequest>,
-) -> Result<Json<FavoriteListResponse>, HttpError> {
-    let mut items = Vec::with_capacity(payload.items.len());
-    for item in payload.items {
-        validate_comic_id(&item.id)?;
-        items.push((
-            item.id,
-            FavoriteInput {
-                title: item.title,
-                author: item.author,
-                description: item.description,
-                image: item.image,
-                tags: item.tags,
-                favorited_at: Some(item.favorited_at),
-            },
-        ));
-    }
-    app.favorites.import(items).await.map_err(internal_error)?;
-    favorite_list(&app).await.map(Json)
+        .map(FavoriteResponse::from)
+        .map(Json)
+        .map_err(internal_error)
 }
 
 pub async fn remove(
     State(app): State<AppState>,
     Path(comic_id): Path<String>,
-) -> Result<Json<FavoriteListResponse>, HttpError> {
+) -> Result<StatusCode, HttpError> {
     validate_comic_id(&comic_id)?;
     app.favorites
         .remove(&comic_id)
         .await
         .map_err(internal_error)?;
-    favorite_list(&app).await.map(Json)
+    Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn clear(State(app): State<AppState>) -> Result<Json<FavoriteListResponse>, HttpError> {
+pub async fn clear(State(app): State<AppState>) -> Result<StatusCode, HttpError> {
     app.favorites.clear().await.map_err(internal_error)?;
-    favorite_list(&app).await.map(Json)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn favorite_list(app: &AppState) -> Result<FavoriteListResponse, HttpError> {
@@ -107,7 +66,14 @@ async fn favorite_list(app: &AppState) -> Result<FavoriteListResponse, HttpError
         .await
         .map_err(internal_error)?
         .into_iter()
-        .map(|item: crate::application::FavoriteItem| FavoriteResponse {
+        .map(FavoriteResponse::from)
+        .collect();
+    Ok(FavoriteListResponse { items })
+}
+
+impl From<crate::application::FavoriteItem> for FavoriteResponse {
+    fn from(item: crate::application::FavoriteItem) -> Self {
+        Self {
             image: cover_url(&item.comic_id, &item.image),
             id: item.comic_id,
             title: item.title,
@@ -115,9 +81,8 @@ async fn favorite_list(app: &AppState) -> Result<FavoriteListResponse, HttpError
             description: item.description,
             tags: item.tags,
             favorited_at: item.favorited_at,
-        })
-        .collect();
-    Ok(FavoriteListResponse { items })
+        }
+    }
 }
 
 fn validate_comic_id(comic_id: &str) -> Result<(), HttpError> {

@@ -20,8 +20,6 @@ pub struct FavoriteInput {
     pub description: String,
     pub image: String,
     pub tags: Vec<String>,
-    #[serde(default)]
-    pub favorited_at: Option<i64>,
 }
 
 #[derive(Clone)]
@@ -59,10 +57,30 @@ impl FavoriteService {
             .collect()
     }
 
-    pub async fn upsert(&self, comic_id: &str, input: FavoriteInput) -> anyhow::Result<()> {
-        let favorited_at = input
-            .favorited_at
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+    pub async fn contains(&self, comic_id: &str) -> anyhow::Result<bool> {
+        let exists = sqlx::query_scalar::<_, i64>(
+            "SELECT EXISTS(SELECT 1 FROM favorites WHERE comic_id = ?)",
+        )
+        .bind(comic_id)
+        .fetch_one(&self.db)
+        .await?;
+        Ok(exists != 0)
+    }
+
+    pub async fn upsert(
+        &self,
+        comic_id: &str,
+        input: FavoriteInput,
+    ) -> anyhow::Result<FavoriteItem> {
+        let favorited_at = chrono::Utc::now().timestamp_millis();
+        let FavoriteInput {
+            title,
+            author,
+            description,
+            image,
+            tags,
+        } = input;
+        let serialized_tags = serde_json::to_string(&tags)?;
         sqlx::query(
             "INSERT INTO favorites \
              (comic_id, title, author, description, image, tags, favorited_at) \
@@ -73,43 +91,23 @@ impl FavoriteService {
              tags = excluded.tags, favorited_at = excluded.favorited_at",
         )
         .bind(comic_id)
-        .bind(input.title)
-        .bind(input.author)
-        .bind(input.description)
-        .bind(input.image)
-        .bind(serde_json::to_string(&input.tags)?)
+        .bind(&title)
+        .bind(&author)
+        .bind(&description)
+        .bind(&image)
+        .bind(serialized_tags)
         .bind(favorited_at)
         .execute(&self.db)
         .await?;
-        Ok(())
-    }
-
-    pub async fn import(&self, items: Vec<(String, FavoriteInput)>) -> anyhow::Result<()> {
-        let mut transaction = self.db.begin().await?;
-
-        for (comic_id, input) in items {
-            let favorited_at = input
-                .favorited_at
-                .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-            sqlx::query(
-                "INSERT INTO favorites \
-                 (comic_id, title, author, description, image, tags, favorited_at) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?) \
-                 ON CONFLICT(comic_id) DO NOTHING",
-            )
-            .bind(comic_id)
-            .bind(input.title)
-            .bind(input.author)
-            .bind(input.description)
-            .bind(input.image)
-            .bind(serde_json::to_string(&input.tags)?)
-            .bind(favorited_at)
-            .execute(&mut *transaction)
-            .await?;
-        }
-
-        transaction.commit().await?;
-        Ok(())
+        Ok(FavoriteItem {
+            comic_id: comic_id.to_string(),
+            title,
+            author,
+            description,
+            image,
+            tags,
+            favorited_at,
+        })
     }
 
     pub async fn remove(&self, comic_id: &str) -> anyhow::Result<()> {
@@ -137,41 +135,26 @@ mod tests {
     async fn persists_orders_and_removes_instance_favorites() {
         let service = test_service().await;
         service
-            .upsert("1", test_input("One", 10))
+            .upsert("1", test_input("One"))
             .await
             .expect("insert first favorite");
         service
-            .upsert("2", test_input("Two", 20))
+            .upsert("2", test_input("Two"))
             .await
             .expect("insert second favorite");
 
         let items = service.list().await.expect("list favorites");
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].comic_id, "2");
-        assert_eq!(items[1].comic_id, "1");
+        assert!(items.iter().any(|item| item.comic_id == "1"));
+        assert!(items.iter().any(|item| item.comic_id == "2"));
+        assert!(service.contains("1").await.expect("find favorite"));
+        assert!(!service.contains("3").await.expect("miss favorite"));
 
         service.remove("2").await.expect("remove favorite");
         assert_eq!(service.list().await.expect("list after remove").len(), 1);
 
         service.clear().await.expect("clear favorites");
         assert!(service.list().await.expect("list after clear").is_empty());
-    }
-
-    #[tokio::test]
-    async fn import_does_not_overwrite_existing_server_favorites() {
-        let service = test_service().await;
-        service
-            .upsert("1", test_input("Server", 20))
-            .await
-            .expect("insert server favorite");
-        service
-            .import(vec![("1".into(), test_input("Browser", 10))])
-            .await
-            .expect("import browser favorite");
-
-        let items = service.list().await.expect("list favorites");
-        assert_eq!(items[0].title, "Server");
-        assert_eq!(items[0].favorited_at, 20);
     }
 
     async fn test_service() -> FavoriteService {
@@ -187,14 +170,13 @@ mod tests {
         FavoriteService::new(db)
     }
 
-    fn test_input(title: &str, favorited_at: i64) -> FavoriteInput {
+    fn test_input(title: &str) -> FavoriteInput {
         FavoriteInput {
             title: title.into(),
             author: "Author".into(),
             description: "Description".into(),
             image: "cover.jpg".into(),
             tags: vec!["Tag".into()],
-            favorited_at: Some(favorited_at),
         }
     }
 }

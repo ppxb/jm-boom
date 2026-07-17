@@ -16,27 +16,7 @@ pub struct ReadingHistoryListResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReadingHistoryResponse {
-    id: String,
-    title: String,
-    author: String,
-    image: String,
-    chapter_id: String,
-    chapter_title: String,
-    page_index: i64,
-    page_count: i64,
-    last_read_at: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportHistoryRequest {
-    items: Vec<ImportHistoryItem>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportHistoryItem {
+pub(crate) struct ReadingHistoryResponse {
     id: String,
     title: String,
     author: String,
@@ -64,54 +44,31 @@ pub async fn upsert(
     State(app): State<AppState>,
     Path(comic_id): Path<String>,
     Json(input): Json<ReadingHistoryInput>,
-) -> Result<Json<ReadingHistoryListResponse>, HttpError> {
+) -> Result<StatusCode, HttpError> {
     validate_item(&comic_id, &input)?;
     app.history
         .upsert(&comic_id, input)
         .await
         .map_err(internal_error)?;
-    history_list(&app).await.map(Json)
-}
-
-pub async fn import(
-    State(app): State<AppState>,
-    Json(payload): Json<ImportHistoryRequest>,
-) -> Result<Json<ReadingHistoryListResponse>, HttpError> {
-    let mut items = Vec::with_capacity(payload.items.len());
-    for item in payload.items {
-        let input = ReadingHistoryInput {
-            title: item.title,
-            author: item.author,
-            image: item.image,
-            chapter_id: item.chapter_id,
-            chapter_title: item.chapter_title,
-            page_index: item.page_index,
-            page_count: item.page_count,
-            last_read_at: Some(item.last_read_at),
-        };
-        validate_item(&item.id, &input)?;
-        items.push((item.id, input));
-    }
-    app.history.import(items).await.map_err(internal_error)?;
-    history_list(&app).await.map(Json)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove(
     State(app): State<AppState>,
     Path(comic_id): Path<String>,
-) -> Result<Json<ReadingHistoryListResponse>, HttpError> {
+) -> Result<StatusCode, HttpError> {
     validate_comic_id(&comic_id)?;
     app.history
         .remove_many(&[comic_id])
         .await
         .map_err(internal_error)?;
-    history_list(&app).await.map(Json)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn remove_many(
     State(app): State<AppState>,
     Json(payload): Json<RemoveHistoryRequest>,
-) -> Result<Json<ReadingHistoryListResponse>, HttpError> {
+) -> Result<StatusCode, HttpError> {
     for comic_id in &payload.comic_ids {
         validate_comic_id(comic_id)?;
     }
@@ -119,14 +76,12 @@ pub async fn remove_many(
         .remove_many(&payload.comic_ids)
         .await
         .map_err(internal_error)?;
-    history_list(&app).await.map(Json)
+    Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn clear(
-    State(app): State<AppState>,
-) -> Result<Json<ReadingHistoryListResponse>, HttpError> {
+pub async fn clear(State(app): State<AppState>) -> Result<StatusCode, HttpError> {
     app.history.clear().await.map_err(internal_error)?;
-    history_list(&app).await.map(Json)
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn history_list(app: &AppState) -> Result<ReadingHistoryListResponse, HttpError> {
@@ -136,21 +91,25 @@ async fn history_list(app: &AppState) -> Result<ReadingHistoryListResponse, Http
         .await
         .map_err(internal_error)?
         .into_iter()
-        .map(
-            |item: crate::application::ReadingHistoryItem| ReadingHistoryResponse {
-                image: cover_url(&item.comic_id, &item.image),
-                id: item.comic_id,
-                title: item.title,
-                author: item.author,
-                chapter_id: item.chapter_id,
-                chapter_title: item.chapter_title,
-                page_index: item.page_index,
-                page_count: item.page_count,
-                last_read_at: item.last_read_at,
-            },
-        )
+        .map(ReadingHistoryResponse::from)
         .collect();
     Ok(ReadingHistoryListResponse { items })
+}
+
+impl From<crate::application::ReadingHistoryItem> for ReadingHistoryResponse {
+    fn from(item: crate::application::ReadingHistoryItem) -> Self {
+        Self {
+            image: cover_url(&item.comic_id, &item.image),
+            id: item.comic_id,
+            title: item.title,
+            author: item.author,
+            chapter_id: item.chapter_id,
+            chapter_title: item.chapter_title,
+            page_index: item.page_index,
+            page_count: item.page_count,
+            last_read_at: item.last_read_at,
+        }
+    }
 }
 
 fn validate_item(comic_id: &str, input: &ReadingHistoryInput) -> Result<(), HttpError> {

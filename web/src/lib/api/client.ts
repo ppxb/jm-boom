@@ -48,6 +48,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       return response.blob() as T
     }
 
+    if (response.status === 204) {
+      return undefined as T
+    }
+
     return response.json()
   } catch (error) {
     if (error instanceof ApiError) {

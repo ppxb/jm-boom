@@ -11,7 +11,12 @@ import { EmptyState } from '@/components/empty-state'
 import { ListPagination } from '@/components/list-pagination'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
-import { clearFavorites, listFavorites } from '@/lib/api/favorite'
+import type { ComicStateResult } from '@/lib/api/comic'
+import {
+  clearFavorites,
+  listFavorites,
+  type FavoriteListResult
+} from '@/lib/api/favorite'
 import { UI } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -30,8 +35,12 @@ function FavoritesPage() {
   })
   const clearMutation = useMutation({
     mutationFn: clearFavorites,
-    onSuccess: result => {
-      queryClient.setQueryData(queryKeys.favorites(), result)
+    onSuccess: () => {
+      queryClient.setQueryData<FavoriteListResult>(queryKeys.favorites(), { items: [] })
+      queryClient.setQueriesData<ComicStateResult>(
+        { queryKey: ['jm-comic-state'] },
+        current => (current ? { ...current, isFavorite: false } : current)
+      )
       toast.success('实例收藏已清空')
     },
     onError: error => {

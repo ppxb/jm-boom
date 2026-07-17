@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { HISTORY, READER } from '@/lib/constants'
+import type { ComicStateResult } from '@/lib/api/comic'
 import {
   upsertReadingHistory,
   type ReadingHistoryItem,
@@ -65,15 +66,10 @@ export function useReaderHistorySync({
       queryClient.setQueryData<ReadingHistoryListResult>(queryKeys.readingHistory(), current => ({
         items: mergeHistoryItem(current?.items ?? [], nextItem)
       }))
+      queryClient.setQueryData<ComicStateResult>(queryKeys.comicState(nextItem.id), current =>
+        current ? { ...current, history: nextItem } : current
+      )
       void upsertReadingHistory(nextItem, keepalive)
-        .then(result =>
-          queryClient.setQueryData<ReadingHistoryListResult>(
-            queryKeys.readingHistory(),
-            current => ({
-              items: mergeHistoryLists(current?.items ?? [], result.items)
-            })
-          )
-        )
         .catch(error => {
           if (import.meta.env.DEV) {
             console.debug('Reading history sync failed', error)
@@ -110,17 +106,4 @@ export function useReaderHistorySync({
 
 function mergeHistoryItem(items: ReadingHistoryItem[], nextItem: ReadingHistoryItem) {
   return [nextItem, ...items.filter(item => item.id !== nextItem.id)]
-}
-
-function mergeHistoryLists(current: ReadingHistoryItem[], incoming: ReadingHistoryItem[]) {
-  const itemsById = new Map(current.map(item => [item.id, item]))
-
-  for (const item of incoming) {
-    const existing = itemsById.get(item.id)
-    if (!existing || item.lastReadAt >= existing.lastReadAt) {
-      itemsById.set(item.id, item)
-    }
-  }
-
-  return [...itemsById.values()].sort((left, right) => right.lastReadAt - left.lastReadAt)
 }

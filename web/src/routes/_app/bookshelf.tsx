@@ -13,7 +13,13 @@ import { PageHeader } from '@/components/page-header'
 import { SelectionActions } from '@/components/selection-actions'
 import { Button } from '@/components/ui/button'
 import { useHistorySelection } from '@/features/history/use-history-selection'
-import { clearReadingHistory, listReadingHistory, removeReadingHistory } from '@/lib/api/history'
+import type { ComicStateResult } from '@/lib/api/comic'
+import {
+  clearReadingHistory,
+  listReadingHistory,
+  removeReadingHistory,
+  type ReadingHistoryListResult
+} from '@/lib/api/history'
 import { UI } from '@/lib/constants'
 import { formatDate } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
@@ -42,8 +48,16 @@ function BookshelfPage() {
   const selection = useHistorySelection(visibleItems)
   const removeMutation = useMutation({
     mutationFn: removeReadingHistory,
-    onSuccess: result => {
-      queryClient.setQueryData(queryKeys.readingHistory(), result)
+    onSuccess: (_, comicIds) => {
+      const removedIds = new Set(comicIds)
+      queryClient.setQueryData<ReadingHistoryListResult>(queryKeys.readingHistory(), current => ({
+        items: current?.items.filter(item => !removedIds.has(item.id)) ?? []
+      }))
+      for (const comicId of comicIds) {
+        queryClient.setQueryData<ComicStateResult>(queryKeys.comicState(comicId), current =>
+          current ? { ...current, history: null } : current
+        )
+      }
       selection.toggleSelectionMode(false)
       toast.success('已删除选中的历史观看记录')
     },
@@ -51,8 +65,12 @@ function BookshelfPage() {
   })
   const clearMutation = useMutation({
     mutationFn: clearReadingHistory,
-    onSuccess: result => {
-      queryClient.setQueryData(queryKeys.readingHistory(), result)
+    onSuccess: () => {
+      queryClient.setQueryData<ReadingHistoryListResult>(queryKeys.readingHistory(), { items: [] })
+      queryClient.setQueriesData<ComicStateResult>(
+        { queryKey: ['jm-comic-state'] },
+        current => (current ? { ...current, history: null } : current)
+      )
       toast.success('历史观看记录已清除')
     },
     onError: showHistoryError

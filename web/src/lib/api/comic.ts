@@ -1,8 +1,14 @@
 import { apiClient } from './client'
 import type { ComicDetail } from '@/domain/comic'
+import type { ReadingHistoryItem } from './history'
 
 export type ComicDetailResult = {
   comic: ComicDetail
+}
+
+export type ComicStateResult = {
+  isFavorite: boolean
+  history: ReadingHistoryItem | null
 }
 
 type ComicDetailResponse = {
@@ -62,6 +68,10 @@ export async function getComicDetail(comicId: string): Promise<ComicDetailResult
   return {
     comic: mapComicDetail(response)
   }
+}
+
+export function getComicState(comicId: string): Promise<ComicStateResult> {
+  return apiClient.get(`/api/comics/${comicId}/state`)
 }
 
 export async function getComicComments({
