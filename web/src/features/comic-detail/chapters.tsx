@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,8 +16,7 @@ import type { ComicChapter } from '@/domain/comic'
 import {
   SINGLE_CHAPTER_TITLE,
   formatComicChapterTitle,
-  getComicDisplayChapterCount,
-  sortComicChapters
+  getComicDisplayChapterCount
 } from '@/lib/comic'
 import { UI } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -26,14 +25,13 @@ import { SectionHeading } from './shared'
 export function ChaptersSection({
   albumId,
   comicId,
-  chapters
+  sortedChapters
 }: {
   albumId: string
   comicId: string
-  chapters: ComicChapter[]
+  sortedChapters: ComicChapter[]
 }) {
-  const sortedChapters = useMemo(() => sortComicChapters(chapters), [chapters])
-  const displayChapterCount = getComicDisplayChapterCount(chapters)
+  const displayChapterCount = getComicDisplayChapterCount(sortedChapters)
   const [page, setPage] = useState(1)
   const pageCount = Math.max(1, Math.ceil(sortedChapters.length / UI.CHAPTER_PAGE_SIZE))
   const safePage = Math.min(page, pageCount)

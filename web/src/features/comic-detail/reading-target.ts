@@ -1,5 +1,4 @@
-import type { ComicDetail } from '@/domain/comic'
-import { resolveComicStartReadingId } from '@/lib/comic'
+import type { ComicChapter, ComicDetail } from '@/domain/comic'
 import type { ReadingHistoryItem } from '@/lib/api/history'
 
 export type ComicReadingTarget = {
@@ -10,6 +9,7 @@ export type ComicReadingTarget = {
 
 export function resolveComicReadingTarget(
   comic: ComicDetail,
+  sortedChapters: ComicChapter[],
   history: ReadingHistoryItem | undefined
 ): ComicReadingTarget {
   if (history && isValidHistoryChapter(comic, history.chapterId)) {
@@ -24,7 +24,7 @@ export function resolveComicReadingTarget(
   }
 
   return {
-    readId: resolveComicStartReadingId(comic),
+    readId: sortedChapters[sortedChapters.length - 1]?.id ?? comic.id,
     isContinue: false
   }
 }

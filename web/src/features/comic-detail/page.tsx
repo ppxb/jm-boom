@@ -97,16 +97,15 @@ function ComicDetailView({
   const [isDownloadOpen, setIsDownloadOpen] = useState(false)
   const [settledCoverUrl, setSettledCoverUrl] = useState('')
   const albumId = comic.id
+  const sortedChapters = useMemo(() => sortComicChapters(comic.chapters), [comic.chapters])
   const readingTarget = useMemo(
-    () => resolveComicReadingTarget(comic, readingHistory),
-    [comic, readingHistory]
+    () => resolveComicReadingTarget(comic, sortedChapters, readingHistory),
+    [comic, sortedChapters, readingHistory]
   )
   const readerPreloadScope = `detail:${comic.id}`
   const isCoverSettled = hideCovers || comic.image.length === 0 || settledCoverUrl === comic.image
   const downloadChapters = useMemo(() => {
-    const chapters = sortComicChapters(comic.chapters)
-
-    if (chapters.length === 0) {
+    if (sortedChapters.length === 0) {
       return [
         {
           chapterId: comic.id,
@@ -116,8 +115,8 @@ function ComicDetailView({
       ]
     }
 
-    return toDownloadChapterOptions(chapters)
-  }, [comic.chapters, comic.id])
+    return toDownloadChapterOptions(sortedChapters)
+  }, [comic.id, sortedChapters])
 
   useEffect(() => {
     if (!isCoverSettled) {
@@ -238,7 +237,11 @@ function ComicDetailView({
         favoriteBusy={stateLoading || favoriteMutation.isPending}
       />
 
-      <ChaptersSection albumId={albumId} comicId={comic.id} chapters={comic.chapters} />
+      <ChaptersSection
+        albumId={albumId}
+        comicId={comic.id}
+        sortedChapters={sortedChapters}
+      />
 
       <RelatedPanel items={comic.relatedComics} />
 
