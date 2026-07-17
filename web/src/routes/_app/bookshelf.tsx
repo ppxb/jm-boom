@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Trash2Icon, XIcon } from 'lucide-react'
+import { Trash2Icon } from 'lucide-react'
 import { useMemo } from 'react'
 import { toast } from 'sonner'
 
@@ -8,6 +8,7 @@ import { ComicCard } from '@/components/comic'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { EmptyState } from '@/components/empty-state'
 import { PageHeader } from '@/components/page-header'
+import { SelectionActions } from '@/components/selection-actions'
 import { Button } from '@/components/ui/button'
 import { useHistorySelection } from '@/features/history/use-history-selection'
 import { formatDate } from '@/lib/format'
@@ -49,57 +50,20 @@ function BookshelfPage() {
   return (
     <AppPage>
       <PageHeader title="书架" description="继续阅读或管理漫画">
-        {selection.isSelecting ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={sortedItems.length === 0}
-              onClick={selection.toggleSelectAll}
-            >
-              {selection.allSelected ? '取消全选' : '全选'}
-            </Button>
-            <ConfirmDialog
-              trigger={
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  disabled={selection.selectedCount === 0}
-                >
-                  <Trash2Icon className="size-4" />
-                  删除选中
-                </Button>
-              }
-              icon={<Trash2Icon className="size-5 text-destructive" />}
-              title="清除历史观看记录"
-              description={`这会清除选中的 ${selection.selectedCount} 条本地观看记录，清除后无法恢复。`}
-              confirmText="确认清除"
-              variant="destructive"
-              onConfirm={deleteSelectedHistory}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => selection.toggleSelectionMode(false)}
-            >
-              <XIcon className="size-4" />
-              退出
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={sortedItems.length === 0}
-              onClick={() => selection.toggleSelectionMode(true)}
-            >
-              选择清除
-            </Button>
+        <SelectionActions
+          isSelecting={selection.isSelecting}
+          allSelected={selection.allSelected}
+          selectedCount={selection.selectedCount}
+          disabled={sortedItems.length === 0}
+          enterLabel="选择清除"
+          dialogTitle="清除历史观看记录"
+          dialogDescription={`这会清除选中的 ${selection.selectedCount} 条本地观看记录，清除后无法恢复。`}
+          confirmText="确认清除"
+          onEnter={() => selection.toggleSelectionMode(true)}
+          onExit={() => selection.toggleSelectionMode(false)}
+          onToggleAll={selection.toggleSelectAll}
+          onDeleteSelected={deleteSelectedHistory}
+          idleActions={
             <ConfirmDialog
               trigger={
                 <Button
@@ -119,8 +83,8 @@ function BookshelfPage() {
               variant="destructive"
               onConfirm={clearAllHistory}
             />
-          </>
-        )}
+          }
+        />
       </PageHeader>
 
       {sortedItems.length === 0 ? (

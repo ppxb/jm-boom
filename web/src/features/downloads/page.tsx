@@ -1,10 +1,9 @@
-import { LoaderCircleIcon, Trash2Icon, XIcon } from 'lucide-react'
+import { LoaderCircleIcon, Trash2Icon } from 'lucide-react'
 
 import { AppPage } from '@/components/app-page'
-import { ConfirmDialog } from '@/components/confirm-dialog'
 import { EmptyState } from '@/components/empty-state'
 import { PageHeader } from '@/components/page-header'
-import { Button } from '@/components/ui/button'
+import { SelectionActions } from '@/components/selection-actions'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DownloadTaskCard } from './download-task-card'
@@ -37,60 +36,21 @@ export function DownloadsPage() {
   return (
     <AppPage>
       <PageHeader title="下载" description="可查看和管理下载任务">
-        {selection.isSelecting ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={filteredTasks.length === 0 || removeTasks.isPending}
-              onClick={selection.toggleSelectAll}
-            >
-              {selection.allSelected ? '取消全选' : '全选'}
-            </Button>
-            <ConfirmDialog
-              trigger={
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  disabled={selection.selectedCount === 0 || removeTasks.isPending}
-                >
-                  <Trash2Icon className="size-4" />
-                  删除选中
-                </Button>
-              }
-              icon={<Trash2Icon className="size-5 text-destructive" />}
-              title="删除下载任务"
-              description={`将删除选中的 ${selection.selectedCount} 个下载任务和离线文件，此操作不可撤销。`}
-              confirmText="确认删除"
-              variant="destructive"
-              loading={removeTasks.isPending}
-              onConfirm={removeSelectedTasks}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={removeTasks.isPending}
-              onClick={() => selection.toggleSelectionMode(false)}
-            >
-              <XIcon className="size-4" />
-              退出
-            </Button>
-          </>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={filteredTasks.length === 0}
-            onClick={() => selection.toggleSelectionMode(true)}
-          >
-            <Trash2Icon className="size-4" />
-            删除
-          </Button>
-        )}
+        <SelectionActions
+          isSelecting={selection.isSelecting}
+          allSelected={selection.allSelected}
+          selectedCount={selection.selectedCount}
+          disabled={filteredTasks.length === 0}
+          loading={removeTasks.isPending}
+          enterLabel="删除"
+          enterIcon={<Trash2Icon className="size-4" />}
+          dialogTitle="删除下载任务"
+          dialogDescription={`将删除选中的 ${selection.selectedCount} 个下载任务和离线文件，此操作不可撤销。`}
+          onEnter={() => selection.toggleSelectionMode(true)}
+          onExit={() => selection.toggleSelectionMode(false)}
+          onToggleAll={selection.toggleSelectAll}
+          onDeleteSelected={removeSelectedTasks}
+        />
       </PageHeader>
 
       <Tabs

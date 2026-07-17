@@ -22,9 +22,9 @@ export function PageHeader({
         inlineActions ? 'flex-row' : null
       )}
     >
-      <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex flex-col gap-2">
         <h1 className="text-4xl font-bold">{title}</h1>
-        <p className="mt-2 text-muted-foreground">{description}</p>
+        <p className="text-muted-foreground">{description}</p>
       </div>
       {children ? (
         <div className="flex max-w-full flex-wrap items-center gap-2">{children}</div>

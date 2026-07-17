@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from 'next-themes'
 import { ReactNode } from 'react'
-import { Toaster } from 'sonner'
+import { Toaster } from '@/components/ui/sonner'
 
 import { CACHE } from '@/lib/constants'
 import { TooltipProvider } from './ui/tooltip'
@@ -27,6 +27,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <ThemeProvider attribute="class" enableSystem={true} disableTransitionOnChange>
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster
+          position="top-center"
           toastOptions={{
             classNames: {
               toast: 'font-sans'

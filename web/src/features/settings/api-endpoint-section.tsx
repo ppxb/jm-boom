@@ -45,7 +45,7 @@ export function ApiEndpointSection({
 
   return (
     <SettingsSection icon={<NetworkIcon className="size-4" />} title="网络">
-      <SettingRow title="上游接口" description="由服务端统一测速、选择并在故障时切换接口">
+      <SettingRow title="上游接口" description="可选择最快的接口，或使用自动优选">
         <div className="flex w-full items-center gap-2 sm:w-auto">
           <Select
             value={value}
