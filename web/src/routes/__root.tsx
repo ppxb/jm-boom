@@ -23,9 +23,9 @@ import { hasAccessGateGrant, loadAccessGateConfig } from '@/lib/access-gate'
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
-    if (location.pathname === '/login') return
+    if (location.pathname === '/login' || hasAccessGateGrant()) return
     const config = await loadAccessGateConfig()
-    if (config.enabled && !hasAccessGateGrant()) {
+    if (config.enabled) {
       throw redirect({
         to: '/login',
         search: { redirect: location.href }
