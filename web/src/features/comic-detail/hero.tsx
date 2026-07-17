@@ -49,14 +49,13 @@ export function ComicHero({
         id={comic.id}
         title={comic.title}
         image={comic.image}
+        showIdBadge
         loading="eager"
         onImageSettled={onCoverSettled}
         className="mx-auto w-full max-w-60 md:max-w-none"
       />
 
       <div className="min-w-0 space-y-5 py-1 text-center md:text-left">
-        <Badge variant="default">JM {comic.id}</Badge>
-
         <div className="space-y-2">
           <h1 className="text-2xl leading-tight font-bold tracking-normal sm:text-3xl lg:text-4xl">
             {comic.title}

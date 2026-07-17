@@ -20,9 +20,11 @@ export function ComicDetailSkeleton() {
   return (
     <div className="space-y-10">
       <section className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
-        <Skeleton className="mx-auto aspect-3/4 w-full max-w-60 md:max-w-none" />
+        <div className="relative mx-auto aspect-3/4 w-full max-w-60 md:max-w-none">
+          <Skeleton className="size-full" />
+          <Skeleton className="absolute top-2 left-2 h-6 w-20 rounded-full" />
+        </div>
         <div className="space-y-5 py-1">
-          <Skeleton className="h-5 w-56" />
           <div className="space-y-3">
             <Skeleton className="h-10 w-2/3" />
             <Skeleton className="h-4 w-64" />
