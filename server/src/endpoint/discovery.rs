@@ -91,6 +91,6 @@ pub(super) fn normalize_endpoint(value: &str) -> anyhow::Result<String> {
 
 #[derive(Deserialize)]
 struct HostConfigPayload {
-    #[serde(default, rename = "Server", alias = "server")]
+    #[serde(default, rename = "Server")]
     server: Vec<String>,
 }

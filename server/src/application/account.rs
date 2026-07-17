@@ -13,7 +13,7 @@ use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
-const CREDENTIAL_CRYPTO_SEED: &str = "jm-boom-local-auto-login-v1";
+const CREDENTIAL_CRYPTO_SEED: &str = "jm-boom-local-auto-login";
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,8 +45,8 @@ impl AccountState {
     fn empty() -> Self {
         Self {
             username: None,
-            auto_login: false,
-            auto_sign_in: false,
+            auto_login: true,
+            auto_sign_in: true,
             login_status: LoginStatus::LoggedOut,
             sign_in_status: SignInStatus::Pending,
         }

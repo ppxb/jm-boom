@@ -81,10 +81,10 @@ export function useSettingsData() {
     mutationFn: updateAccount,
     onSuccess: data => {
       queryClient.setQueryData(queryKeys.settingsAccount(), data)
-      toast.success('JM 账号设置已保存')
+      toast.success('禁漫天堂账号设置已保存')
     },
     onError: error => {
-      toast.error(error instanceof Error ? error.message : 'JM 账号登录失败')
+      toast.error(error instanceof Error ? error.message : '禁漫天堂账号登录失败')
     }
   })
 
@@ -92,10 +92,10 @@ export function useSettingsData() {
     mutationFn: clearAccount,
     onSuccess: data => {
       queryClient.setQueryData(queryKeys.settingsAccount(), data)
-      toast.success('JM 账号已清除')
+      toast.success('禁漫天堂账号已退出登录')
     },
     onError: error => {
-      toast.error(error instanceof Error ? error.message : '清除 JM 账号失败')
+      toast.error(error instanceof Error ? error.message : '禁漫天堂账号退出登录失败')
     }
   })
 

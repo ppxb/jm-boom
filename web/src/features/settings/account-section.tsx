@@ -43,7 +43,7 @@ export function AccountSection({
   useEffect(() => {
     setUsername(state?.username ?? '')
     setPassword('')
-    setAutoLogin(state?.username ? state.autoLogin : true)
+    setAutoLogin(state?.autoLogin ?? true)
     setAutoSignIn(state?.autoSignIn ?? true)
   }, [state])
 
@@ -76,10 +76,7 @@ export function AccountSection({
         </SettingRow>
 
         <SettingRow title="登录状态" description="当前账号登录状态" inline>
-          <Badge
-            variant={state?.loginStatus === 'loggedIn' ? 'default' : 'outline'}
-            className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!"
-          >
+          <Badge variant="outline" className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!">
             {state?.loginStatus === 'loggedIn' ? (
               <BadgeCheck data-icon="inline-start" />
             ) : (
@@ -90,10 +87,7 @@ export function AccountSection({
         </SettingRow>
 
         <SettingRow title="签到状态" description="自动签到只在登录成功后执行" inline>
-          <Badge
-            variant={state?.signInStatus === 'signedIn' ? 'default' : 'outline'}
-            className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!"
-          >
+          <Badge variant="outline" className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!">
             {state?.signInStatus === 'signedIn' ? (
               <BadgeCheck data-icon="inline-start" />
             ) : (

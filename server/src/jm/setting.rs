@@ -24,11 +24,7 @@ struct SettingResponse {
 
 #[derive(Debug, Deserialize)]
 struct SettingData {
-    #[serde(
-        default,
-        alias = "app_img_shunt",
-        deserialize_with = "string_from_scalar"
-    )]
+    #[serde(default, deserialize_with = "string_from_scalar")]
     img_host: String,
 }
 

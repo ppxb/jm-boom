@@ -29,8 +29,7 @@ export function SettingsPage() {
     clearCache,
     saveAccount,
     removeAccount
-  } =
-    useSettingsData()
+  } = useSettingsData()
 
   function resetSettings() {
     reset()
@@ -41,13 +40,7 @@ export function SettingsPage() {
   return (
     <AppPage contentClassName="max-w-5xl gap-8" showBackTop={false}>
       <PageHeader title="设置" description="APP 设置及账号管理" inlineActions>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={resetSettings}
-          className="text-xs"
-        >
+        <Button type="button" variant="outline" size="sm" onClick={resetSettings}>
           <RotateCcwIcon className="size-4" />
           恢复默认
         </Button>

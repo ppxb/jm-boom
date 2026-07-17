@@ -81,12 +81,12 @@ export function VersionSection({
     <SettingsSection icon={<PackageIcon className="size-4" />} title="版本">
       <div className="space-y-5">
         <SettingRow title="Web" description="浏览器端版本" inline>
-          <Badge className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!">
+          <Badge className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!" variant="outline">
             <BadgeCheck data-icon="inline-start" />v{WEB_VERSION}
           </Badge>
         </SettingRow>
         <SettingRow title="Server" description="服务端版本" inline>
-          <Badge className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!">
+          <Badge className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!" variant="outline">
             <BadgeCheck data-icon="inline-start" />
             {serverVersion}
           </Badge>

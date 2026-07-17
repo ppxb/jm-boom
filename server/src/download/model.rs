@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-fn default_generation() -> u64 {
-    1
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadChapter {
@@ -63,7 +59,6 @@ pub struct DownloadTask {
     pub started_at: Option<i64>,
     pub updated_at: i64,
     pub completed_at: Option<i64>,
-    #[serde(default = "default_generation")]
     pub generation: u64,
 }
 
