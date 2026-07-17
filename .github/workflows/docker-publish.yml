@@ -1,14 +1,9 @@
-name: Publish Docker image
+name: Publish JM BOOM image
 
 on:
   push:
     tags:
       - "v*.*.*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Image version without the v prefix
-        required: true
 
 permissions:
   contents: read
@@ -27,11 +22,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            version="${{ inputs.version }}"
-          else
-            version="${GITHUB_REF_NAME#v}"
-          fi
+          version="${GITHUB_REF_NAME#v}"
 
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Invalid version format: '$version' (expected e.g. 1.2.3)" >&2
@@ -39,6 +30,59 @@ jobs:
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+  changelog:
+    name: Generate changelog
+    runs-on: ubuntu-latest
+    needs: version
+    outputs:
+      release_body: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .github/cliff.toml
+          args: -vv --current
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+  create-draft-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs: [version, changelog]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Draft Release
+        shell: bash
+        run: |
+          tag="v${VERSION}"
+
+          if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "GitHub release '$tag' already exists; keeping the existing release body."
+            exit 0
+          fi
+
+          gh release create "$tag" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "Release $tag" \
+            --notes "$RELEASE_BODY" \
+            --draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          RELEASE_BODY: ${{ needs.changelog.outputs.release_body }}
 
   build:
     needs: version
@@ -109,10 +153,7 @@ jobs:
           tags+=("${image}:${version%%.*}.$(echo "$version" | cut -d. -f2)")
           tags+=("${image}:${version%%.*}")
           tags+=("${image}:sha-${GITHUB_SHA::7}")
-
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            tags+=("${image}:latest")
-          fi
+          tags+=("${image}:latest")
 
           args=()
           for tag in "${tags[@]}"; do
@@ -123,3 +164,16 @@ jobs:
             "${args[@]}" \
             "${build_tag_base}-amd64" \
             "${build_tag_base}-arm64"
+
+  publish-release:
+    name: Publish release
+    needs: [version, create-draft-release, merge]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        run: gh release edit "v${VERSION}" --draft=false --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
