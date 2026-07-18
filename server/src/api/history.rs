@@ -1,8 +1,7 @@
-use crate::{
-    api::media::cover_url, application::ReadingHistoryInput, http_error::HttpError, AppState,
-};
+use super::{media::cover_url, CollectionListQuery, COLLECTION_PAGE_SIZE};
+use crate::{application::ReadingHistoryInput, http_error::HttpError, AppState};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -12,6 +11,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct ReadingHistoryListResponse {
     items: Vec<ReadingHistoryResponse>,
+    total: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -36,8 +36,10 @@ pub struct RemoveHistoryRequest {
 
 pub async fn list(
     State(app): State<AppState>,
+    Query(query): Query<CollectionListQuery>,
 ) -> Result<Json<ReadingHistoryListResponse>, HttpError> {
-    history_list(&app).await.map(Json)
+    validate_page(query.page)?;
+    history_list(&app, query.page).await.map(Json)
 }
 
 pub async fn upsert(
@@ -84,16 +86,17 @@ pub async fn clear(State(app): State<AppState>) -> Result<StatusCode, HttpError>
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn history_list(app: &AppState) -> Result<ReadingHistoryListResponse, HttpError> {
-    let items = app
+async fn history_list(app: &AppState, page: u32) -> Result<ReadingHistoryListResponse, HttpError> {
+    let (items, total) = app
         .history
-        .list()
+        .list(page, COLLECTION_PAGE_SIZE)
         .await
-        .map_err(internal_error)?
+        .map_err(internal_error)?;
+    let items = items
         .into_iter()
         .map(ReadingHistoryResponse::from)
         .collect();
-    Ok(ReadingHistoryListResponse { items })
+    Ok(ReadingHistoryListResponse { items, total })
 }
 
 impl From<crate::application::ReadingHistoryItem> for ReadingHistoryResponse {
@@ -130,6 +133,17 @@ fn validate_comic_id(comic_id: &str) -> Result<(), HttpError> {
         return Err(HttpError::new(
             StatusCode::BAD_REQUEST,
             "漫画 ID 必须为数字",
+            false,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_page(page: u32) -> Result<(), HttpError> {
+    if page == 0 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "页码必须大于 0",
             false,
         ));
     }

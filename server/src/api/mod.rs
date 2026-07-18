@@ -3,6 +3,19 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use serde::Deserialize;
+
+const COLLECTION_PAGE_SIZE: u32 = 20;
+
+#[derive(Debug, Deserialize)]
+struct CollectionListQuery {
+    #[serde(default = "default_collection_page")]
+    page: u32,
+}
+
+fn default_collection_page() -> u32 {
+    1
+}
 
 mod auth;
 mod comic_dto;

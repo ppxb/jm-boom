@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 
 import type { ComicDetail } from '@/domain/comic'
 import type { ComicStateResult } from '@/lib/api/comic'
-import { addFavorite, removeFavorite, type FavoriteListResult } from '@/lib/api/favorite'
+import { addFavorite, removeFavorite } from '@/lib/api/favorite'
 import { queryKeys } from '@/lib/query-keys'
 
 export function useComicFavorite({
@@ -24,7 +24,7 @@ export function useComicFavorite({
         return { isFavorite: false as const }
       }
 
-      const item = await addFavorite({
+      await addFavorite({
         id: comic.id,
         title: comic.title,
         author: comic.authors.join(' / '),
@@ -32,21 +32,14 @@ export function useComicFavorite({
         image: comic.image,
         tags: comic.tags
       })
-      return { isFavorite: true as const, item }
+      return { isFavorite: true as const }
     },
     onSuccess: result => {
       queryClient.setQueryData<ComicStateResult>(queryKeys.comicState(comic.id), current => ({
         isFavorite: result.isFavorite,
         history: current?.history ?? null
       }))
-      queryClient.setQueryData<FavoriteListResult>(queryKeys.favorites(), current => {
-        if (!current) {
-          return current
-        }
-
-        const items = current.items.filter(item => item.id !== comic.id)
-        return { items: result.isFavorite ? [result.item, ...items] : items }
-      })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.favorites() })
       toast.success(result.isFavorite ? '已添加收藏' : '已取消收藏')
     },
     onError: error => {

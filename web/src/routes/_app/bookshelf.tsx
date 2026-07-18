@@ -30,29 +30,22 @@ export const Route = createFileRoute('/_app/bookshelf')({
 
 function BookshelfPage() {
   const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
   const history = useQuery({
-    queryKey: queryKeys.readingHistory(),
-    queryFn: listReadingHistory,
+    queryKey: queryKeys.readingHistory(page),
+    queryFn: () => listReadingHistory(page),
     staleTime: 10_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true
   })
   const items = history.data?.items ?? []
-  const [page, setPage] = useState(1)
-  const pageCount = Math.max(1, Math.ceil(items.length / UI.COLLECTION_PAGE_SIZE))
-  const safePage = Math.min(page, pageCount)
-  const visibleItems = items.slice(
-    (safePage - 1) * UI.COLLECTION_PAGE_SIZE,
-    safePage * UI.COLLECTION_PAGE_SIZE
-  )
-  const selection = useHistorySelection(visibleItems)
+  const total = history.data?.total ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / UI.COLLECTION_PAGE_SIZE))
+  const selection = useHistorySelection(items)
   const removeMutation = useMutation({
     mutationFn: removeReadingHistory,
     onSuccess: (_, comicIds) => {
-      const removedIds = new Set(comicIds)
-      queryClient.setQueryData<ReadingHistoryListResult>(queryKeys.readingHistory(), current => ({
-        items: current?.items.filter(item => !removedIds.has(item.id)) ?? []
-      }))
+      void queryClient.invalidateQueries({ queryKey: queryKeys.readingHistory() })
       for (const comicId of comicIds) {
         queryClient.setQueryData<ComicStateResult>(queryKeys.comicState(comicId), current =>
           current ? { ...current, history: null } : current
@@ -66,7 +59,10 @@ function BookshelfPage() {
   const clearMutation = useMutation({
     mutationFn: clearReadingHistory,
     onSuccess: () => {
-      queryClient.setQueryData<ReadingHistoryListResult>(queryKeys.readingHistory(), { items: [] })
+      queryClient.setQueriesData<ReadingHistoryListResult>(
+        { queryKey: queryKeys.readingHistory() },
+        { items: [], total: 0 }
+      )
       queryClient.setQueriesData<ComicStateResult>(
         { queryKey: ['jm-comic-state'] },
         current => (current ? { ...current, history: null } : current)
@@ -77,8 +73,11 @@ function BookshelfPage() {
   })
 
   useEffect(() => {
+    if (!history.data) {
+      return
+    }
     setPage(current => Math.min(current, pageCount))
-  }, [pageCount])
+  }, [history.data, pageCount])
 
   function deleteSelectedHistory() {
     const comicIds = [...selection.selectedComicIds]
@@ -97,7 +96,7 @@ function BookshelfPage() {
           isSelecting={selection.isSelecting}
           allSelected={selection.allSelected}
           selectedCount={selection.selectedCount}
-          disabled={items.length === 0}
+          disabled={total === 0}
           loading={removeMutation.isPending || clearMutation.isPending}
           enterLabel="选择清除"
           dialogTitle="清除历史观看记录"
@@ -114,7 +113,7 @@ function BookshelfPage() {
                   type="button"
                   variant="destructive"
                   size="sm"
-                  disabled={items.length === 0 || clearMutation.isPending}
+                  disabled={total === 0 || clearMutation.isPending}
                 >
                   <Trash2Icon className="size-4" />
                   清除全部
@@ -151,7 +150,7 @@ function BookshelfPage() {
         <EmptyState className="min-h-0 flex-1" emoji="(˙ᯅ˙)" title="书架还是空的" />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
-          {visibleItems.map(item => {
+          {items.map(item => {
             const progress = (item.pageIndex + 1) / item.pageCount
             return (
               <ComicCard
@@ -193,11 +192,11 @@ function BookshelfPage() {
         </div>
       )}
 
-      {items.length > UI.COLLECTION_PAGE_SIZE ? (
+      {pageCount > 1 ? (
         <ListPagination
-          page={safePage}
-          hasMore={safePage < pageCount}
-          disabled={removeMutation.isPending || clearMutation.isPending}
+          page={page}
+          hasMore={page < pageCount}
+          disabled={history.isFetching || removeMutation.isPending || clearMutation.isPending}
           onPageChange={setPage}
         />
       ) : null}

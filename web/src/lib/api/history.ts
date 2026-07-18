@@ -13,10 +13,11 @@ export type ReadingHistoryItem = ReadingHistoryComic & {
 
 export type ReadingHistoryListResult = {
   items: ReadingHistoryItem[]
+  total: number
 }
 
-export function listReadingHistory(): Promise<ReadingHistoryListResult> {
-  return apiClient.get('/api/history')
+export function listReadingHistory(page: number): Promise<ReadingHistoryListResult> {
+  return apiClient.get('/api/history', { page })
 }
 
 export function upsertReadingHistory(

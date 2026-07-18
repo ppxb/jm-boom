@@ -1,6 +1,7 @@
-use crate::{api::media::cover_url, application::FavoriteInput, http_error::HttpError, AppState};
+use super::{media::cover_url, CollectionListQuery, COLLECTION_PAGE_SIZE};
+use crate::{application::FavoriteInput, http_error::HttpError, AppState};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -10,6 +11,7 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct FavoriteListResponse {
     items: Vec<FavoriteResponse>,
+    total: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -24,8 +26,12 @@ pub(crate) struct FavoriteResponse {
     favorited_at: i64,
 }
 
-pub async fn list(State(app): State<AppState>) -> Result<Json<FavoriteListResponse>, HttpError> {
-    favorite_list(&app).await.map(Json)
+pub async fn list(
+    State(app): State<AppState>,
+    Query(query): Query<CollectionListQuery>,
+) -> Result<Json<FavoriteListResponse>, HttpError> {
+    validate_page(query.page)?;
+    favorite_list(&app, query.page).await.map(Json)
 }
 
 pub async fn upsert(
@@ -59,16 +65,14 @@ pub async fn clear(State(app): State<AppState>) -> Result<StatusCode, HttpError>
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn favorite_list(app: &AppState) -> Result<FavoriteListResponse, HttpError> {
-    let items = app
+async fn favorite_list(app: &AppState, page: u32) -> Result<FavoriteListResponse, HttpError> {
+    let (items, total) = app
         .favorites
-        .list()
+        .list(page, COLLECTION_PAGE_SIZE)
         .await
-        .map_err(internal_error)?
-        .into_iter()
-        .map(FavoriteResponse::from)
-        .collect();
-    Ok(FavoriteListResponse { items })
+        .map_err(internal_error)?;
+    let items = items.into_iter().map(FavoriteResponse::from).collect();
+    Ok(FavoriteListResponse { items, total })
 }
 
 impl From<crate::application::FavoriteItem> for FavoriteResponse {
@@ -90,6 +94,17 @@ fn validate_comic_id(comic_id: &str) -> Result<(), HttpError> {
         return Err(HttpError::new(
             StatusCode::BAD_REQUEST,
             "收藏漫画 ID 必须为数字",
+            false,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_page(page: u32) -> Result<(), HttpError> {
+    if page == 0 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "页码必须大于 0",
             false,
         ));
     }

@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Trash2Icon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { LoaderCircleIcon, Trash2Icon } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppPage } from '@/components/app-page'
@@ -12,11 +12,7 @@ import { ListPagination } from '@/components/list-pagination'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import type { ComicStateResult } from '@/lib/api/comic'
-import {
-  clearFavorites,
-  listFavorites,
-  type FavoriteListResult
-} from '@/lib/api/favorite'
+import { clearFavorites, listFavorites } from '@/lib/api/favorite'
 import { UI } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -26,75 +22,60 @@ export const Route = createFileRoute('/_app/favorites')({
 
 function FavoritesPage() {
   const queryClient = useQueryClient()
-  const favorites = useQuery({
-    queryKey: queryKeys.favorites(),
-    queryFn: listFavorites,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
+    queryKey: queryKeys.favorites(page),
+    queryFn: () => listFavorites(page)
   })
-  const clearMutation = useMutation({
+  const { mutate: clear, isPending: isClearing } = useMutation({
     mutationFn: clearFavorites,
     onSuccess: () => {
-      queryClient.setQueryData<FavoriteListResult>(queryKeys.favorites(), { items: [] })
-      queryClient.setQueriesData<ComicStateResult>(
-        { queryKey: ['jm-comic-state'] },
-        current => (current ? { ...current, isFavorite: false } : current)
+      setPage(1)
+      queryClient.setQueriesData({ queryKey: queryKeys.favorites() }, { items: [], total: 0 })
+      queryClient.setQueriesData<ComicStateResult>({ queryKey: ['jm-comic-state'] }, current =>
+        current ? { ...current, isFavorite: false } : current
       )
-      toast.success('实例收藏已清空')
+      toast.success('收藏已清空')
     },
     onError: error => {
       toast.error(error instanceof Error ? error.message : '清空收藏失败')
     }
   })
-  const items = favorites.data?.items ?? []
-  const [page, setPage] = useState(1)
-  const pageCount = Math.max(1, Math.ceil(items.length / UI.COLLECTION_PAGE_SIZE))
-  const safePage = Math.min(page, pageCount)
-  const visibleItems = items.slice(
-    (safePage - 1) * UI.COLLECTION_PAGE_SIZE,
-    safePage * UI.COLLECTION_PAGE_SIZE
-  )
-
-  useEffect(() => {
-    setPage(current => Math.min(current, pageCount))
-  }, [pageCount])
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const pageCount = Math.ceil(total / UI.COLLECTION_PAGE_SIZE)
 
   return (
     <AppPage>
-      <PageHeader title="收藏" description="同一实例中共享的漫画">
+      <PageHeader title="收藏" description="服务端收藏的漫画">
         <ConfirmDialog
           trigger={
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={items.length === 0 || clearMutation.isPending}
-            >
+            <Button variant="destructive" size="sm" disabled={total === 0 || isClearing}>
               <Trash2Icon className="size-4" />
-              清空
+              清空收藏
             </Button>
           }
           icon={<Trash2Icon className="size-5 text-destructive" />}
-          title="清空实例收藏"
-          description="这会删除当前实例中所有设备共享的收藏记录，操作后无法恢复。"
+          title="清空服务端收藏"
+          description="这会删除当前服务端中所有设备共享的收藏记录，操作后无法恢复。"
           confirmText="确认清空"
           variant="destructive"
-          loading={clearMutation.isPending}
-          onConfirm={() => clearMutation.mutate()}
+          loading={isClearing}
+          onConfirm={() => clear()}
         />
       </PageHeader>
 
-      {favorites.isLoading ? (
-        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          正在读取收藏
+      {isLoading ? (
+        <div className="flex flex-1 items-center justify-center">
+          <LoaderCircleIcon className="size-6 animate-spin text-muted-foreground" />
         </div>
-      ) : favorites.isError ? (
+      ) : isError ? (
         <EmptyState
           className="min-h-0 flex-1"
           emoji="Ò︵Ó"
           title="收藏加载失败"
           actions={
-            <Button variant="outline" size="sm" onClick={() => favorites.refetch()}>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
               重试
             </Button>
           }
@@ -102,14 +83,14 @@ function FavoritesPage() {
       ) : items.length === 0 ? (
         <EmptyState className="min-h-0 flex-1" emoji="(･o･;)" title="暂无收藏" />
       ) : (
-        <ComicGrid items={visibleItems} />
+        <ComicGrid items={items} />
       )}
 
-      {items.length > UI.COLLECTION_PAGE_SIZE ? (
+      {pageCount > 1 ? (
         <ListPagination
-          page={safePage}
-          hasMore={safePage < pageCount}
-          disabled={clearMutation.isPending}
+          page={page}
+          hasMore={page < pageCount}
+          disabled={isFetching || isClearing}
           onPageChange={setPage}
         />
       ) : null}

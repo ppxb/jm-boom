@@ -32,15 +32,26 @@ impl FavoriteService {
         Self { db }
     }
 
-    pub async fn list(&self) -> anyhow::Result<Vec<FavoriteItem>> {
+    pub async fn list(
+        &self,
+        page: u32,
+        page_size: u32,
+    ) -> anyhow::Result<(Vec<FavoriteItem>, i64)> {
+        let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM favorites")
+            .fetch_one(&self.db)
+            .await?;
+        let offset = i64::from(page - 1) * i64::from(page_size);
         let rows = sqlx::query_as::<_, (String, String, String, String, String, String, i64)>(
             "SELECT comic_id, title, author, description, image, tags, favorited_at \
-             FROM favorites ORDER BY favorited_at DESC",
+             FROM favorites ORDER BY favorited_at DESC, comic_id DESC LIMIT ? OFFSET ?",
         )
+        .bind(i64::from(page_size))
+        .bind(offset)
         .fetch_all(&self.db)
         .await?;
 
-        rows.into_iter()
+        let items = rows
+            .into_iter()
             .map(
                 |(comic_id, title, author, description, image, tags, favorited_at)| {
                     Ok(FavoriteItem {
@@ -54,7 +65,8 @@ impl FavoriteService {
                     })
                 },
             )
-            .collect()
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok((items, total))
     }
 
     pub async fn contains(&self, comic_id: &str) -> anyhow::Result<bool> {
@@ -143,18 +155,26 @@ mod tests {
             .await
             .expect("insert second favorite");
 
-        let items = service.list().await.expect("list favorites");
-        assert_eq!(items.len(), 2);
-        assert!(items.iter().any(|item| item.comic_id == "1"));
-        assert!(items.iter().any(|item| item.comic_id == "2"));
+        let (items, total) = service.list(1, 1).await.expect("list first page");
+        assert_eq!(total, 2);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].comic_id, "2");
+        let (items, total) = service.list(2, 1).await.expect("list second page");
+        assert_eq!(total, 2);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].comic_id, "1");
         assert!(service.contains("1").await.expect("find favorite"));
         assert!(!service.contains("3").await.expect("miss favorite"));
 
         service.remove("2").await.expect("remove favorite");
-        assert_eq!(service.list().await.expect("list after remove").len(), 1);
+        let (items, total) = service.list(1, 20).await.expect("list after remove");
+        assert_eq!(total, 1);
+        assert_eq!(items.len(), 1);
 
         service.clear().await.expect("clear favorites");
-        assert!(service.list().await.expect("list after clear").is_empty());
+        let (items, total) = service.list(1, 20).await.expect("list after clear");
+        assert_eq!(total, 0);
+        assert!(items.is_empty());
     }
 
     async fn test_service() -> FavoriteService {

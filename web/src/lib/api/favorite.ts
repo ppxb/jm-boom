@@ -7,10 +7,11 @@ export type FavoriteItem = ComicSummary & {
 
 export type FavoriteListResult = {
   items: FavoriteItem[]
+  total: number
 }
 
-export function listFavorites(): Promise<FavoriteListResult> {
-  return apiClient.get('/api/favorites')
+export function listFavorites(page: number): Promise<FavoriteListResult> {
+  return apiClient.get('/api/favorites', { page })
 }
 
 export function addFavorite(comic: ComicSummary): Promise<FavoriteItem> {

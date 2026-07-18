@@ -7,9 +7,13 @@ export const queryKeys = {
   comicState: (comicId: string) => ['jm-comic-state', comicId] as const,
   downloadTasks: () => ['jm-download-tasks'] as const,
   downloadedChapters: () => ['jm-downloaded-chapters'] as const,
-  favorites: () => ['jm-favorites'] as const,
+  favorites: (page?: number) =>
+    page === undefined ? (['jm-favorites'] as const) : (['jm-favorites', page] as const),
   homeFeed: () => ['jm-home-feed'] as const,
-  readingHistory: () => ['jm-reading-history'] as const,
+  readingHistory: (page?: number) =>
+    page === undefined
+      ? (['jm-reading-history'] as const)
+      : (['jm-reading-history', page] as const),
   homeSectionList: (search: unknown) => ['jm-home-section-list', search] as const,
   ranking: (page: number, category: string, order: string) =>
     ['jm-ranking', page, category, order] as const,

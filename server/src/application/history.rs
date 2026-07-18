@@ -38,7 +38,15 @@ impl ReadingHistoryService {
         Self { db }
     }
 
-    pub async fn list(&self) -> anyhow::Result<Vec<ReadingHistoryItem>> {
+    pub async fn list(
+        &self,
+        page: u32,
+        page_size: u32,
+    ) -> anyhow::Result<(Vec<ReadingHistoryItem>, i64)> {
+        let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reading_history")
+            .fetch_one(&self.db)
+            .await?;
+        let offset = i64::from(page - 1) * i64::from(page_size);
         let rows = sqlx::query_as::<
             _,
             (
@@ -55,12 +63,14 @@ impl ReadingHistoryService {
         >(
             "SELECT comic_id, title, author, image, chapter_id, chapter_title, \
              page_index, page_count, last_read_at \
-             FROM reading_history ORDER BY last_read_at DESC",
+             FROM reading_history ORDER BY last_read_at DESC, comic_id DESC LIMIT ? OFFSET ?",
         )
+        .bind(i64::from(page_size))
+        .bind(offset)
         .fetch_all(&self.db)
         .await?;
 
-        Ok(rows
+        let items = rows
             .into_iter()
             .map(
                 |(
@@ -85,7 +95,8 @@ impl ReadingHistoryService {
                     last_read_at,
                 },
             )
-            .collect())
+            .collect();
+        Ok((items, total))
     }
 
     pub async fn get(&self, comic_id: &str) -> anyhow::Result<Option<ReadingHistoryItem>> {
@@ -219,11 +230,14 @@ mod tests {
             .await
             .expect("update progress");
 
-        let items = service.list().await.expect("list history");
+        let (items, total) = service.list(1, 1).await.expect("list first page");
+        assert_eq!(total, 2);
         assert_eq!(items[0].comic_id, "1");
         assert_eq!(items[0].chapter_id, "chapter-new");
         assert_eq!(items[0].page_index, 3);
-        assert_eq!(items[1].comic_id, "2");
+        let (items, total) = service.list(2, 1).await.expect("list second page");
+        assert_eq!(total, 2);
+        assert_eq!(items[0].comic_id, "2");
         let item = service
             .get("1")
             .await

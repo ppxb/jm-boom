@@ -3,11 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { HISTORY, READER } from '@/lib/constants'
 import type { ComicStateResult } from '@/lib/api/comic'
-import {
-  upsertReadingHistory,
-  type ReadingHistoryItem,
-  type ReadingHistoryListResult
-} from '@/lib/api/history'
+import { upsertReadingHistory, type ReadingHistoryItem } from '@/lib/api/history'
 import { queryKeys } from '@/lib/query-keys'
 
 interface UseReaderHistorySyncProps {
@@ -63,9 +59,7 @@ export function useReaderHistorySync({
       const lastReadAt = Date.now()
       lastPersistedAtRef.current = lastReadAt
       const nextItem = { ...pendingHistory, lastReadAt }
-      queryClient.setQueryData<ReadingHistoryListResult>(queryKeys.readingHistory(), current => ({
-        items: mergeHistoryItem(current?.items ?? [], nextItem)
-      }))
+      void queryClient.invalidateQueries({ queryKey: queryKeys.readingHistory() })
       queryClient.setQueryData<ComicStateResult>(queryKeys.comicState(nextItem.id), current =>
         current ? { ...current, history: nextItem } : current
       )
@@ -102,8 +96,4 @@ export function useReaderHistorySync({
       flushPendingHistory()
     }
   }, [flushPendingHistory])
-}
-
-function mergeHistoryItem(items: ReadingHistoryItem[], nextItem: ReadingHistoryItem) {
-  return [nextItem, ...items.filter(item => item.id !== nextItem.id)]
 }
