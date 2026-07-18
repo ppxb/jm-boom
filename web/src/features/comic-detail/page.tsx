@@ -81,11 +81,16 @@ function ComicDetailView({
 }) {
   const readingHistory = state?.history ?? undefined
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
+  const [chaptersDescending, setChaptersDescending] = useState(true)
   const albumId = comic.id
-  const sortedChapters = useMemo(() => sortComicChapters(comic.chapters), [comic.chapters])
+  const readingChapters = useMemo(() => sortComicChapters(comic.chapters), [comic.chapters])
+  const sortedChapters = useMemo(
+    () => (chaptersDescending ? readingChapters : [...readingChapters].reverse()),
+    [chaptersDescending, readingChapters]
+  )
   const readingTarget = useMemo(
-    () => resolveComicReadingTarget(comic, sortedChapters, readingHistory),
-    [comic, sortedChapters, readingHistory]
+    () => resolveComicReadingTarget(comic, readingChapters, readingHistory),
+    [comic, readingChapters, readingHistory]
   )
   const favorite = useComicFavorite({ comic, state, stateLoading })
   const download = useComicDownload(comic, sortedChapters)
@@ -109,6 +114,8 @@ function ComicDetailView({
         albumId={albumId}
         comicId={comic.id}
         sortedChapters={sortedChapters}
+        descending={chaptersDescending}
+        onToggleSort={() => setChaptersDescending(current => !current)}
       />
 
       <RelatedPanel items={comic.relatedComics} />

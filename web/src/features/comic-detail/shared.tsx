@@ -5,17 +5,6 @@ import { UI } from '@/lib/constants'
 
 export { ComicCover } from '@/components/comic'
 
-export function SectionHeading({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex items-end justify-between gap-4">
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold tracking-normal">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  )
-}
-
 export function ComicDetailSkeleton() {
   return (
     <div className="space-y-10">
@@ -107,9 +96,9 @@ export function CommentSkeletonList() {
 function ChapterSkeletonList() {
   return (
     <section className="space-y-4">
-      <div className="space-y-1">
+      <div className="flex items-center gap-2">
         <Skeleton className="h-7 w-16" />
-        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-7 w-28" />
       </div>
       <div className="space-y-2">
         {Array.from({ length: UI.CHAPTER_PAGE_SIZE }).map((_, index) => (

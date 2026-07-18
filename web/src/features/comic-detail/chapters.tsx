@@ -1,7 +1,9 @@
 import { Link } from '@tanstack/react-router'
+import { ArrowDownNarrowWideIcon, ArrowUpNarrowWideIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Pagination,
@@ -20,16 +22,19 @@ import {
 } from '@/lib/comic'
 import { UI } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import { SectionHeading } from './shared'
 
 export function ChaptersSection({
   albumId,
   comicId,
-  sortedChapters
+  sortedChapters,
+  descending,
+  onToggleSort
 }: {
   albumId: string
   comicId: string
   sortedChapters: ComicChapter[]
+  descending: boolean
+  onToggleSort: () => void
 }) {
   const displayChapterCount = getComicDisplayChapterCount(sortedChapters)
   const [page, setPage] = useState(1)
@@ -53,9 +58,24 @@ export function ChaptersSection({
     })
   }
 
+  function toggleSort() {
+    setPage(1)
+    onToggleSort()
+  }
+
   return (
     <section id="chapters" className="scroll-mt-8 space-y-4">
-      <SectionHeading title="章节" description={`${displayChapterCount} 个章节`} />
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-semibold tracking-normal">章节</h2>
+        <Button type="button" variant="outline" size="sm" onClick={toggleSort}>
+          {displayChapterCount} 个章节
+          {descending ? (
+            <ArrowDownNarrowWideIcon className="size-4" />
+          ) : (
+            <ArrowUpNarrowWideIcon className="size-4" />
+          )}
+        </Button>
+      </div>
       {sortedChapters.length === 0 ? (
         <Link
           to="/reader/$comicId"
