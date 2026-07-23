@@ -74,7 +74,6 @@
 |----|------|------|------|
 | P1 | `download/manager.rs` `list()` | 每次 `values().cloned()` 全量 clone；pause/resume/cancel/remove/enqueue 都以 `list()` 结尾；前端活跃任务 **1s 轮询** | 短期：`Arc` 或精简 DTO；中期：mutation 返回 diff；长期 SSE（规模小时可缓） |
 | P2 | `web/.../use-download-tasks.ts` `removeDownloadTasks` | 批量删除串行 N 次 API，每次还停 worker + 删目录 + list | 后端 `POST /downloads/remove` body `taskIds[]` |
-| P3 | `application/history.rs` `remove_many` | 循环单条 `DELETE` | `WHERE comic_id IN (...)` 一次删 |
 | P4 | `favorite.rs` / `history.rs` | 巨型元组 `query_as`，未用 `FromRow` | `#[derive(sqlx::FromRow)]` |
 | P5 | `web/src/lib/api/comic.ts` `htmlToText` | 每条评论 `new DOMParser()` | 评论量大时再优化；可 strip tag 或复用 parser |
 | P6 | `web/src/lib/api/client.ts` | 所有请求（含 GET）强制 `Content-Type: application/json` | 仅 POST/PUT 且有 body 时设置 |
@@ -122,7 +121,6 @@
 2. B1 去掉身份 map
 3. B2 去掉与 Query 默认重复的选项
 4. D3 + D4 探索列表壳与 ranking 解析复用
-5. P3 历史批量 DELETE 单 SQL
 
 **约束：** 不改阅读/下载状态机语义；行为对外可观察结果应不变。
 
@@ -170,4 +168,4 @@
 
 ## 8. 一句话结论
 
-横切样板重复 + 下载/列表全量路径噪音是主债；核心热路径已经健康。优先做**校验/列表壳/去身份 map/批量 DELETE**，再考虑下载 bulk API 与 list clone 优化。
+横切样板重复 + 下载/列表全量路径噪音是主债；核心热路径已经健康。优先做**校验/列表壳/去身份 map**，再考虑下载 bulk API 与 list clone 优化。

@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 
 #[derive(Debug, Clone)]
 pub struct ReadingHistoryItem {
@@ -158,14 +158,19 @@ impl ReadingHistoryService {
     }
 
     pub async fn remove_many(&self, comic_ids: &[String]) -> anyhow::Result<()> {
-        let mut transaction = self.db.begin().await?;
-        for comic_id in comic_ids {
-            sqlx::query("DELETE FROM reading_history WHERE comic_id = ?")
-                .bind(comic_id)
-                .execute(&mut *transaction)
-                .await?;
+        if comic_ids.is_empty() {
+            return Ok(());
         }
-        transaction.commit().await?;
+
+        let mut query =
+            QueryBuilder::<Sqlite>::new("DELETE FROM reading_history WHERE comic_id IN (");
+        {
+            let mut ids = query.separated(", ");
+            for comic_id in comic_ids {
+                ids.push_bind(comic_id);
+            }
+        }
+        query.push(")").build().execute(&self.db).await?;
         Ok(())
     }
 
@@ -246,6 +251,54 @@ mod tests {
         assert_eq!(item.chapter_id, "chapter-new");
         assert_eq!(item.page_index, 3);
         assert!(service.get("3").await.expect("missing history").is_none());
+    }
+
+    #[tokio::test]
+    async fn remove_many_with_empty_ids_is_a_noop() {
+        let service = test_service().await;
+        service
+            .upsert("1", test_input("chapter-one", 1, 10))
+            .await
+            .expect("insert history");
+
+        service
+            .remove_many(&[])
+            .await
+            .expect("remove empty history selection");
+
+        assert!(service.get("1").await.expect("get history").is_some());
+    }
+
+    #[tokio::test]
+    async fn remove_many_deletes_requested_items_and_ignores_missing_ids() {
+        let service = test_service().await;
+        for (comic_id, last_read_at) in [("1", 10), ("2", 20), ("3", 30)] {
+            service
+                .upsert(
+                    comic_id,
+                    test_input(&format!("chapter-{comic_id}"), 1, last_read_at),
+                )
+                .await
+                .expect("insert history");
+        }
+        let comic_ids = vec!["1".to_string(), "3".to_string(), "404".to_string()];
+
+        service
+            .remove_many(&comic_ids)
+            .await
+            .expect("remove selected history");
+
+        assert!(service.get("1").await.expect("get first history").is_none());
+        assert!(service.get("3").await.expect("get third history").is_none());
+        assert!(service
+            .get("404")
+            .await
+            .expect("get missing history")
+            .is_none());
+        assert!(service.get("2").await.expect("get kept history").is_some());
+        let (items, total) = service.list(1, 20).await.expect("list remaining history");
+        assert_eq!(total, 1);
+        assert_eq!(items[0].comic_id, "2");
     }
 
     async fn test_service() -> ReadingHistoryService {
