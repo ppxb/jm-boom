@@ -35,7 +35,7 @@
 
 ## 当前优化顺序
 
-1. 收敛无语义差异的前端重复：统一历史与下载的 selection hook，复用 ranking/list 的分类和排序解析，只删除与 QueryClient 默认值完全相同的查询选项。
+1. 收敛无语义差异的前端查询重复：复用 ranking/list 的分类和排序解析，只删除与 QueryClient 默认值完全相同的查询选项。
 2. 将 `ReadingHistoryService::remove_many` 改为单次批量 SQL，并覆盖空输入、多 ID 和不存在 ID 的行为。
 3. 增加下载任务批量删除 API，前端一次提交选中 ID，服务端完成 worker 停止、manifest/目录删除和一次列表返回，避免串行调用单删接口。
 4. API 层只抽取纯粹且稳定的数字 ID、页码等校验；保留各模块的错误类型、用户文案和日志上下文，不强行统一所有错误层级。

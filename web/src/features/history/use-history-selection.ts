@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useSelectionSet } from '@/lib/use-selection-set'
 
 export interface HistoryItem {
   id: string
@@ -18,63 +18,14 @@ export interface HistorySelection {
 }
 
 export function useHistorySelection(items: HistoryItem[]): HistorySelection {
-  const [isSelecting, setIsSelecting] = useState(false)
-  const [selectedComicIds, setSelectedComicIds] = useState<Set<string>>(() => new Set())
-
-  const selectedCount = selectedComicIds.size
-  const allSelected = items.length > 0 && selectedCount === items.length
-
-  // Sync selection state when items change
-  useEffect(() => {
-    const availableComicIds = new Set(items.map(item => item.id))
-
-    setSelectedComicIds(current => {
-      const next = new Set([...current].filter(comicId => availableComicIds.has(comicId)))
-      return next.size === current.size ? current : next
-    })
-
-    if (items.length === 0) {
-      setIsSelecting(false)
-    }
-  }, [items])
-
-  function toggleSelectionMode(nextSelecting: boolean) {
-    setIsSelecting(nextSelecting)
-
-    if (!nextSelecting) {
-      setSelectedComicIds(new Set())
-    }
-  }
-
-  function toggleSelectAll() {
-    if (allSelected) {
-      setSelectedComicIds(new Set())
-    } else {
-      setSelectedComicIds(new Set(items.map(item => item.id)))
-    }
-  }
-
-  function toggleSelectItem(comicId: string) {
-    setSelectedComicIds(current => {
-      const next = new Set(current)
-
-      if (next.has(comicId)) {
-        next.delete(comicId)
-      } else {
-        next.add(comicId)
-      }
-
-      return next
-    })
-  }
+  const { selectedIds: selectedComicIds, ...selection } = useSelectionSet(items, getHistoryItemId)
 
   return {
-    isSelecting,
-    selectedComicIds,
-    selectedCount,
-    allSelected,
-    toggleSelectionMode,
-    toggleSelectAll,
-    toggleSelectItem
+    ...selection,
+    selectedComicIds
   }
+}
+
+function getHistoryItemId(item: HistoryItem) {
+  return item.id
 }

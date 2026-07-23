@@ -55,7 +55,6 @@
 | ID | 位置 | 问题 | 建议 |
 |----|------|------|------|
 | D1 | `server/src/api/favorites.rs`, `history.rs`, `comics.rs`, `covers.rs`, `settings.rs` | `validate_comic_id` / `validate_page` / `internal_error` 复制粘贴 | 抽 `api/validation.rs`：`require_numeric_id`、`require_page`、`storage_error` |
-| D2 | `web/src/features/history/use-history-selection.ts`, `downloads/use-download-selection.ts` | 多选 hook 同构（仅 id 字段不同） | 抽 `useSelectionSet(items, getId)` |
 | D3 | `web/src/routes/_app/explore/{list,ranking,search,weekly}.tsx` | loading / error / empty / grid / pagination 模板重复 | 抽 `ComicListQueryView` 或等价组件 |
 | D4 | `explore/ranking.tsx` vs `features/section-list/section-utils.ts` | `parseRankingCategory/Order` 与 `parseListCategory/Order` 重复 | ranking 复用 section-utils |
 | D5 | `page_materializer.rs`（图片下载）, `application/cover.rs` | invalidate img host → 重拉 host → 重试 重复 | 抽 `download_with_img_host_retry` |
@@ -119,12 +118,11 @@
 
 ### 第一批：低风险、高收益（约 1–2 天）
 
-1. D1 抽取 API 校验与 storage error helper  
-2. D2 统一 selection hook  
-3. B1 去掉身份 map  
-4. B2 去掉与 Query 默认重复的选项  
-5. D3 + D4 探索列表壳与 ranking 解析复用  
-6. P3 历史批量 DELETE 单 SQL  
+1. D1 抽取 API 校验与 storage error helper
+2. B1 去掉身份 map
+3. B2 去掉与 Query 默认重复的选项
+4. D3 + D4 探索列表壳与 ranking 解析复用
+5. P3 历史批量 DELETE 单 SQL
 
 **约束：** 不改阅读/下载状态机语义；行为对外可观察结果应不变。
 
@@ -172,4 +170,4 @@
 
 ## 8. 一句话结论
 
-横切样板重复 + 下载/列表全量路径噪音是主债；核心热路径已经健康。优先做**校验/选择/列表壳/去身份 map/批量 DELETE**，再考虑下载 bulk API 与 list clone 优化。
+横切样板重复 + 下载/列表全量路径噪音是主债；核心热路径已经健康。优先做**校验/列表壳/去身份 map/批量 DELETE**，再考虑下载 bulk API 与 list clone 优化。
