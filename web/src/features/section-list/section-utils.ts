@@ -8,29 +8,27 @@ import {
   WEEK_OPTIONS
 } from '@/lib/filters'
 
-function defaultCategoryForMode(mode: HomeSectionListMode, rankTag: string) {
-  if (mode === 'ranking') {
-    return defaultRankingCategory(rankTag)
-  }
+export function parseRankingCategory(value: unknown, rankTag = '') {
+  const fallback = defaultRankingCategory(rankTag)
+  const category = parseStringSearch(value, fallback)
 
-  return 'all'
+  return rankingCategoryOptions(rankTag).some(option => option.value === category)
+    ? category
+    : fallback
 }
 
 export function parseListCategory(mode: HomeSectionListMode, rankTag: string, value: unknown) {
-  const fallback = defaultCategoryForMode(mode, rankTag)
-  const category = parseStringSearch(value, fallback)
-
   if (mode === 'ranking') {
-    return rankingCategoryOptions(rankTag).some(option => option.value === category)
-      ? category
-      : fallback
+    return parseRankingCategory(value, rankTag)
   }
+
+  const category = parseStringSearch(value, 'all')
 
   if (mode === 'weekly') {
-    return WEEK_CATEGORY_OPTIONS.some(option => option.value === category) ? category : fallback
+    return WEEK_CATEGORY_OPTIONS.some(option => option.value === category) ? category : 'all'
   }
 
-  return fallback
+  return 'all'
 }
 
 export function parseListWeek(value: unknown) {

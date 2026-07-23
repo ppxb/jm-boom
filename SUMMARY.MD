@@ -56,7 +56,6 @@
 |----|------|------|------|
 | D1 | `server/src/api/favorites.rs`, `history.rs`, `comics.rs`, `covers.rs`, `settings.rs` | `validate_comic_id` / `validate_page` / `internal_error` 复制粘贴 | 抽 `api/validation.rs`：`require_numeric_id`、`require_page`、`storage_error` |
 | D3 | `web/src/routes/_app/explore/{list,ranking,search,weekly}.tsx` | loading / error / empty / grid / pagination 模板重复 | 抽 `ComicListQueryView` 或等价组件 |
-| D4 | `explore/ranking.tsx` vs `features/section-list/section-utils.ts` | `parseRankingCategory/Order` 与 `parseListCategory/Order` 重复 | ranking 复用 section-utils |
 | D5 | `page_materializer.rs`（图片下载）, `application/cover.rs` | invalidate img host → 重拉 host → 重试 重复 | 抽 `download_with_img_host_retry` |
 
 ### 3.2 代码臃肿 / 噪音
@@ -120,7 +119,7 @@
 1. D1 抽取 API 校验与 storage error helper
 2. B1 去掉身份 map
 3. B2 去掉与 Query 默认重复的选项
-4. D3 + D4 探索列表壳与 ranking 解析复用
+4. D3 探索列表查询态小部件复用
 
 **约束：** 不改阅读/下载状态机语义；行为对外可观察结果应不变。
 

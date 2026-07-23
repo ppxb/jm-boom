@@ -11,12 +11,12 @@ import { getHomeSectionList } from '@/lib/api/home'
 import { CACHE } from '@/lib/constants'
 import { queryKeys } from '@/lib/query-keys'
 import {
-  defaultRankingCategory,
   rankingCategoryApiValue,
   rankingCategoryOptions,
   RANKING_ORDER_OPTIONS
 } from '@/lib/filters'
-import { parsePositivePage, parseStringSearch } from '@/lib/utils'
+import { parsePositivePage } from '@/lib/utils'
+import { parseListOrder, parseRankingCategory } from '@/features/section-list/section-utils'
 
 type RankingSearch = {
   page: number
@@ -28,7 +28,7 @@ export const Route = createFileRoute('/_app/explore/ranking')({
   validateSearch: (search: Record<string, unknown>): RankingSearch => ({
     page: parsePositivePage(search.page),
     category: parseRankingCategory(search.category),
-    order: parseRankingOrder(search.order)
+    order: parseListOrder(search.order)
   }),
   component: RankingPage
 })
@@ -74,7 +74,7 @@ function RankingPage() {
       search: {
         ...search,
         page: 1,
-        order: parseRankingOrder(value)
+        order: parseListOrder(value)
       }
     })
   }
@@ -136,18 +136,4 @@ function RankingPage() {
       )}
     </section>
   )
-}
-
-function parseRankingCategory(value: unknown) {
-  const category = parseStringSearch(value, defaultRankingCategory())
-
-  return rankingCategoryOptions().some(option => option.value === category)
-    ? category
-    : defaultRankingCategory()
-}
-
-function parseRankingOrder(value: unknown) {
-  const order = parseStringSearch(value, 'new')
-
-  return RANKING_ORDER_OPTIONS.some(option => option.value === order) ? order : 'new'
 }

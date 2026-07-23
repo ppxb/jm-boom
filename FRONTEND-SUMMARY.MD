@@ -80,7 +80,6 @@
 | ID | 位置 | 问题 | 建议 |
 |----|------|------|------|
 | F-D2 | `explore/{list,ranking,search,weekly}.tsx` + `home/page.tsx` | loading / error / empty / grid / pagination 模板重复 | 抽 `ComicListQueryView`（或 `QueryState` + 插槽） |
-| F-D3 | `explore/ranking.tsx` vs `section-list/section-utils.ts` | `parseRankingCategory/Order` 与 `parseListCategory/Order` 重复 | ranking 直接复用 section-utils |
 | F-D4 | `use-settings-data.ts` 等 | mutation `onError: toast.error(error instanceof Error ? ...)` 复制 10+ 次 | 抽 `toastApiError(error, fallback?)` |
 | F-D5 | 书架 / 收藏 / 多处 | `EmptyState` 失败重试块几乎一字不差 | 可并入 F-D2，或小工具 `QueryErrorState({ onRetry })` |
 | F-D6 | `bookshelf.tsx` / `favorites.tsx` | 清空后 `setQueriesData({ queryKey: ['jm-comic-state'] }, ...)` 硬编码前缀 | `queryKeys` 增加 `comicStateRoot()` / `comicStateAll`，禁止散落字面量 |
@@ -125,7 +124,7 @@
 
 | ID | 位置 | 问题 | 建议 |
 |----|------|------|------|
-| F-T1 | `web/src` | 仅 3 个测试文件，全在 reader | 优先补**纯函数**：`section-utils` 解析、`filters`、`client` 错误解析、history page clamp |
+| F-T1 | `web/src` | 纯函数测试仍少 | 优先补 `filters`、`client` 错误解析和 history page clamp |
 | F-T2 | 阅读器 | strip / session 集成测成本高 | 保持现状；只锁纯逻辑与边界（已有方向正确） |
 | F-T3 | lint | `oxlint`，无组件测试框架脚本 | 若补测，沿用现有 `*.test.ts` 跑法（Bun），不要引入第二套 runner 除非必要 |
 
@@ -167,10 +166,9 @@
 
 1. **F-B2** 去掉与 Query 默认重复的选项（保留真正例外）
 2. **F-B1** 去掉身份 map（保留评论 html 清洗）
-3. **F-D3** ranking 解析复用 section-utils
-4. **F-C1** `coverPath` + 替换手写封面 URL
-5. **F-D6** `queryKeys` 补 comicState 前缀 helper，去掉字面量
-6. **F-D4** `toastApiError` 收敛 mutation 错误提示
+3. **F-C1** `coverPath` + 替换手写封面 URL
+4. **F-D6** `queryKeys` 补 comicState 前缀 helper，去掉字面量
+5. **F-D4** `toastApiError` 收敛 mutation 错误提示
 
 **约束：** 不改阅读器语义、不改预加载策略、不改下载状态展示逻辑；对外可观察行为不变。
 
@@ -209,7 +207,6 @@
 | 前端本文件 | 全栈 SUMMARY |
 |------------|--------------|
 | F-D2 | D3 |
-| F-D3 | D4 |
 | F-B1 | B1 |
 | F-B2 | B2 |
 | F-B3 | C3 |
@@ -242,4 +239,4 @@
 
 ## 9. 一句话结论
 
-前端主债是**列表/Query 样板与身份 map**，不是阅读器架构。热路径已经健康；优先做 **Query 去噪、去身份 map、ranking 解析复用、coverPath、toast/queryKey 小工具**，再考虑列表壳、AbortSignal 与尺寸缓存 LRU。
+前端主债是**列表/Query 样板与身份 map**，不是阅读器架构。热路径已经健康；优先做 **Query 去噪、去身份 map、coverPath、toast/queryKey 小工具**，再考虑列表壳、AbortSignal 与尺寸缓存 LRU。
