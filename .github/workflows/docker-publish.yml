@@ -84,8 +84,6 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           RELEASE_BODY: ${{ needs.changelog.outputs.release_body }}
 
-  # 仅用于按架构预热 buildx/GHA 缓存，不推送任何镜像，
-  # 因此不会在 registry 里留下 build-<run_id>-<arch> 这类中间 tag。
   build:
     name: Warm cache (${{ matrix.suffix }})
     needs: version
@@ -122,8 +120,6 @@ jobs:
           provenance: false
           sbom: false
 
-  # 一步构建并推送多架构 manifest，复用上面预热好的按架构缓存，
-  # registry 中只会出现最终的正式 tag。
   publish:
     name: Build and push multi-arch image
     needs: [version, build]
