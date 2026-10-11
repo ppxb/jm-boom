@@ -19,18 +19,6 @@
 
 前往下载 [Release](https://github.com/ppxb/jm-boom/releases)。
 
-### Arch Linux 安装
-
-已上架 [AUR](https://aur.archlinux.org/packages/jm-boom)（社区维护，从源码构建），可使用 AUR 助手安装：
-
-```bash
-paru -S jm-boom
-# 或
-yay -S jm-boom
-```
-
-通过 AUR 安装的版本由系统包管理器负责更新，应用内更新不可用。
-
 ## Screenshots
 
 ![JM Boom 截图 1](screenshot/ScreenShot_2026-06-27_002701_832.png)
