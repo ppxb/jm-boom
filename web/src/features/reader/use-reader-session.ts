@@ -32,12 +32,14 @@ export function useReaderSession({
   comicId,
   initialIndex = 0,
   pageStep = 1,
+  paged = false,
   chapters = EMPTY_CHAPTERS,
   onLocationChange
 }: {
   comicId: string
   initialIndex?: number
   pageStep?: number
+  paged?: boolean
   chapters?: ReaderChapterItem[]
   onLocationChange?: (readId: string, index: number) => void | Promise<void>
 }) {
@@ -49,6 +51,7 @@ export function useReaderSession({
   const [visibleChapters, setVisibleChapters] = useState<string[]>([])
   const [extendedChapter, setExtendedChapter] = useState<string | null>(null)
   const [jump, setJump] = useState<Jump | null>(null)
+  const [transitionDirection, setTransitionDirection] = useState<-1 | 1 | null>(null)
   const [imageSizes, setImageSizes] = useState(() => new Map<string, ImageSize>())
   const [readyPages, setReadyPages] = useState(() => new Set<string>())
   const [navigationCommand, setNavigationCommand] = useState<ReaderNavigationCommand>({
@@ -142,7 +145,19 @@ export function useReaderSession({
     []
   )
 
+  useEffect(() => {
+    if (!paged) setTransitionDirection(null)
+  }, [paged])
+
+  const dismissTransition = useCallback(() => {
+    navigationEpoch.current++
+    jumpRef.current = null
+    setJump(null)
+    setTransitionDirection(null)
+  }, [])
+
   const commitNavigation = useCallback((readId: string, index: number) => {
+    setTransitionDirection(null)
     setPosition({ readId, index })
     setVisibleChapters([])
     setExtendedChapter(null)
@@ -154,7 +169,7 @@ export function useReaderSession({
   }, [])
 
   const goToChapter = useCallback(
-    async (readId: string, index = 0) => {
+    async (readId: string, index = 0, keepTransition = false) => {
       if (
         jumpRef.current?.loading &&
         jumpRef.current.readId === readId &&
@@ -162,6 +177,7 @@ export function useReaderSession({
       )
         return
       const epoch = ++navigationEpoch.current
+      if (!keepTransition) setTransitionDirection(null)
       const pending = { readId, index, loading: true, error: null }
       jumpRef.current = pending
       setJump(pending)
@@ -204,8 +220,23 @@ export function useReaderSession({
   )
 
   const goToNextPage = useCallback(() => {
-    if (!pageCount || jumpRef.current?.loading) return
+    if (!pageCount) return
+    if (paged && transitionDirection === -1) {
+      dismissTransition()
+      return
+    }
+    if (jumpRef.current?.loading) return
+    if (paged && transitionDirection === 1) {
+      if (nextChapter) void goToChapter(nextChapter.id, 0, true)
+      return
+    }
     const nextPage = pages[spread.end]
+    if (paged && (!nextPage || nextPage.chapterId !== activeReadId)) {
+      jumpRef.current = null
+      setJump(null)
+      setTransitionDirection(1)
+      return
+    }
     if (nextPage) {
       navigationEpoch.current++
       setJump(null)
@@ -214,11 +245,37 @@ export function useReaderSession({
     } else if (nextChapter) {
       void goToChapter(nextChapter.id)
     }
-  }, [commitNavigation, goToChapter, nextChapter, pageCount, pages, spread.end])
+  }, [
+    activeReadId,
+    commitNavigation,
+    dismissTransition,
+    goToChapter,
+    nextChapter,
+    pageCount,
+    paged,
+    pages,
+    spread.end,
+    transitionDirection
+  ])
 
   const goToPreviousPage = useCallback(() => {
-    if (!pageCount || jumpRef.current?.loading) return
+    if (!pageCount) return
+    if (paged && transitionDirection === 1) {
+      dismissTransition()
+      return
+    }
+    if (jumpRef.current?.loading) return
+    if (paged && transitionDirection === -1) {
+      if (previousChapter) void goToChapter(previousChapter.id, -1, true)
+      return
+    }
     const previous = pages[spread.previous]
+    if (paged && (!previous || previous.chapterId !== activeReadId)) {
+      jumpRef.current = null
+      setJump(null)
+      setTransitionDirection(-1)
+      return
+    }
     if (previous) {
       navigationEpoch.current++
       setJump(null)
@@ -227,12 +284,24 @@ export function useReaderSession({
     } else if (previousChapter) {
       void goToChapter(previousChapter.id, -1)
     }
-  }, [commitNavigation, goToChapter, pageCount, pages, previousChapter, spread.previous])
+  }, [
+    activeReadId,
+    commitNavigation,
+    dismissTransition,
+    goToChapter,
+    pageCount,
+    paged,
+    pages,
+    previousChapter,
+    spread.previous,
+    transitionDirection
+  ])
 
   const observePage = useCallback(
     (index: number) => {
       const page = pages[index]
       if (!page || jumpRef.current?.loading) return
+      setTransitionDirection(null)
       setPosition(current =>
         current.readId === page.chapterId && current.index === page.localIndex
           ? current
@@ -361,6 +430,26 @@ export function useReaderSession({
     routeKey
   ])
 
+  const transitionChapter = transitionDirection === -1 ? previousChapter : nextChapter
+  const transitionManifest = manifests.find(item => item.id === transitionChapter?.id)
+  const transition =
+    paged && transitionDirection != null
+      ? {
+          direction: transitionDirection,
+          currentChapter: chapterList[activeChapterIndex],
+          boundary: {
+            chapter: transitionChapter,
+            loading: Boolean(jump?.loading || transitionManifest?.loading),
+            error:
+              jump?.error ??
+              transitionManifest?.error?.message ??
+              (transitionManifest?.data && !transitionManifest.data.pages.length
+                ? '该章节暂无图片'
+                : null)
+          }
+        }
+      : null
+
   return {
     activeReadId,
     currentIndex,
@@ -376,6 +465,7 @@ export function useReaderSession({
     previousBoundary,
     nextBoundary,
     jump,
+    transition,
     isLastPage: pageCount > 0 && currentIndex + visiblePageCount >= pageCount,
     isManifestLoading: !pageCount && Boolean(activeManifest?.loading),
     manifestError:
@@ -395,8 +485,10 @@ export function useReaderSession({
     onPageReady,
     loadBoundary,
     retry: () => {
-      if (jump) void goToChapter(jump.readId, jump.index)
-      else void queryClient.invalidateQueries({ queryKey: queryKeys.readerManifest(activeReadId) })
+      if (transition?.boundary.chapter) {
+        return goToChapter(transition.boundary.chapter.id, transition.direction < 0 ? -1 : 0, true)
+      } else if (jump) return goToChapter(jump.readId, jump.index)
+      return queryClient.invalidateQueries({ queryKey: queryKeys.readerManifest(activeReadId) })
     }
   }
 }

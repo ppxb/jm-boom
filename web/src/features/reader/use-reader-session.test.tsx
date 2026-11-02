@@ -27,6 +27,7 @@ let globals: Map<string, PropertyDescriptor | undefined>
 let comicId: string
 let search: ReaderSearch
 let pageStep: number
+let paged: boolean
 let session: Session
 let requests: Request[]
 let chapters: ReaderChapterItem[]
@@ -37,6 +38,7 @@ function SessionProbe(props: Parameters<typeof readerPage.ReaderPage>[0]) {
     comicId: props.comicId,
     initialIndex: props.search.page ? props.search.page - 1 : 0,
     pageStep,
+    paged,
     chapters,
     onLocationChange
   })
@@ -80,6 +82,7 @@ beforeEach(() => {
   comicId = '101'
   search = { albumId: '100' }
   pageStep = 1
+  paged = false
   requests = []
   chapters = []
   onLocationChange = undefined
@@ -141,7 +144,12 @@ function seed(readId: string, pageCount: number) {
   queryClient.setQueryData(queryKeys.readerManifest(readId), manifest(readId, pageCount))
 }
 
-async function respond(request: Request, readId: string, pageCount: number) {
+async function respond(
+  request: Request,
+  readId: string,
+  pageCount: number,
+  settled?: Promise<void>
+) {
   const data = manifest(readId, pageCount)
   await act(async () => {
     request.resolve(
@@ -150,6 +158,7 @@ async function respond(request: Request, readId: string, pageCount: number) {
         pages: data.pages.map(page => ({ index: page.index, name: page.name, url: page.path }))
       })
     )
+    await settled
   })
 }
 
@@ -276,7 +285,9 @@ describe('reader route session lifecycle', () => {
     await act(async () => requests[0].resolve(unavailable()))
     expect(session.manifestError).not.toBeNull()
     expect(session.currentIndex).toBe(3)
-    await act(async () => session.retry())
+    await act(async () => {
+      void session.retry()
+    })
     expect(requests).toHaveLength(2)
     await respond(requests[1], '101', 6)
     expect(session.manifestError).toBeNull()
@@ -358,7 +369,9 @@ describe('reader route session lifecycle', () => {
     await act(async () => requests[0].resolve(unavailable()))
     expect(session.jump?.error).not.toBeNull()
     expect(session.activeReadId).toBe('101')
-    await act(async () => session.retry())
+    await act(async () => {
+      void session.retry()
+    })
     await respond(requests[1], '201', 8)
     expect(session.jump).toBeNull()
     expect(session.activeReadId).toBe('201')
@@ -468,5 +481,118 @@ describe('reader route session lifecycle', () => {
     await act(async () => session.onPageReady(page.key, false))
     expect(session.isPageReady).toBe(false)
     expect(session.pages[0].width).toBe(800)
+  })
+
+  test('paged chapter transitions retain the source page until the next turn', async () => {
+    paged = true
+    chapters = ['101', '201'].map(id => ({ id, title: id }))
+    seed('101', 3)
+    seed('201', 4)
+    await render('101', { albumId: '100', page: 3 })
+    const command = session.navigationCommand
+    await act(async () => session.goToNextPage())
+    expect(session.transition?.currentChapter.id).toBe('101')
+    expect(session.transition?.boundary.chapter?.id).toBe('201')
+    expect(session.activeReadId).toBe('101')
+    expect(session.currentIndex).toBe(2)
+    expect(session.navigationCommand).toBe(command)
+    await act(async () => session.goToNextPage())
+    expect(session.transition).toBeNull()
+    expect(session.activeReadId).toBe('201')
+    expect(session.currentIndex).toBe(0)
+    await act(async () => session.goToPreviousPage())
+    expect(session.transition?.direction).toBe(-1)
+    expect(session.activeReadId).toBe('201')
+    await act(async () => session.goToNextPage())
+    expect(session.transition).toBeNull()
+    expect(session.activeReadId).toBe('201')
+    await act(async () => session.goToPreviousPage())
+    await act(async () => session.goToPreviousPage())
+    expect(session.activeReadId).toBe('101')
+    expect(session.currentIndex).toBe(2)
+  })
+
+  test('cancelling a loading transition keeps the original page when the request finishes', async () => {
+    paged = true
+    chapters = ['101', '201'].map(id => ({ id, title: id }))
+    seed('101', 3)
+    await render('101', { albumId: '100', page: 3 })
+    await act(async () => session.goToNextPage())
+    await act(async () => session.goToNextPage())
+    expect(session.transition?.boundary.loading).toBe(true)
+    await act(async () => session.goToPreviousPage())
+    await respond(requests[0], '201', 4)
+    expect(session.transition).toBeNull()
+    expect(session.jump).toBeNull()
+    expect(session.activeReadId).toBe('101')
+    expect(session.currentIndex).toBe(2)
+  })
+
+  test('a failed transition retries its destination rather than the current chapter', async () => {
+    paged = true
+    chapters = ['101', '201'].map(id => ({ id, title: id }))
+    seed('101', 3)
+    await render('101', { albumId: '100', page: 3 })
+    await act(async () => requests[0].resolve(unavailable()))
+    await act(async () => session.goToNextPage())
+    expect(session.transition?.boundary.error).not.toBeNull()
+    let retryTask: Promise<void> | undefined
+    await act(async () => {
+      retryTask = session.retry()
+    })
+    expect(requests).toHaveLength(2)
+    expect(requests[1].path).toContain('/reader/201/manifest')
+    await respond(requests[1], '201', 4, retryTask)
+    expect(session.transition).toBeNull()
+    expect(session.activeReadId).toBe('201')
+  })
+
+  test('first and last chapter transitions do not navigate beyond the book', async () => {
+    paged = true
+    seed('101', 1)
+    await render()
+    const command = session.navigationCommand
+    await act(async () => session.goToNextPage())
+    expect(session.transition?.boundary.chapter).toBeNull()
+    await act(async () => session.goToNextPage())
+    expect(session.navigationCommand).toBe(command)
+    await act(async () => session.goToPreviousPage())
+    expect(session.transition).toBeNull()
+    await act(async () => session.goToPreviousPage())
+    expect(session.transition?.direction).toBe(-1)
+    expect(session.transition?.boundary.chapter).toBeNull()
+    await act(async () => session.goToNextPage())
+    expect(session.transition).toBeNull()
+  })
+
+  test('a new transition does not inherit an unrelated failed directory jump', async () => {
+    paged = true
+    chapters = ['101', '201', '301'].map(id => ({ id, title: id }))
+    seed('101', 3)
+    seed('201', 4)
+    await render('101', { albumId: '100', page: 3 })
+    await act(async () => {
+      void session.goToChapter('301')
+    })
+    await act(async () => requests[0].resolve(unavailable()))
+    expect(session.jump?.error).not.toBeNull()
+    await act(async () => session.goToNextPage())
+    expect(session.transition?.boundary.chapter?.id).toBe('201')
+    expect(session.transition?.boundary.error).toBeNull()
+    expect(session.jump).toBeNull()
+  })
+
+  test('explicit page jumps and switching to strip dismiss the paged transition', async () => {
+    paged = true
+    seed('101', 3)
+    await render('101', { albumId: '100', page: 3 })
+    await act(async () => session.goToNextPage())
+    await act(async () => session.goToPage(0))
+    expect(session.transition).toBeNull()
+    await act(async () => session.goToPreviousPage())
+    paged = false
+    await render()
+    expect(session.transition).toBeNull()
+    expect(session.currentIndex).toBe(0)
   })
 })

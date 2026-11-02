@@ -108,7 +108,23 @@ async function render(page = 3) {
 }
 
 test('uses reading order despite descending chapter metadata and writes one coherent history snapshot', async () => {
+  const legacySettings = { readerDoublePageMode: false, readerChapterTransitions: false }
+  useSettingsStore.setState(legacySettings)
   await render()
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[aria-label="下一页"]')!.click()
+  )
+  expect(container.querySelector('output')!.textContent).toBe('101:2:3')
+  const transition = container.querySelector('[data-reader-transition]')!
+  expect(transition.textContent).toContain('已读完')
+  expect(transition.textContent).toContain('Chapter 1')
+  expect(transition.textContent).toContain('下一章')
+  expect(transition.textContent).toContain('Chapter 2')
+  expect(navigate).not.toHaveBeenCalled()
+  expect(useReaderHistorySync).toHaveBeenLastCalledWith(
+    expect.objectContaining({ comicId: '101', currentIndex: 2, pageCount: 3 })
+  )
+  expect(transition.querySelector('button')).toBeNull()
   await act(async () =>
     container.querySelector<HTMLButtonElement>('[aria-label="下一页"]')!.click()
   )
@@ -133,6 +149,12 @@ test('uses reading order despite descending chapter metadata and writes one cohe
   await act(async () =>
     container.querySelector<HTMLButtonElement>('[aria-label="上一页"]')!.click()
   )
+  expect(container.querySelector('output')!.textContent).toBe('201:0:4')
+  expect(container.querySelector('[data-reader-transition]')!.textContent).toContain('上一章')
+  expect(container.querySelector('[data-reader-transition] button')).toBeNull()
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[aria-label="上一页"]')!.click()
+  )
   expect(container.querySelector('output')!.textContent).toBe('101:2:3')
 })
 
@@ -150,6 +172,9 @@ test('automatic reading waits for the image and uses the same cross-chapter navi
       image.dispatchEvent(new Event('load'))
     }
   })
+  await act(async () => vi.advanceTimersByTime(1000))
+  expect(container.querySelector('output')!.textContent).toBe('101:2:3')
+  expect(container.querySelector('[data-reader-transition]')).not.toBeNull()
   await act(async () => vi.advanceTimersByTime(1000))
   expect(container.querySelector('output')!.textContent).toBe('201:0:4')
 })

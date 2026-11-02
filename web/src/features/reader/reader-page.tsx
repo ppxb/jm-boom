@@ -2,6 +2,7 @@ import { useNavigate, useRouter } from '@tanstack/react-router'
 import { useCallback, useMemo, useRef } from 'react'
 
 import { ReaderBottomBar, ReaderTopBar } from './reader-bars'
+import { ReaderChapterBoundary } from './reader-chapter-boundary'
 import { ReaderHotZones } from './reader-hot-zones'
 import { ReaderImageWindow } from './reader-image'
 import { ReaderError, ReaderLoading } from './reader-state'
@@ -26,7 +27,6 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const readerPageDirection = useSettingsStore(state => state.readerPageDirection)
   const readerDoublePageMode = useSettingsStore(state => state.readerDoublePageMode)
   const readerCompactMenuEnabled = useSettingsStore(state => state.readerCompactMenuEnabled)
-  const showTransitions = useSettingsStore(state => state.readerChapterTransitions)
   const isStripMode = readerReadMode === 'strip'
   const isDoublePageMode = !isStripMode && readerDoublePageMode
   const stripScrollRef = useRef<HTMLDivElement | null>(null)
@@ -59,6 +59,7 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     comicId,
     initialIndex: search.page ? search.page - 1 : 0,
     pageStep: isDoublePageMode ? 2 : 1,
+    paged: !isStripMode,
     chapters: readingChapters,
     onLocationChange: syncLocation
   })
@@ -165,7 +166,13 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     readMode: readerReadMode,
     pageCount,
     controlsVisible: isToolbarVisible,
-    canAdvance: session.isPageReady && !session.jump && !manifestError,
+    canAdvance:
+      !manifestError &&
+      (session.transition
+        ? Boolean(session.transition.boundary.chapter) &&
+          !session.transition.boundary.loading &&
+          !session.transition.boundary.error
+        : session.isPageReady && !session.jump),
     stripScrollRef,
     onNextPage: goToNextPage,
     onStripEnd: loadNextBoundary
@@ -220,27 +227,38 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
             onPageLoaded={onPageLoaded}
             onPageReady={onPageReady}
             chapterTitles={chapterTitles}
-            showTransitions={showTransitions}
           />
         ) : pageSrc ? (
-          <ReaderImageWindow
-            pages={pageWindow}
-            currentIndex={globalIndex}
-            pageCount={pages.length}
-            doublePageMode={isDoublePageMode}
-            visiblePageCount={visiblePageCount}
-            pageDirection={readerPageDirection}
-            onPageLoaded={onPageLoaded}
-            onPageReady={onPageReady}
-          />
+          <>
+            <div
+              className={session.transition ? 'invisible' : undefined}
+              aria-hidden={session.transition ? true : undefined}
+            >
+              <ReaderImageWindow
+                pages={pageWindow}
+                currentIndex={globalIndex}
+                pageCount={pages.length}
+                doublePageMode={isDoublePageMode}
+                visiblePageCount={visiblePageCount}
+                pageDirection={readerPageDirection}
+                onPageLoaded={onPageLoaded}
+                onPageReady={onPageReady}
+              />
+            </div>
+            {session.transition ? (
+              <div className="absolute inset-0 flex items-start justify-center overflow-y-auto">
+                <ReaderChapterBoundary
+                  currentChapter={session.transition.currentChapter}
+                  boundary={session.transition.boundary}
+                  previous={session.transition.direction < 0}
+                  onRetry={retry}
+                />
+              </div>
+            ) : null}
+          </>
         ) : null}
       </section>
-      {!isStripMode && showTransitions && currentIndex === 0 && chapter ? (
-        <div className="pointer-events-none absolute inset-x-0 top-20 z-20 text-center text-xs text-neutral-400">
-          {chapter}
-        </div>
-      ) : null}
-      {session.jump ? (
+      {session.jump && !session.transition ? (
         <div
           role={session.jump.error ? 'alert' : 'status'}
           className="absolute bottom-28 left-1/2 z-30 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-lg bg-neutral-900/95 px-4 py-3 text-sm"

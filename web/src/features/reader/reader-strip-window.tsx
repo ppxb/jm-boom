@@ -4,13 +4,21 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObjec
 import { READER } from '@/lib/constants'
 import { ReaderChapterBoundary } from './reader-chapter-boundary'
 import { ReaderPageImage } from './reader-image'
-import type { ReaderBoundary, ReaderPageItem } from './types'
+import type { ReaderBoundary, ReaderChapterItem, ReaderPageItem } from './types'
 import type { ReaderNavigationCommand } from './use-reader-session'
 
-type StripItem = { key: string; pageIndex: number; heading?: string }
+type StripItem = {
+  key: string
+  pageIndex: number
+  transition?: {
+    currentChapter: ReaderChapterItem
+    boundary: ReaderBoundary
+    previous?: boolean
+    edge?: -1 | 1
+  }
+}
 type Anchor = { key: string; offset: number }
-const BOUNDARY_HEIGHT = 128
-const HEADING_HEIGHT = 48
+const TRANSITION_ESTIMATED_HEIGHT = 240
 
 export function ReaderStripWindow({
   containerRef,
@@ -25,8 +33,7 @@ export function ReaderStripWindow({
   onLoadBoundary,
   onPageLoaded,
   onPageReady,
-  chapterTitles,
-  showTransitions
+  chapterTitles
 }: {
   containerRef: RefObject<HTMLDivElement | null>
   pages: ReaderPageItem[]
@@ -41,34 +48,22 @@ export function ReaderStripWindow({
   onPageLoaded: (page: ReaderPageItem, image: HTMLImageElement) => void
   onPageReady: (key: string, ready: boolean) => void
   chapterTitles: Map<string, string>
-  showTransitions: boolean
 }) {
-  const items = useMemo(() => {
-    const result: StripItem[] = []
-    pages.forEach((page, pageIndex) => {
-      if (showTransitions && pageIndex > 0 && page.chapterId !== pages[pageIndex - 1].chapterId) {
-        result.push({
-          key: 'chapter:' + page.chapterId,
-          pageIndex,
-          heading: chapterTitles.get(page.chapterId) || '下一章'
-        })
-      }
-      result.push({ key: page.key, pageIndex })
-    })
-    return result
-  }, [chapterTitles, pages, showTransitions])
+  const items = useMemo(
+    () => createStripItems(pages, chapterTitles, previousBoundary, nextBoundary),
+    [chapterTitles, pages, previousBoundary, nextBoundary]
+  )
   const committedItems = useRef(items)
   const anchor = useRef<Anchor | null>(null)
   const lastNavigation = useRef<number | null>(null)
   const navigationTarget = useRef<string | null>(null)
   const frame = useRef<number | null>(null)
   const scrollFrame = useRef<number | null>(null)
-  const paddingStart = previousBoundary.chapter ? BOUNDARY_HEIGHT : 0
-  const previousLayout = useRef({ first: items[0]?.key, headings: showTransitions, paddingStart })
+  const previousFirstKey = useRef(items[0]?.key)
   const estimateSize = useCallback(
     (index: number) => {
       const item = items[index]
-      if (item.heading) return HEADING_HEIGHT
+      if (item.transition) return TRANSITION_ESTIMATED_HEIGHT
       const page = pages[item.pageIndex]
       const width = Math.min(containerRef.current?.clientWidth || window.innerWidth, 1024)
       const height = containerRef.current?.clientHeight || window.innerHeight
@@ -88,17 +83,18 @@ export function ReaderStripWindow({
       const visible = instance
         .getVirtualItems()
         .filter(item => item.end > top && item.start < bottom)
-      const visiblePages = visible.filter(item => !items[item.index]?.heading)
-      const first = visiblePages[0]
-      const last = visiblePages[visiblePages.length - 1]
-      if (!first || !last) return
-      anchor.current = { key: String(first.key), offset: top - first.start }
+      if (!visible.length) return
+      anchor.current = { key: String(visible[0].key), offset: top - visible[0].start }
+      const visiblePages = visible.filter(item => !items[item.index]?.transition)
+      const first = visiblePages[0] ?? visible[0]
+      const last = visiblePages[visiblePages.length - 1] ?? visible[visible.length - 1]
       onVisibleRangeChange(items[first.index].pageIndex, items[last.index].pageIndex)
       if (!trackPage) return
       const trackingPoint = top + container.clientHeight * 0.25
       const tracked = visible.find(item => trackingPoint >= item.start && trackingPoint < item.end)
-      if (tracked && items[tracked.index].heading) return
+      if (tracked && items[tracked.index].transition) return
       const candidate = tracked ?? first
+      if (items[candidate.index].transition) return
       const candidateIndex = items[candidate.index].pageIndex
       onCurrentIndexChange(
         resolveStripTrackedIndex({
@@ -122,8 +118,6 @@ export function ReaderStripWindow({
     estimateSize,
     getItemKey,
     overscan: 3,
-    paddingStart,
-    paddingEnd: BOUNDARY_HEIGHT,
     onChange: instance => updateVisible(instance),
     measureElement: element =>
       Math.floor(element.getBoundingClientRect().height) || element.offsetHeight,
@@ -135,12 +129,9 @@ export function ReaderStripWindow({
     const initial = lastNavigation.current == null
     const newCommand = lastNavigation.current !== navigationCommand.id
     const commanded = initial || newCommand || navigationTarget.current != null
-    const changedBeforeViewport =
-      previousLayout.current.first !== items[0]?.key ||
-      previousLayout.current.headings !== showTransitions ||
-      previousLayout.current.paddingStart !== paddingStart
+    const changedBeforeViewport = previousFirstKey.current !== items[0]?.key
     committedItems.current = items
-    previousLayout.current = { first: items[0]?.key, headings: showTransitions, paddingStart }
+    previousFirstKey.current = items[0]?.key
     // The virtualizer handles image height changes; list edits are restored by stable page identity.
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = item =>
       item.start < (containerRef.current?.scrollTop ?? 0)
@@ -168,17 +159,7 @@ export function ReaderStripWindow({
       const offset = getStripAnchorOffset(anchor.current, virtualizer.measurementsCache)
       if (offset != null) virtualizer.scrollToOffset(offset, { behavior: 'auto' })
     }
-  }, [
-    containerRef,
-    currentIndex,
-    items,
-    navigationCommand,
-    paddingStart,
-    pages,
-    showTransitions,
-    updateVisible,
-    virtualizer
-  ])
+  }, [containerRef, currentIndex, items, navigationCommand, pages, updateVisible, virtualizer])
 
   useEffect(
     () => () => {
@@ -209,15 +190,6 @@ export function ReaderStripWindow({
         className="relative mx-auto w-full max-w-5xl bg-neutral-950"
         style={{ height: virtualizer.getTotalSize() }}
       >
-        {previousBoundary.chapter ? (
-          <div className="absolute inset-x-0 top-0">
-            <ReaderChapterBoundary
-              previous
-              boundary={previousBoundary}
-              onRetry={() => onLoadBoundary(-1)}
-            />
-          </div>
-        ) : null}
         {virtualItems.map(item => {
           const row = items[item.index]
           const page = pages[row.pageIndex]
@@ -226,14 +198,20 @@ export function ReaderStripWindow({
               key={item.key}
               ref={virtualizer.measureElement}
               data-index={item.index}
-              data-reader-page-key={row.heading ? undefined : page.key}
+              data-reader-page-key={row.transition ? undefined : page.key}
+              data-reader-transition-key={row.transition ? row.key : undefined}
               className="absolute top-0 left-0 w-full bg-neutral-950"
               style={{ transform: 'translateY(' + item.start + 'px)' }}
             >
-              {row.heading ? (
-                <div className="flex h-12 items-center justify-center text-xs text-neutral-400">
-                  {row.heading}
-                </div>
+              {row.transition ? (
+                <ReaderChapterBoundary
+                  currentChapter={row.transition.currentChapter}
+                  boundary={row.transition.boundary}
+                  previous={row.transition.previous}
+                  onRetry={
+                    row.transition.edge ? () => onLoadBoundary(row.transition!.edge!) : undefined
+                  }
+                />
               ) : (
                 <ReaderPageImage
                   src={page.path}
@@ -254,17 +232,57 @@ export function ReaderStripWindow({
             </article>
           )
         })}
-        <div
-          className="absolute inset-x-0 top-0"
-          style={{
-            transform: 'translateY(' + (virtualizer.getTotalSize() - BOUNDARY_HEIGHT) + 'px)'
-          }}
-        >
-          <ReaderChapterBoundary boundary={nextBoundary} onRetry={() => onLoadBoundary(1)} />
-        </div>
       </div>
     </div>
   )
+}
+
+export function createStripItems(
+  pages: ReaderPageItem[],
+  chapterTitles: Map<string, string>,
+  previousBoundary: ReaderBoundary,
+  nextBoundary: ReaderBoundary
+): StripItem[] {
+  if (!pages.length) return []
+  const chapter = (id: string): ReaderChapterItem => ({
+    id,
+    title: chapterTitles.get(id) || '正文'
+  })
+  const result: StripItem[] = []
+  const firstChapter = chapter(pages[0].chapterId)
+  if (previousBoundary.chapter) {
+    result.push({
+      key: 'chapter:' + previousBoundary.chapter.id + '>' + firstChapter.id,
+      pageIndex: 0,
+      transition: {
+        currentChapter: firstChapter,
+        boundary: previousBoundary,
+        previous: true,
+        edge: -1
+      }
+    })
+  }
+  pages.forEach((page, pageIndex) => {
+    const previous = pages[pageIndex - 1]
+    if (previous && previous.chapterId !== page.chapterId) {
+      result.push({
+        key: 'chapter:' + previous.chapterId + '>' + page.chapterId,
+        pageIndex,
+        transition: {
+          currentChapter: chapter(previous.chapterId),
+          boundary: { chapter: chapter(page.chapterId), loading: false, error: null }
+        }
+      })
+    }
+    result.push({ key: page.key, pageIndex })
+  })
+  const lastChapter = chapter(pages[pages.length - 1].chapterId)
+  result.push({
+    key: 'chapter:' + lastChapter.id + '>' + (nextBoundary.chapter?.id ?? 'end'),
+    pageIndex: pages.length - 1,
+    transition: { currentChapter: lastChapter, boundary: nextBoundary, edge: 1 }
+  })
+  return result
 }
 
 export function getStripAnchorOffset(
