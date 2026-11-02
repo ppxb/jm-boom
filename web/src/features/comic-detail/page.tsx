@@ -132,6 +132,7 @@ function ComicDetailView({
       <ChaptersSection
         albumId={albumId}
         comicId={comic.id}
+        totalPhotos={comic.totalPhotos}
         sortedChapters={sortedChapters}
         descending={chaptersDescending}
         onToggleSort={() => setChaptersDescending(current => !current)}

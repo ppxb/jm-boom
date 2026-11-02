@@ -26,12 +26,14 @@ import { cn } from 'cn'
 export function ChaptersSection({
   albumId,
   comicId,
+  totalPhotos,
   sortedChapters,
   descending,
   onToggleSort
 }: {
   albumId: string
   comicId: string
+  totalPhotos: number
   sortedChapters: ComicChapter[]
   descending: boolean
   onToggleSort: () => void
@@ -66,7 +68,10 @@ export function ChaptersSection({
   return (
     <section id="chapters" className="scroll-mt-8 space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold tracking-normal">章节</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-semibold tracking-normal">章节</h2>
+          {totalPhotos > 0 ? <Badge variant="secondary">共 {totalPhotos} 页</Badge> : null}
+        </div>
         <Button type="button" variant="outline" size="sm" onClick={toggleSort}>
           {displayChapterCount} 个章节
           {descending ? (

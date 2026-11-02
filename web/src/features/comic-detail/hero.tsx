@@ -64,9 +64,6 @@ export function ComicHero({
             <UserRoundIcon className="size-4" />
             <SearchLinks items={comic.authors} fallback="N/A" className="min-w-0" />
           </div>
-          {comic.totalPhotos > 0 ? (
-            <p className="text-sm text-muted-foreground">总页数：{comic.totalPhotos}</p>
-          ) : null}
         </div>
 
         <Separator />
