@@ -49,7 +49,7 @@ export function SettingsPage() {
 
       <Card>
         <CardContent className="space-y-8">
-          <VersionSection info={systemInfo.data} isLoading={systemInfo.isLoading} />
+          <VersionSection />
 
           <Separator />
 

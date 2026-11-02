@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { SystemInfo } from '@/lib/api/setting'
 import { formatBytes, formatNumber } from '@/lib/format'
-import { WEB_VERSION } from '@/lib/version'
+import { APP_VERSION } from '@/lib/version'
 import { SettingRow, SettingsSection } from './shared'
 
 export function CacheSection({
@@ -64,34 +64,14 @@ export function CacheSection({
   )
 }
 
-export function VersionSection({
-  info,
-  isLoading
-}: {
-  info: SystemInfo | undefined
-  isLoading: boolean
-}) {
-  const serverVersion = isLoading
-    ? '读取中'
-    : info?.serverVersion
-      ? `v${info.serverVersion}`
-      : '不可用'
-
+export function VersionSection() {
   return (
     <SettingsSection icon={<PackageIcon className="size-4" />} title="版本">
-      <div className="space-y-5">
-        <SettingRow title="Web" description="浏览器端版本" inline>
-          <Badge className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!" variant="outline">
-            <BadgeCheck data-icon="inline-start" />v{WEB_VERSION}
-          </Badge>
-        </SettingRow>
-        <SettingRow title="Server" description="服务端版本" inline>
-          <Badge className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!" variant="outline">
-            <BadgeCheck data-icon="inline-start" />
-            {serverVersion}
-          </Badge>
-        </SettingRow>
-      </div>
+      <SettingRow title="当前版本" description="前后端合并版本号" inline>
+        <Badge className="h-7 min-w-20 px-3 text-sm [&>svg]:size-4!" variant="outline">
+          <BadgeCheck data-icon="inline-start" />v{APP_VERSION}
+        </Badge>
+      </SettingRow>
     </SettingsSection>
   )
 }
