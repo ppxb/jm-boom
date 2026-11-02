@@ -59,9 +59,9 @@ export function ReaderChapterDrawer({
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
       <SideDrawerContent>
-        <DrawerHeader className="border-b border-border/70">
+        <DrawerHeader className="border-b border-border/70 pb-4">
           <DrawerTitle>章节目录</DrawerTitle>
-          <DrawerDescription className="line-clamp-1">{title || '当前作品'}</DrawerDescription>
+          <DrawerDescription className="sr-only">{title || '当前作品'}</DrawerDescription>
         </DrawerHeader>
 
         <nav className="min-h-0 flex-1 scroll-fade-y overflow-y-auto px-4 py-3">
