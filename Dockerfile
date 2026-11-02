@@ -31,7 +31,7 @@ RUN pnpm run build
 
 FROM debian:bookworm-slim AS runtime
 
-ARG VERSION=0.7.1
+ARG VERSION=0.7.2
 ARG REVISION=unknown
 
 LABEL org.opencontainers.image.title="JM Boom" \
