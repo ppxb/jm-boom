@@ -33,6 +33,13 @@ impl EndpointManager {
         for endpoint in FALLBACK_ENDPOINTS {
             push_unique(&mut candidates, endpoint);
         }
+        let now = Instant::now();
+        candidates.retain(|endpoint| {
+            !inner
+                .api_health
+                .get(endpoint)
+                .is_some_and(|health| health.cooling(now))
+        });
         candidates
     }
 }

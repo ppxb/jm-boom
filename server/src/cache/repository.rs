@@ -1,3 +1,4 @@
+use crate::reader::ImageDimensions;
 use anyhow::Result;
 use std::{collections::HashMap, path::Path};
 
@@ -57,6 +58,9 @@ impl CacheRepository {
     }
 
     pub(super) async fn clear(&self) -> Result<()> {
+        sqlx::query("DELETE FROM reader_page_dimensions")
+            .execute(&self.db)
+            .await?;
         sqlx::query("DELETE FROM cache_index")
             .execute(&self.db)
             .await?;
@@ -149,6 +153,71 @@ impl CacheRepository {
 
     pub(super) async fn delete(&self, key: &str) -> Result<()> {
         sqlx::query("DELETE FROM cache_index WHERE key = ?")
+            .bind(key)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    pub(super) async fn reader_dimensions(
+        &self,
+        prefix: &str,
+    ) -> Result<HashMap<String, ImageDimensions>> {
+        let rows = sqlx::query_as::<_, (String, u32, u32)>(
+            "SELECT cache_key, width, height FROM reader_page_dimensions WHERE cache_key >= ? AND cache_key < ?",
+        )
+        .bind(prefix)
+        .bind(format!("{prefix}\u{7f}"))
+        .fetch_all(&self.db).await?;
+        Ok(rows
+            .into_iter()
+            .map(|(key, width, height)| (key, ImageDimensions { width, height }))
+            .collect())
+    }
+
+    pub(super) async fn upsert_dimensions(
+        &self,
+        key: &str,
+        dimensions: ImageDimensions,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO reader_page_dimensions (cache_key, width, height) VALUES (?, ?, ?) \
+             ON CONFLICT(cache_key) DO UPDATE SET width = excluded.width, height = excluded.height \
+             WHERE width != excluded.width OR height != excluded.height",
+        )
+        .bind(key)
+        .bind(dimensions.width)
+        .bind(dimensions.height)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    pub(super) async fn upsert_dimensions_batch(
+        &self,
+        dimensions: &HashMap<String, ImageDimensions>,
+    ) -> Result<()> {
+        if dimensions.is_empty() {
+            return Ok(());
+        }
+        let mut transaction = self.db.begin().await?;
+        for (key, size) in dimensions {
+            sqlx::query(
+                "INSERT INTO reader_page_dimensions (cache_key, width, height) VALUES (?, ?, ?) \
+                 ON CONFLICT(cache_key) DO NOTHING",
+            )
+            .bind(key)
+            .bind(size.width)
+            .bind(size.height)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub(super) async fn delete_dimensions(&self, key: &str) -> Result<()> {
+        sqlx::query("DELETE FROM reader_page_dimensions WHERE cache_key = ?")
             .bind(key)
             .execute(&self.db)
             .await?;

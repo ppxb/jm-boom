@@ -1,4 +1,4 @@
-use crate::cache::READER_CACHE_VERSION;
+use crate::cache::{reader_page_cache_key, READER_CACHE_VERSION};
 use crate::http_error::HttpError;
 use crate::image_work::ImageWorkPriority;
 use crate::page_materializer::PageMaterializeError;
@@ -32,6 +32,10 @@ pub struct PageInfo {
     pub index: u32,
     pub name: String,
     pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
 }
 
 /// GET /api/reader/:chapter_id/manifest
@@ -55,16 +59,24 @@ pub async fn get_manifest(
         tracing::debug!(chapter_id, "上游章节不可用，使用离线 manifest");
     }
     let (manifest_chapter_id, images) = resolve_manifest_data(chapter, offline_manifest)?;
+    let dimensions = app
+        .reader
+        .page_dimensions(&chapter_id)
+        .await
+        .map_err(ApiError::Cache)?;
 
     let pages: Vec<_> = images
         .iter()
         .enumerate()
         .map(|(index, image)| {
             let name = page_name_from_image(image);
+            let size = dimensions.get(&reader_page_cache_key(&chapter_id, index));
             PageInfo {
                 index: index as u32,
                 name,
                 url: format!("/api/reader/{chapter_id}/pages/{index}?v={READER_CACHE_VERSION}"),
+                width: size.map(|size| size.width),
+                height: size.map(|size| size.height),
             }
         })
         .collect();

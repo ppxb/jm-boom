@@ -187,6 +187,8 @@ function ReaderDoublePageSlot({
 export function ReaderPageImage({
   src,
   label,
+  width,
+  height,
   wrapperClassName,
   placeholderClassName,
   imageClassName,
@@ -199,6 +201,8 @@ export function ReaderPageImage({
 }: {
   src: string
   label: string
+  width?: number
+  height?: number
   wrapperClassName?: string
   placeholderClassName?: string
   imageClassName?: string
@@ -212,7 +216,8 @@ export function ReaderPageImage({
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(() =>
     loadedImageSizes.has(src) ? 'loaded' : 'loading'
   )
-  const [size, setSize] = useState<ImageSize | null>(() => loadedImageSizes.get(src) ?? null)
+  const [loadedSize, setSize] = useState<ImageSize | null>(() => loadedImageSizes.get(src) ?? null)
+  const size = loadedSize ?? (width && height && width > 0 && height > 0 ? { width, height } : null)
   const [attempt, setAttempt] = useState(0)
   const requestSrc = attempt > 0 ? appendRetryParam(src, attempt) : src
 

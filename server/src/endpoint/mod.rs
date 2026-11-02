@@ -1,5 +1,6 @@
 mod discovery;
 mod failover;
+mod health;
 mod images;
 mod probe;
 mod repository;
@@ -10,10 +11,15 @@ mod tests;
 pub use failover::request_with_failover;
 
 use discovery::normalize_endpoint;
+use health::EndpointHealth;
 use repository::EndpointRepository;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::{
     sync::{Mutex, RwLock},
     time::MissedTickBehavior,
@@ -57,6 +63,9 @@ struct EndpointInner {
     current_endpoint: String,
     endpoints: Vec<EndpointProbe>,
     image_hosts: Vec<String>,
+    api_health: HashMap<String, EndpointHealth>,
+    image_health: HashMap<String, EndpointHealth>,
+    image_cursor: usize,
 }
 
 #[derive(Clone)]
@@ -99,6 +108,9 @@ impl EndpointManager {
                 current_endpoint,
                 endpoints,
                 image_hosts: Vec::new(),
+                api_health: HashMap::new(),
+                image_health: HashMap::new(),
+                image_cursor: 0,
             })),
             refresh_lock: Arc::new(Mutex::new(())),
         })
@@ -121,11 +133,22 @@ impl EndpointManager {
             interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             interval.tick().await;
 
+            let mut recovery = tokio::time::interval(Duration::from_secs(5));
+            recovery.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            recovery.tick().await;
+
             loop {
-                interval.tick().await;
+                let refresh = tokio::select! {
+                    _ = interval.tick() => true,
+                    _ = recovery.tick() => false,
+                };
                 let Some(endpoint_manager) = manager.upgrade() else {
                     break;
                 };
+                if !refresh {
+                    endpoint_manager.recover_cooling_endpoints().await;
+                    continue;
+                }
                 let state = endpoint_manager.refresh().await;
                 tracing::info!(
                     endpoint = %state.current_endpoint,
@@ -169,6 +192,11 @@ impl EndpointManager {
         probes.sort_by_key(|probe| probe.latency_ms.unwrap_or(u64::MAX));
         {
             let mut inner = self.inner.write().await;
+            for probe in &probes {
+                if probe.available {
+                    inner.api_health.remove(&probe.endpoint);
+                }
+            }
             inner.endpoints = probes;
             inner.probe_completed = true;
             select_current_endpoint(&mut inner);
@@ -190,6 +218,10 @@ impl EndpointManager {
                     .endpoints
                     .iter()
                     .any(|probe| probe.endpoint == *selected && probe.available)
+                    && !inner
+                        .api_health
+                        .get(selected)
+                        .is_some_and(|health| health.cooling(Instant::now()))
             };
 
             if !known_available {
@@ -201,6 +233,7 @@ impl EndpointManager {
                     );
                 }
                 let mut inner = self.inner.write().await;
+                inner.api_health.remove(selected);
                 if let Some(existing) = inner
                     .endpoints
                     .iter_mut()
@@ -231,6 +264,8 @@ impl EndpointManager {
 
     pub async fn report_failure(&self, endpoint: &str, error: &str) {
         let mut inner = self.inner.write().await;
+        let health = EndpointHealth::fail(inner.api_health.get(endpoint), Instant::now());
+        inner.api_health.insert(endpoint.to_string(), health);
         if let Some(probe) = inner
             .endpoints
             .iter_mut()
@@ -253,6 +288,7 @@ impl EndpointManager {
 
     pub async fn report_success(&self, endpoint: &str, latency_ms: u64) {
         let mut inner = self.inner.write().await;
+        inner.api_health.remove(endpoint);
         if let Some(probe) = inner
             .endpoints
             .iter_mut()
@@ -270,6 +306,9 @@ impl EndpointManager {
             });
         }
         inner.current_endpoint = endpoint.to_string();
+        if inner.mode == EndpointMode::Manual {
+            select_current_endpoint(&mut inner);
+        }
     }
 }
 

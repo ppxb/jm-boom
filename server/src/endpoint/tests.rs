@@ -139,6 +139,68 @@ async fn failover_retries_the_next_available_candidate() {
 }
 
 #[tokio::test]
+async fn cooling_current_and_builtin_endpoints_are_not_retried_by_new_requests() {
+    let manager = test_manager().await;
+    let failed = FALLBACK_ENDPOINTS[0];
+    manager.report_failure(failed, "timeout").await;
+    assert!(!manager
+        .request_candidates()
+        .await
+        .contains(&failed.to_string()));
+    manager.report_success(failed, 10).await;
+    assert!(manager
+        .request_candidates()
+        .await
+        .contains(&failed.to_string()));
+}
+
+#[tokio::test]
+async fn recovered_manual_endpoint_regains_priority_after_a_valid_setting_probe() {
+    use std::time::{Duration, Instant};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let host = "https://images.example";
+    let app = axum::Router::new().route(
+        "/setting",
+        axum::routing::get(|| async {
+            axum::Json(
+                serde_json::json!({"code": 200, "data": {"img_host": "https://images.example"}}),
+            )
+        }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let mut manager = test_manager().await;
+    manager.client = reqwest::Client::builder().no_proxy().build().unwrap();
+    {
+        let mut inner = manager.inner.write().await;
+        inner.mode = EndpointMode::Manual;
+        inner.selected_endpoint = Some(endpoint.clone());
+        inner.current_endpoint = "https://fallback.example".into();
+        inner.endpoints = vec![
+            unavailable(&endpoint),
+            available("https://fallback.example", 1),
+        ];
+        inner.image_hosts = vec![host.to_string()];
+        inner.api_health.insert(
+            endpoint.clone(),
+            super::health::EndpointHealth::fail(None, Instant::now() - Duration::from_secs(31)),
+        );
+    }
+    manager.recover_cooling_endpoints().await;
+    let state = manager.state().await;
+    assert_eq!(state.current_endpoint, endpoint);
+    assert_eq!(state.selected_endpoint.as_deref(), Some(endpoint.as_str()));
+    assert!(state.endpoints[0].available);
+    assert!(manager.inner.read().await.api_health.is_empty());
+    // A late response from the temporary fallback must not override the manual choice.
+    manager.report_success("https://fallback.example", 1).await;
+    assert_eq!(manager.state().await.current_endpoint, endpoint);
+    server.abort();
+}
+
+#[tokio::test]
 async fn http_responses_follow_the_expected_failover_policy() {
     let (fallback, fallback_server) = mock_endpoint(200, r#"{"code":200,"data":{"id":123}}"#).await;
     let mut jm = JmClient::new().expect("create JM client");
@@ -253,6 +315,9 @@ fn test_inner(mode: EndpointMode) -> EndpointInner {
         current_endpoint: FALLBACK_ENDPOINTS[0].to_string(),
         endpoints: Vec::new(),
         image_hosts: Vec::new(),
+        api_health: Default::default(),
+        image_health: Default::default(),
+        image_cursor: 0,
     }
 }
 

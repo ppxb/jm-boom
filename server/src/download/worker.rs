@@ -187,6 +187,10 @@ impl DownloadManager {
             self.storage
                 .store_page(&context.task_id, &job.chapter_id, job.page, &page_image)
                 .await?;
+        } else {
+            self.page_materializer
+                .remember_page_dimensions(&job.chapter_id, job.page, &page_image)
+                .await;
         }
         Ok(Some(page_image.data.len() as u64))
     }

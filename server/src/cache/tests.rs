@@ -18,6 +18,105 @@ use tokio::{fs, task::JoinSet};
 static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[tokio::test]
+async fn dimensions_survive_eviction_and_restart_without_loading_image_files() {
+    let db = test_db().await;
+    let root = test_cache_dir("persist-dimensions");
+    let cache =
+        ImageCache::new_with_cache_dir(db.clone(), CacheConfig { max_size_bytes: 1 }, root.clone())
+            .await
+            .unwrap();
+    let key = super::reader_page_cache_key("1001", 0);
+    let mut data = Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(12, 37)
+        .write_to(&mut data, image::ImageFormat::Png)
+        .unwrap();
+    cache
+        .put_reader_page(&key, PageImageFormat::Png, data.get_ref())
+        .await
+        .unwrap();
+    assert!(cache.get_reader_page(&key).await.unwrap().is_none());
+    drop(cache);
+
+    let restored =
+        ImageCache::new_with_cache_dir(db, CacheConfig { max_size_bytes: 1 }, root.clone())
+            .await
+            .unwrap();
+    assert_eq!(
+        restored.reader_dimensions("1001").await.unwrap()[&key],
+        crate::reader::ImageDimensions {
+            width: 12,
+            height: 37
+        }
+    );
+    assert!(restored.reader_dimensions("100").await.unwrap().is_empty());
+    restored.clear().await.unwrap();
+    assert!(restored.reader_dimensions("1001").await.unwrap().is_empty());
+    fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
+async fn legacy_cache_and_offline_sizes_are_visible_immediately_and_flushed_in_a_batch() {
+    let (cache, root) = test_cache("backfill-dimensions", 1_000_000).await;
+    let key = super::reader_page_cache_key("1002", 0);
+    let mut data = Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(7, 19)
+        .write_to(&mut data, image::ImageFormat::Png)
+        .unwrap();
+    cache
+        .put_with_extension(&key, "png", data.get_ref())
+        .await
+        .unwrap();
+    assert!(cache
+        .repository
+        .reader_dimensions("1002:")
+        .await
+        .unwrap()
+        .is_empty());
+    cache.get_reader_page(&key).await.unwrap().unwrap();
+    assert_eq!(
+        cache.reader_dimensions("1002").await.unwrap()[&key].height,
+        19
+    );
+    let offline_key = super::reader_page_cache_key("1002", 1);
+    cache
+        .remember_reader_dimensions(&offline_key, PageImageFormat::Png, data.get_ref())
+        .await;
+    cache.flush_accesses().await.unwrap();
+    assert_eq!(
+        cache
+            .repository
+            .reader_dimensions("1002:")
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(cache.pending_dimensions.lock().await.is_empty());
+    let replacement = crate::reader::ImageDimensions {
+        width: 12,
+        height: 27,
+    };
+    cache
+        .remember_reader_dimensions(&key, PageImageFormat::Png, data.get_ref())
+        .await;
+    cache
+        .repository
+        .upsert_dimensions(&key, replacement)
+        .await
+        .unwrap();
+    assert_eq!(
+        cache.reader_dimensions("1002").await.unwrap()[&key],
+        replacement
+    );
+    cache.flush_accesses().await.unwrap();
+    assert_eq!(
+        cache.repository.reader_dimensions("1002:").await.unwrap()[&key],
+        replacement
+    );
+    fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
 async fn tracks_replacement_size_delta_and_resets_after_clear() {
     let (cache, cache_dir) = test_cache("replace", 100).await;
 

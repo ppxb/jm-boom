@@ -51,17 +51,25 @@ export function ReaderStripWindow({
   const endPullStartYRef = useRef<number | null>(null)
   const chapterAdvanceTriggeredRef = useRef(false)
   const endPadding = hasNextChapter ? STRIP_END_PADDING_PX : 0
-  const estimatePageSize = useCallback(() => {
-    const container = containerRef.current
-    const viewportWidth = container?.clientWidth ?? getWindowWidth()
-    const viewportHeight = container?.clientHeight ?? getWindowHeight()
-    const contentWidth = Math.min(viewportWidth, STRIP_MAX_CONTENT_WIDTH_PX)
+  const estimatePageSize = useCallback(
+    (index: number) => {
+      const container = containerRef.current
+      const viewportWidth = container?.clientWidth ?? getWindowWidth()
+      const viewportHeight = container?.clientHeight ?? getWindowHeight()
+      const contentWidth = Math.min(viewportWidth, STRIP_MAX_CONTENT_WIDTH_PX)
 
-    return Math.max(
-      viewportHeight * STRIP_MIN_PAGE_VIEWPORT_RATIO,
-      contentWidth * STRIP_ESTIMATED_PAGE_RATIO
-    )
-  }, [containerRef])
+      const page = pages[index]
+      if (page?.width && page.height && page.width > 0 && page.height > 0) {
+        return (contentWidth * page.height) / page.width
+      }
+
+      return Math.max(
+        viewportHeight * STRIP_MIN_PAGE_VIEWPORT_RATIO,
+        contentWidth * STRIP_ESTIMATED_PAGE_RATIO
+      )
+    },
+    [containerRef, pages]
+  )
   const initialOffset = useCallback(() => {
     if (pages.length <= 0) {
       return 0
@@ -69,7 +77,9 @@ export function ReaderStripWindow({
 
     const targetIndex = Math.min(Math.max(currentIndex, 0), pages.length - 1)
 
-    return targetIndex * estimatePageSize()
+    let offset = 0
+    for (let index = 0; index < targetIndex; index++) offset += estimatePageSize(index)
+    return offset
   }, [currentIndex, estimatePageSize, pages.length])
   const getPageKey = useCallback((index: number) => pages[index]?.path ?? index, [pages])
   const handleVirtualizerChange = useCallback(
@@ -291,6 +301,8 @@ export function ReaderStripWindow({
               <ReaderPageImage
                 src={page.path}
                 label={`第 ${virtualPage.index + 1} 页`}
+                width={page.width}
+                height={page.height}
                 wrapperClassName="w-full"
                 placeholderClassName="min-h-[64vh]"
                 imageClassName="block h-auto w-full object-contain"

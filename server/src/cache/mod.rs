@@ -5,7 +5,7 @@ mod storage;
 #[cfg(test)]
 mod tests;
 
-use crate::reader::PageImageFormat;
+use crate::reader::{ImageDimensions, PageImageFormat};
 use anyhow::{Context, Result};
 use repository::CacheRepository;
 use serde::Serialize;
@@ -74,6 +74,7 @@ pub struct ImageCache {
     operation_lock: RwLock<()>,
     eviction_lock: Mutex<()>,
     pending_accesses: Mutex<HashMap<String, i64>>,
+    pending_dimensions: Mutex<HashMap<String, ImageDimensions>>,
 }
 
 pub struct CachedReaderPage {
@@ -108,6 +109,7 @@ impl ImageCache {
             operation_lock: RwLock::new(()),
             eviction_lock: Mutex::new(()),
             pending_accesses: Mutex::new(HashMap::new()),
+            pending_dimensions: Mutex::new(HashMap::new()),
         };
 
         let repair = cache.repair_orphans().await?;
@@ -161,6 +163,7 @@ impl ImageCache {
         for format in PageImageFormat::supported() {
             if let Some(data) = self.get_with_extension(key, format.extension()).await? {
                 if format.is_complete(&data) {
+                    self.remember_reader_dimensions(key, format, &data).await;
                     return Ok(Some(CachedReaderPage { data, format }));
                 }
                 drop(data);
@@ -184,6 +187,7 @@ impl ImageCache {
         if let Some(data) = self.storage.read(&path).await? {
             if format.is_complete(&data) {
                 self.record_access(&cache_key).await;
+                self.remember_reader_dimensions(key, format, &data).await;
                 return Ok(Some(CachedReaderPage { data, format }));
             }
             tracing::warn!(
@@ -197,6 +201,8 @@ impl ImageCache {
         let previous_size = self.repository.entry_size(&cache_key).await?.max(0);
         self.storage.remove_file(&path).await?;
         self.repository.delete(&cache_key).await?;
+        self.repository.delete_dimensions(key).await?;
+        self.pending_dimensions.lock().await.remove(key);
         self.pending_accesses.lock().await.remove(&cache_key);
         self.adjust_current_size(-previous_size);
         Ok(None)
@@ -249,7 +255,41 @@ impl ImageCache {
             format.is_complete(data),
             "拒绝缓存不完整或格式不匹配的阅读图片"
         );
-        self.put_with_extension(key, format.extension(), data).await
+        self.put_with_extension(key, format.extension(), data)
+            .await?;
+        if let Some(dimensions) = format.dimensions(data) {
+            self.repository.upsert_dimensions(key, dimensions).await?;
+            self.pending_dimensions.lock().await.remove(key);
+        }
+        Ok(())
+    }
+
+    pub async fn remember_reader_dimensions(
+        &self,
+        key: &str,
+        format: PageImageFormat,
+        data: &[u8],
+    ) {
+        if let Some(dimensions) = format.dimensions(data) {
+            self.pending_dimensions
+                .lock()
+                .await
+                .insert(key.to_string(), dimensions);
+        }
+    }
+
+    pub async fn reader_dimensions(
+        &self,
+        chapter_id: &str,
+    ) -> Result<HashMap<String, ImageDimensions>> {
+        let prefix = format!("{chapter_id}:");
+        let mut dimensions = self.repository.reader_dimensions(&prefix).await?;
+        for (key, size) in self.pending_dimensions.lock().await.iter() {
+            if key.starts_with(&prefix) {
+                dimensions.entry(key.clone()).or_insert(*size);
+            }
+        }
+        Ok(dimensions)
     }
 
     pub async fn put_cover(&self, key: &str, data: &[u8]) -> Result<()> {
@@ -308,6 +348,7 @@ impl ImageCache {
     pub async fn clear(&self) -> Result<()> {
         let _operation = self.operation_lock.write().await;
         self.pending_accesses.lock().await.clear();
+        self.pending_dimensions.lock().await.clear();
         self.storage.reset().await?;
         self.repository.clear().await?;
         self.current_size_bytes.store(0, Ordering::Relaxed);
@@ -327,6 +368,14 @@ impl ImageCache {
     }
 
     async fn flush_accesses_inner(&self) -> Result<usize> {
+        let dimensions = std::mem::take(&mut *self.pending_dimensions.lock().await);
+        if let Err(error) = self.repository.upsert_dimensions_batch(&dimensions).await {
+            let mut pending = self.pending_dimensions.lock().await;
+            for (key, size) in dimensions {
+                pending.entry(key).or_insert(size);
+            }
+            return Err(error);
+        }
         let accesses = {
             let mut pending = self.pending_accesses.lock().await;
             std::mem::take(&mut *pending)

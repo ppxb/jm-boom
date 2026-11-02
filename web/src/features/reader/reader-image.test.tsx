@@ -97,6 +97,26 @@ function expectUnknownSize(image: HTMLImageElement) {
 }
 
 describe('reader image size cache', () => {
+  test('reserves persisted dimensions before loading and prefers the actual decoded size', async () => {
+    await act(async () =>
+      root.render(
+        <ReaderPageImage
+          src={`${prefix}/persisted.webp`}
+          label="第 1 页"
+          width={600}
+          height={1800}
+          fitContainer
+          placeholderClassName="min-h-[64vh]"
+        />
+      )
+    )
+    const image = images()[0]
+    expect(image.parentElement!.style.aspectRatio).toBe('600 / 1800')
+    expect(image.parentElement!.classList.contains('min-h-[64vh]')).toBe(false)
+    expect(image.classList.contains('opacity-0')).toBe(true)
+    await load([image], 800, 1200)
+    expectSize(image)
+  })
   test('restores the exact aspect ratio on remount without waiting for another load event', async () => {
     const src = `${prefix}/page.webp`
     await render([src])

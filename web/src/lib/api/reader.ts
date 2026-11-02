@@ -4,6 +4,8 @@ export type ComicReadManifestPage = {
   index: number
   name: string
   path: string
+  width?: number
+  height?: number
 }
 
 export type ComicReadManifestResult = {
@@ -23,6 +25,8 @@ export async function getComicReadManifest({
       index: number
       name: string
       url: string
+      width?: number
+      height?: number
     }>
   }>(`/api/reader/${readId}/manifest`)
 
@@ -32,7 +36,9 @@ export async function getComicReadManifest({
     pages: result.pages.map(page => ({
       index: page.index,
       name: page.name,
-      path: resolveApiUrl(page.url)
+      path: resolveApiUrl(page.url),
+      width: page.width,
+      height: page.height
     }))
   }
 }

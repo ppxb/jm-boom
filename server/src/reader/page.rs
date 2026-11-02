@@ -9,6 +9,12 @@ const MAX_DECODE_PIXELS: u64 = 32_000_000;
 const MAX_DECODE_ALLOC_BYTES: u64 = 192 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImageDimensions {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageImageFormat {
     Gif,
     Jpeg,
@@ -62,6 +68,16 @@ impl PageImageFormat {
             ]),
             Self::WebP => webp_size_matches(data),
         }
+    }
+
+    /// Read only the image header; passthrough images must not allocate a decoded bitmap.
+    pub fn dimensions(self, data: &[u8]) -> Option<ImageDimensions> {
+        let mut reader = ImageReader::with_format(Cursor::new(data), self.image_format());
+        let mut limits = Limits::default();
+        limits.max_alloc = Some(1024 * 1024);
+        reader.limits(limits);
+        let (width, height) = reader.into_dimensions().ok()?;
+        (width > 0 && height > 0).then_some(ImageDimensions { width, height })
     }
 
     fn image_format(self) -> ImageFormat {
@@ -161,5 +177,22 @@ mod tests {
         assert!(validate_decode_dimensions(MAX_DECODE_WIDTH + 1, 1).is_err());
         assert!(validate_decode_dimensions(1, MAX_DECODE_HEIGHT + 1).is_err());
         assert!(validate_decode_dimensions(8_000, 5_000).is_err());
+    }
+
+    #[test]
+    fn reads_dimensions_for_all_passthrough_formats() {
+        for format in super::PageImageFormat::supported() {
+            let mut data = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(21, 50)
+                .write_to(&mut data, format.image_format())
+                .unwrap();
+            assert_eq!(
+                format.dimensions(data.get_ref()),
+                Some(super::ImageDimensions {
+                    width: 21,
+                    height: 50
+                })
+            );
+        }
     }
 }

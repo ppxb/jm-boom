@@ -34,6 +34,13 @@ impl ReaderService {
         self.comics.get_chapter(chapter_id.to_string()).await
     }
 
+    pub async fn page_dimensions(
+        &self,
+        chapter_id: &str,
+    ) -> anyhow::Result<std::collections::HashMap<String, crate::reader::ImageDimensions>> {
+        self.page_materializer.page_dimensions(chapter_id).await
+    }
+
     pub async fn cached_page(
         &self,
         chapter_id: &str,
@@ -54,7 +61,13 @@ impl ReaderService {
         chapter_id: &str,
         page: usize,
     ) -> Result<Option<CachedReaderPage>, DownloadError> {
-        self.downloads.offline_page(chapter_id, page).await
+        let image = self.downloads.offline_page(chapter_id, page).await?;
+        if let Some(image) = &image {
+            self.page_materializer
+                .remember_page_dimensions(chapter_id, page, image)
+                .await;
+        }
+        Ok(image)
     }
 
     pub async fn materialize(

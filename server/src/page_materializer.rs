@@ -89,6 +89,28 @@ impl PageMaterializer {
             .await
     }
 
+    pub async fn page_dimensions(
+        &self,
+        chapter_id: &str,
+    ) -> anyhow::Result<std::collections::HashMap<String, crate::reader::ImageDimensions>> {
+        self.cache.reader_dimensions(chapter_id).await
+    }
+
+    pub async fn remember_page_dimensions(
+        &self,
+        chapter_id: &str,
+        page: usize,
+        image: &CachedReaderPage,
+    ) {
+        self.cache
+            .remember_reader_dimensions(
+                &reader_page_cache_key(chapter_id, page),
+                image.format,
+                &image.data,
+            )
+            .await;
+    }
+
     pub async fn materialize(
         &self,
         request: PageMaterializeRequest<'_>,
