@@ -222,7 +222,7 @@ describe('download mutation cache synchronization', () => {
     await render()
     const oldList = await beginListRequest()
     await act(async () => comicDownload.start())
-    const enqueued = { tasks: [task('new', 'queued')] }
+    const enqueued = { taskId: 'new', tasks: [task('new', 'queued')] }
     await respond(writeRequest('/api/downloads'), enqueued)
     await respond(oldList, emptyList)
     expect(cachedTasks()).toEqual(enqueued)
@@ -284,7 +284,7 @@ describe('download mutation cache synchronization', () => {
   test('marks an inactive download list stale after enqueue so entering downloads refreshes it', async () => {
     await render(false)
     await act(async () => comicDownload.start())
-    const enqueued = { tasks: [task('new', 'queued')] }
+    const enqueued = { taskId: 'new', tasks: [task('new', 'queued')] }
     await respond(writeRequest('/api/downloads'), enqueued)
     expect(cachedTasks()).toEqual(enqueued)
     expect(queryClient.getQueryState(tasksKey)?.isInvalidated).toBe(true)

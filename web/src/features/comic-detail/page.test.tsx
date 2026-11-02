@@ -299,7 +299,7 @@ describe('comic detail state', () => {
       comic: { ...comic, totalPhotos: 128 }
     })
     await render()
-    expect(document.querySelector('#chapters [data-slot="badge"]')?.textContent).toBe('共128页')
+    expect(document.querySelector('#chapters [data-slot="badge"]')?.textContent).toBe('共 128 页')
   })
 
   test('allows adding a favorite after a confirmed unfavorited response', async () => {

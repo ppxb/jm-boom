@@ -62,7 +62,7 @@ where
     let value = serde_json::Value::deserialize(deserializer)?;
     Ok(value
         .as_u64()
-        .map(|value| value as u32)
+        .and_then(|value| u32::try_from(value).ok())
         .or_else(|| value.as_str()?.parse().ok())
         .or_else(|| value.as_bool().map(u32::from))
         .unwrap_or_default())
@@ -80,4 +80,33 @@ fn scalar_string(value: serde_json::Value) -> Option<String> {
 
 fn string_from_value(value: serde_json::Value) -> String {
     scalar_string(value).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Deserialize)]
+    struct Count {
+        #[serde(deserialize_with = "u32_from_any")]
+        value: u32,
+    }
+
+    #[test]
+    fn accepts_supported_scalar_counts_without_wrapping_large_numbers() {
+        for (input, expected) in [
+            (serde_json::json!(128), 128),
+            (serde_json::json!("128"), 128),
+            (serde_json::json!(true), 1),
+            (serde_json::json!(u32::MAX), u32::MAX),
+            (serde_json::json!(u64::from(u32::MAX) + 1), 0),
+            (serde_json::json!(u64::MAX), 0),
+            (serde_json::json!("4294967296"), 0),
+            (serde_json::json!(-1), 0),
+        ] {
+            let count: Count =
+                serde_json::from_value(serde_json::json!({ "value": input })).unwrap();
+            assert_eq!(count.value, expected);
+        }
+    }
 }

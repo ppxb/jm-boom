@@ -131,7 +131,13 @@ impl DownloadStorage {
         }
     }
 
-    fn page_path(&self, task_id: &str, chapter_id: &str, page: usize, extension: &str) -> PathBuf {
+    pub(super) fn page_path(
+        &self,
+        task_id: &str,
+        chapter_id: &str,
+        page: usize,
+        extension: &str,
+    ) -> PathBuf {
         self.root
             .join(task_id)
             .join(chapter_id)

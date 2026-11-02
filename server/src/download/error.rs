@@ -12,6 +12,8 @@ pub enum DownloadError {
     InvalidRequest(String),
     #[error("Download task not found")]
     NotFound,
+    #[error("正在导出其他任务，请稍后重试")]
+    ExportBusy,
     #[error("Cannot {operation} a download task in {status} state")]
     InvalidState {
         operation: &'static str,
@@ -30,6 +32,7 @@ impl IntoResponse for DownloadError {
             Self::InvalidRequest(_) => StatusCode::BAD_REQUEST,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::InvalidState { .. } => StatusCode::CONFLICT,
+            Self::ExportBusy => StatusCode::CONFLICT,
             Self::Upstream(_) => StatusCode::BAD_GATEWAY,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };

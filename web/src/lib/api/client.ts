@@ -26,7 +26,13 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+export type DownloadFile = { blob: Blob; filename: string | undefined }
+
+async function request<T>(
+  path: string,
+  options?: RequestInit,
+  responseType: 'json' | 'file' = 'json'
+): Promise<T> {
   const url = resolveApiUrl(path)
 
   try {
@@ -41,6 +47,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     if (!response.ok) {
       const error = await readErrorResponse(response)
       throw new ApiError(error.message, response.status, error.data, error.retryable)
+    }
+
+    if (responseType === 'file') {
+      return { blob: await response.blob(), filename: downloadFilename(response.headers) } as T
     }
 
     // 如果是图片响应，返回 blob
@@ -69,6 +79,19 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       true
     )
   }
+}
+
+function downloadFilename(headers: Headers) {
+  const disposition = headers.get('content-disposition') ?? ''
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.trim())
+    } catch {
+      /* Fall back to an ASCII filename. */
+    }
+  }
+  return /filename="([^"]+)"/i.exec(disposition)?.[1]
 }
 
 async function readErrorResponse(response: Response) {
@@ -118,6 +141,8 @@ function isAbortError(error: unknown) {
 }
 
 export const apiClient = {
+  getFile: (path: string, options?: RequestInit) => request<DownloadFile>(path, options, 'file'),
+
   get: <T>(path: string, params?: Record<string, unknown>, options?: RequestInit) => {
     const query = params
       ? '?' +

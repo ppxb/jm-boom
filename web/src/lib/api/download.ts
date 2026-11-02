@@ -9,6 +9,7 @@ export type DownloadChapterRequest = {
 export type EnqueueDownloadRequest = {
   albumId: string
   comicTitle: string
+  comicAuthor: string
   chapters: DownloadChapterRequest[]
 }
 
@@ -20,10 +21,23 @@ export type DownloadTaskStatus =
   | 'failed'
   | 'cancelled'
 
+export type DownloadExportFormat = 'pdf' | 'cbz'
+
+export function exportDownloadTask(
+  taskId: string,
+  format: DownloadExportFormat,
+  signal?: AbortSignal
+) {
+  return apiClient.getFile(`/api/downloads/${encodeURIComponent(taskId)}/export?format=${format}`, {
+    signal
+  })
+}
+
 export type DownloadTask = {
   taskId: string
   albumId: string
   comicTitle: string
+  comicAuthor?: string
   chapters: DownloadChapterRequest[]
   status: DownloadTaskStatus
   currentChapterTitle: string
@@ -42,13 +56,15 @@ export type DownloadTaskListResult = {
   tasks: DownloadTask[]
 }
 
+export type EnqueueDownloadResult = DownloadTaskListResult & { taskId: string }
+
 export type DownloadedChapterListResult = {
   chapterIds: string[]
 }
 
 export async function enqueueComicDownload(
   request: EnqueueDownloadRequest
-): Promise<DownloadTaskListResult> {
+): Promise<EnqueueDownloadResult> {
   return apiClient.post('/api/downloads', request)
 }
 

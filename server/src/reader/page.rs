@@ -125,7 +125,10 @@ pub async fn prepare_page_image(
     })
 }
 
-fn decode_with_limits(data: Vec<u8>, format: PageImageFormat) -> Result<image::DynamicImage> {
+pub(crate) fn decode_with_limits(
+    data: Vec<u8>,
+    format: PageImageFormat,
+) -> Result<image::DynamicImage> {
     let image_format = format.image_format();
     let dimensions = ImageReader::with_format(Cursor::new(data.as_slice()), image_format)
         .into_dimensions()

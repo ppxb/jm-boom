@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useSettingsStore } from '@/stores/settings-store'
 import { hasAccessGateGrant, loadAccessGateConfig } from '@/lib/access-gate'
+import { DownloadNotifications } from '@/features/downloads/download-notifications'
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -41,6 +42,7 @@ function RootLayout() {
   return (
     <>
       <Outlet />
+      {pathname !== '/login' ? <DownloadNotifications /> : null}
       {pathname !== '/login' ? <NsfwStartupDialog /> : null}
     </>
   )

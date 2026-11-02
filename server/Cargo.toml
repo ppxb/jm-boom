@@ -29,6 +29,13 @@ md5 = "0.7"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 webp = "0.3"
 
+# 下载导出
+zip = { version = "9.2", default-features = false }
+pdf-writer = "0.15"
+flate2 = "1"
+tempfile = "3"
+tokio-util = { version = "0.7", features = ["io"] }
+
 # 日志
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

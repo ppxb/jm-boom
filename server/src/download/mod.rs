@@ -1,4 +1,5 @@
 mod error;
+mod export;
 mod manager;
 mod model;
 mod repository;
@@ -8,6 +9,7 @@ mod storage;
 mod worker;
 
 pub use error::{DownloadError, DownloadResult};
+pub use export::{DownloadExport, ExportFormat};
 pub(crate) use manager::DownloadManager;
 pub use model::{DownloadTaskList, DownloadedChapterList, EnqueueDownload};
 

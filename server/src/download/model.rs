@@ -13,6 +13,8 @@ pub struct DownloadChapter {
 pub struct EnqueueDownload {
     pub album_id: String,
     pub comic_title: String,
+    #[serde(default)]
+    pub comic_author: String,
     pub chapters: Vec<DownloadChapter>,
 }
 
@@ -47,6 +49,8 @@ pub struct DownloadTask {
     pub task_id: String,
     pub album_id: String,
     pub comic_title: String,
+    #[serde(default)]
+    pub comic_author: String,
     pub chapters: Vec<DownloadChapter>,
     pub status: DownloadStatus,
     pub current_chapter_title: String,

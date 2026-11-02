@@ -58,6 +58,7 @@ pub fn routes() -> Router<AppState> {
         .route("/downloads", get(downloads::list))
         .route("/downloads", post(downloads::enqueue))
         .route("/downloads/chapters", get(downloads::downloaded_chapters))
+        .route("/downloads/:id/export", get(downloads::export))
         .route("/downloads/:id/pause", post(downloads::pause))
         .route("/downloads/:id/resume", post(downloads::resume))
         .route("/downloads/:id/cancel", post(downloads::cancel))

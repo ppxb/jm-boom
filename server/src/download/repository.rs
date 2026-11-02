@@ -86,6 +86,22 @@ impl DownloadRepository {
             .transpose()
     }
 
+    pub async fn export_manifests(
+        &self,
+        task_id: &str,
+    ) -> anyhow::Result<Vec<OfflineChapterManifest>> {
+        let payloads = sqlx::query_scalar::<_, String>(
+            "SELECT payload FROM download_manifests WHERE task_id = ? AND completed = 1",
+        )
+        .bind(task_id)
+        .fetch_all(&self.db)
+        .await?;
+        payloads
+            .into_iter()
+            .map(|payload| serde_json::from_str(&payload).map_err(Into::into))
+            .collect()
+    }
+
     pub async fn downloaded_chapters(&self) -> anyhow::Result<Vec<String>> {
         Ok(sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT chapter_id FROM download_manifests \
@@ -315,6 +331,7 @@ mod tests {
             task_id: task_id.into(),
             album_id: "album-1".into(),
             comic_title: "测试漫画".into(),
+            comic_author: "测试作者".into(),
             chapters: Vec::new(),
             status: DownloadStatus::Running,
             current_chapter_title: String::new(),

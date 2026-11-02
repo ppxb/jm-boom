@@ -53,10 +53,7 @@ export function DownloadsPage() {
         />
       </PageHeader>
 
-      <Tabs
-        value={filter}
-        onValueChange={value => setFilter(value as DownloadFilter)}
-      >
+      <Tabs value={filter} onValueChange={value => setFilter(value as DownloadFilter)}>
         <TabsList>
           {DOWNLOAD_FILTERS.map(item => (
             <TabsTrigger key={item.value} value={item.value}>

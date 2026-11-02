@@ -2,8 +2,8 @@ use crate::{
     cache::CachedReaderPage,
     domain::reader::ChapterManifest,
     download::{
-        DownloadError, DownloadManager, DownloadResult, DownloadTaskList, DownloadedChapterList,
-        EnqueueDownload,
+        DownloadError, DownloadExport, DownloadManager, DownloadResult, DownloadTaskList,
+        DownloadedChapterList, EnqueueDownload, ExportFormat,
     },
     endpoint::EndpointManager,
     jm::JmClient,
@@ -33,12 +33,23 @@ impl DownloadService {
         self.manager.resume_pending().await;
     }
 
-    pub async fn enqueue(&self, input: EnqueueDownload) -> DownloadResult<DownloadTaskList> {
+    pub async fn enqueue(
+        &self,
+        input: EnqueueDownload,
+    ) -> DownloadResult<(String, DownloadTaskList)> {
         self.manager.enqueue(input).await
     }
 
     pub async fn list(&self) -> DownloadTaskList {
         self.manager.list().await
+    }
+
+    pub async fn export(
+        &self,
+        task_id: &str,
+        format: ExportFormat,
+    ) -> DownloadResult<DownloadExport> {
+        self.manager.export(task_id, format).await
     }
 
     pub async fn downloaded_chapters(&self) -> DownloadResult<DownloadedChapterList> {

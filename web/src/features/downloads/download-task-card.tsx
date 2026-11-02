@@ -13,6 +13,7 @@ import { ComicCard } from '@/components/comic'
 import { Button } from '@/components/ui/button'
 import type { DownloadTask, DownloadTaskStatus } from '@/lib/api/download'
 import { formatBytes, formatDuration } from '@/lib/format'
+import { DownloadExportMenu } from './download-export-menu'
 
 export function DownloadTaskCard({
   task,
@@ -44,60 +45,68 @@ export function DownloadTaskCard({
   const canOpen = task.status === 'completed' && firstChapter !== undefined
 
   return (
-    <ComicCard
-      comic={{
-        id: task.albumId,
-        title: task.comicTitle,
-        image: `/api/covers/${encodeURIComponent(task.albumId)}`
-      }}
-      ratio="square"
-      showIdBadge
-      progress={task.status === 'completed' ? undefined : progress}
-      selectable={selectable}
-      selected={selected}
-      onSelect={(_, checked) => onSelect(task.taskId, checked)}
-      onOpen={
-        canOpen && !selectable
-          ? () => {
-              void navigate({
-                to: '/reader/$comicId',
-                params: { comicId: firstChapter.chapterId },
-                search: { albumId: task.albumId, page: 1 }
-              })
-            }
-          : undefined
-      }
-      coverOverlay={
-        !selectable ? (
-          <DownloadCoverOverlay
-            task={task}
-            progressPercent={progressPercent}
-            isCancelling={isCancelling}
-            isPausing={isPausing}
-            isResuming={isResuming}
-            onCancel={onCancel}
-            onPause={onPause}
-            onResume={onResume}
-          />
-        ) : undefined
-      }
-      metadata={
-        <>
-          <p className="line-clamp-1 text-xs text-muted-foreground">{formatChapterSummary(task)}</p>
-          {task.status !== 'completed' ? (
-            <p
-              className={
-                task.error
-                  ? 'line-clamp-1 text-xs text-destructive'
-                  : 'text-xs text-muted-foreground'
+    <div className="relative h-full min-w-0">
+      <ComicCard
+        className="h-full"
+        comic={{
+          id: task.albumId,
+          title: task.comicTitle,
+          image: `/api/covers/${encodeURIComponent(task.albumId)}`
+        }}
+        ratio="square"
+        showIdBadge
+        progress={task.status === 'completed' ? undefined : progress}
+        selectable={selectable}
+        selected={selected}
+        onSelect={(_, checked) => onSelect(task.taskId, checked)}
+        onOpen={
+          canOpen && !selectable
+            ? () => {
+                void navigate({
+                  to: '/reader/$comicId',
+                  params: { comicId: firstChapter.chapterId },
+                  search: { albumId: task.albumId, page: 1 }
+                })
               }
-            >
-              {task.error || formatTaskMeta(task, progressPercent)}
+            : undefined
+        }
+        coverOverlay={
+          !selectable ? (
+            <DownloadCoverOverlay
+              task={task}
+              progressPercent={progressPercent}
+              isCancelling={isCancelling}
+              isPausing={isPausing}
+              isResuming={isResuming}
+              onCancel={onCancel}
+              onPause={onPause}
+              onResume={onResume}
+            />
+          ) : undefined
+        }
+        metadata={
+          <>
+            <p className="line-clamp-1 text-xs text-muted-foreground">
+              {task.comicAuthor?.trim() || 'N/A'}
             </p>
-          ) : null}
-        </>
-      }
-    />
+            <p className="line-clamp-1 text-xs text-muted-foreground">
+              {formatChapterSummary(task)}
+            </p>
+            {task.status !== 'completed' ? (
+              <p
+                className={
+                  task.error
+                    ? 'line-clamp-1 text-xs text-destructive'
+                    : 'text-xs text-muted-foreground'
+                }
+              >
+                {task.error || formatTaskMeta(task, progressPercent)}
+              </p>
+            ) : null}
+          </>
+        }
+      />
+    </div>
   )
 }
 
@@ -128,8 +137,16 @@ function DownloadCoverOverlay({
 
   return (
     <>
-      <div className="absolute top-2 right-2 z-40">
-        <StatusBadge status={task.status} progressPercent={progressPercent} />
+      <div
+        className="absolute top-2 right-2 z-40"
+        onClick={event => event.stopPropagation()}
+        onKeyDown={event => event.stopPropagation()}
+      >
+        {task.status === 'completed' && task.chapters.length > 0 ? (
+          <DownloadExportMenu task={task} />
+        ) : (
+          <StatusBadge status={task.status} progressPercent={progressPercent} />
+        )}
       </div>
       {hasActions ? (
         <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/75 via-transparent to-black/25 opacity-100 transition-opacity sm:bg-black/50 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
@@ -213,9 +230,7 @@ function statusLabel(status: DownloadTaskStatus) {
 }
 
 function formatChapterSummary(task: DownloadTask) {
-  return task.chapters.length > 1
-    ? `${task.chapters.length} 个章节`
-    : task.chapters[0]?.title || '正文'
+  return `${task.chapters.length} 个章节`
 }
 
 function formatTaskMeta(task: DownloadTask, progressPercent: number) {

@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
   cancelDownloadTask,
-  listDownloadTasks,
   pauseDownloadTask,
   removeDownloadTask,
   resumeDownloadTask,
@@ -12,6 +11,7 @@ import {
   type DownloadTaskListResult
 } from '@/lib/api/download'
 import { queryKeys } from '@/lib/query-keys'
+import { useDownloadTasksQuery } from './use-download-tasks-query'
 
 export const DOWNLOAD_FILTERS = [
   { value: 'all', label: '全部' },
@@ -26,18 +26,10 @@ const EMPTY_DOWNLOAD_TASKS: DownloadTask[] = []
 
 export function useDownloadTasks() {
   const [filter, setFilter] = useState<DownloadFilter>('all')
-  const tasks = useQuery({
-    queryKey: queryKeys.downloadTasks(),
-    queryFn: ({ signal }) => listDownloadTasks(signal),
-    refetchInterval: query =>
-      hasActiveTasks(query.state.data?.tasks ?? EMPTY_DOWNLOAD_TASKS) ? 1000 : false,
-    staleTime: 10_000,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true
-  })
-  const cancelTask = useTaskMutation(cancelDownloadTask, '已取消下载任务')
-  const pauseTask = useTaskMutation(pauseDownloadTask, '已暂停下载任务')
-  const resumeTask = useTaskMutation(resumeDownloadTask, '已加入下载队列')
+  const tasks = useDownloadTasksQuery()
+  const cancelTask = useTaskMutation(cancelDownloadTask)
+  const pauseTask = useTaskMutation(pauseDownloadTask)
+  const resumeTask = useTaskMutation(resumeDownloadTask)
   const removeTasks = useTaskMutation(removeDownloadTasks, '已删除选中的下载任务和文件')
   const taskList = tasks.data?.tasks ?? EMPTY_DOWNLOAD_TASKS
   const filterCounts = useMemo(() => getFilterCounts(taskList), [taskList])
@@ -62,7 +54,7 @@ export function useDownloadTasks() {
 
 function useTaskMutation<TVariables>(
   mutationFn: (variables: TVariables) => Promise<DownloadTaskListResult>,
-  message: string
+  message?: string
 ) {
   const queryClient = useQueryClient()
 
@@ -70,7 +62,7 @@ function useTaskMutation<TVariables>(
     mutationFn,
     onMutate: () => queryClient.cancelQueries({ queryKey: queryKeys.downloadTasks(), exact: true }),
     onSuccess: () => {
-      toast.success(message)
+      if (message) toast.success(message)
     },
     onError: showError,
     onSettled: async result => {
@@ -104,10 +96,6 @@ function matchesFilter(task: DownloadTask, filter: DownloadFilter) {
   if (filter === 'paused') return task.status === 'paused'
   if (filter === 'completed') return task.status === 'completed'
   return true
-}
-
-function hasActiveTasks(tasks: DownloadTask[]) {
-  return tasks.some(task => task.status === 'running' || task.status === 'queued')
 }
 
 function showError(error: unknown) {

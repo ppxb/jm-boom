@@ -48,7 +48,8 @@ pub struct DownloadManager {
     pub(super) task_semaphore: Arc<Semaphore>,
     pub(super) progress_persisted_at: Arc<Mutex<HashMap<String, Instant>>>,
     // Workers must not take this lock: removal holds it while waiting for their exit.
-    task_operations: KeyedLock,
+    pub(super) task_operations: KeyedLock,
+    pub(super) export_semaphore: Arc<Semaphore>,
 }
 
 impl DownloadManager {
@@ -95,6 +96,7 @@ impl DownloadManager {
             task_semaphore: Arc::new(Semaphore::new(DOWNLOAD_TASK_CONCURRENCY)),
             progress_persisted_at: Arc::new(Mutex::new(HashMap::new())),
             task_operations: KeyedLock::new(),
+            export_semaphore: Arc::new(Semaphore::new(1)),
         })
     }
 
@@ -112,7 +114,10 @@ impl DownloadManager {
         }
     }
 
-    pub async fn enqueue(&self, input: EnqueueDownload) -> DownloadResult<DownloadTaskList> {
+    pub async fn enqueue(
+        &self,
+        input: EnqueueDownload,
+    ) -> DownloadResult<(String, DownloadTaskList)> {
         validate_enqueue(&input)?;
         let now = chrono::Utc::now().timestamp_millis();
         let task_id = format!("{}-{}", now, TASK_SEQUENCE.fetch_add(1, Ordering::Relaxed));
@@ -120,6 +125,7 @@ impl DownloadManager {
             task_id: task_id.clone(),
             album_id: input.album_id,
             comic_title: input.comic_title,
+            comic_author: input.comic_author,
             chapters: input.chapters,
             status: DownloadStatus::Queued,
             current_chapter_title: String::new(),
@@ -137,8 +143,8 @@ impl DownloadManager {
 
         self.repository.persist_task(&task).await?;
         self.tasks.write().await.insert(task_id.clone(), task);
-        self.spawn(task_id);
-        Ok(self.list().await)
+        self.spawn(task_id.clone());
+        Ok((task_id, self.list().await))
     }
 
     pub async fn list(&self) -> DownloadTaskList {
@@ -1064,6 +1070,174 @@ mod tests {
         (manager, root)
     }
 
+    #[tokio::test]
+    async fn exports_only_the_selected_tasks_pages_in_saved_chapter_order() {
+        use crate::download::ExportFormat;
+        use std::io::Read;
+        let (manager, root) = test_manager("export-order", test_db().await).await;
+        let mut task = test_task("export-first", DownloadStatus::Completed, 1);
+        task.chapters = vec![
+            DownloadChapter {
+                chapter_id: "1002".into(),
+                title: "第二章".into(),
+                order: 2,
+            },
+            DownloadChapter {
+                chapter_id: "1001".into(),
+                title: "第一章".into(),
+                order: 1,
+            },
+        ];
+        let mut expected = Vec::new();
+        for chapter in &task.chapters {
+            manager
+                .repository
+                .persist_manifest(&task, chapter, &["001.png".into()])
+                .await
+                .unwrap();
+            manager
+                .repository
+                .complete_manifest(&task.task_id, &chapter.chapter_id)
+                .await
+                .unwrap();
+            let mut bytes = Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(chapter.order, 3)
+                .write_to(&mut bytes, image::ImageFormat::Png)
+                .unwrap();
+            let image = CachedReaderPage {
+                data: bytes.into_inner(),
+                format: PageImageFormat::Png,
+            };
+            manager
+                .storage
+                .store_page(&task.task_id, &chapter.chapter_id, 0, &image)
+                .await
+                .unwrap();
+            expected.push(image.data);
+        }
+        insert_task(&manager, task.clone()).await;
+        // A newer task for the same chapter must never replace this task's export source.
+        let other = test_task("export-other", DownloadStatus::Completed, 1);
+        manager
+            .repository
+            .persist_manifest(&other, &other.chapters[0], &["other.png".into()])
+            .await
+            .unwrap();
+        manager
+            .repository
+            .complete_manifest(&other.task_id, "1001")
+            .await
+            .unwrap();
+        manager
+            .storage
+            .store_page(
+                &other.task_id,
+                "1001",
+                0,
+                &CachedReaderPage {
+                    data: png_data(),
+                    format: PageImageFormat::Png,
+                },
+            )
+            .await
+            .unwrap();
+
+        let exported = manager
+            .export(&task.task_id, ExportFormat::Cbz)
+            .await
+            .unwrap();
+        let mut archive = zip::ZipArchive::new(exported.file).unwrap();
+        assert_eq!(archive.len(), 3);
+        for (name, expected) in [
+            ("00000001.png", &expected[1]),
+            ("00000002.png", &expected[0]),
+        ] {
+            let mut data = Vec::new();
+            archive
+                .by_name(name)
+                .unwrap()
+                .read_to_end(&mut data)
+                .unwrap();
+            assert_eq!(&data, expected);
+        }
+        let mut metadata = String::new();
+        archive
+            .by_name("ComicInfo.xml")
+            .unwrap()
+            .read_to_string(&mut metadata)
+            .unwrap();
+        assert!(metadata.contains("<Writer>测试作者</Writer>"));
+        assert!(metadata.contains("<PageCount>2</PageCount>"));
+        drop(exported.permit);
+
+        let mut exported = manager
+            .export(&task.task_id, ExportFormat::Pdf)
+            .await
+            .unwrap();
+        let mut data = Vec::new();
+        exported.file.read_to_end(&mut data).unwrap();
+        assert!(data.starts_with(b"%PDF-1.7"));
+        let text = String::from_utf8_lossy(&data);
+        assert_eq!(text.matches("/Type /Page\n").count(), 2);
+        assert_eq!(text.matches("/Subtype /Image").count(), 2);
+        assert!(text.contains("/MediaBox [0 0 0.75 2.25]"));
+        assert!(text.contains("/MediaBox [0 0 1.5 2.25]"));
+
+        // The independent export can still be read after deleting its source task.
+        manager.remove(&task.task_id).await.unwrap();
+        assert!(archive.by_name("00000001.png").is_ok());
+        cleanup(manager, root).await;
+    }
+
+    #[tokio::test]
+    async fn export_rejects_incomplete_missing_and_busy_tasks_and_reads_legacy_authors() {
+        use crate::download::ExportFormat;
+        let (manager, root) = test_manager("export-errors", test_db().await).await;
+        let mut task = test_task("export-task", DownloadStatus::Paused, 1);
+        let mut legacy = serde_json::to_value(&task).unwrap();
+        legacy.as_object_mut().unwrap().remove("comicAuthor");
+        assert!(serde_json::from_value::<DownloadTask>(legacy)
+            .unwrap()
+            .comic_author
+            .is_empty());
+        insert_task(&manager, task.clone()).await;
+        assert!(matches!(
+            manager.export(&task.task_id, ExportFormat::Cbz).await,
+            Err(DownloadError::InvalidState { .. })
+        ));
+        assert!(matches!(
+            manager.export("missing", ExportFormat::Cbz).await,
+            Err(DownloadError::NotFound)
+        ));
+        task.status = DownloadStatus::Completed;
+        insert_task(&manager, task.clone()).await;
+        assert!(matches!(
+            manager.export(&task.task_id, ExportFormat::Cbz).await,
+            Err(DownloadError::InvalidRequest(_))
+        ));
+        manager
+            .repository
+            .persist_manifest(&task, &task.chapters[0], &["001.png".into()])
+            .await
+            .unwrap();
+        manager
+            .repository
+            .complete_manifest(&task.task_id, "1001")
+            .await
+            .unwrap();
+        assert!(manager
+            .export(&task.task_id, ExportFormat::Cbz)
+            .await
+            .is_err());
+        let permit = manager.export_semaphore.acquire().await.unwrap();
+        assert!(matches!(
+            manager.export(&task.task_id, ExportFormat::Pdf).await,
+            Err(DownloadError::ExportBusy)
+        ));
+        drop(permit);
+        cleanup(manager, root).await;
+    }
+
     async fn test_db() -> SqlitePool {
         let db = SqlitePoolOptions::new()
             .max_connections(1)
@@ -1154,6 +1328,7 @@ mod tests {
             task_id: task_id.into(),
             album_id: "album-1".into(),
             comic_title: "测试漫画".into(),
+            comic_author: "测试作者".into(),
             chapters: vec![DownloadChapter {
                 chapter_id: "1001".into(),
                 title: "第一章".into(),
