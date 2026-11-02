@@ -13,7 +13,7 @@ import type { ComicReadManifestResult } from '@/lib/api/reader'
 import { queryKeys } from '@/lib/query-keys'
 import { Route } from '@/routes/reader/$comicId'
 import * as readerPage from './reader-page'
-import type { ReaderSearch } from './types'
+import type { ReaderChapterItem, ReaderSearch } from './types'
 import { useReaderSession } from './use-reader-session'
 
 const ReaderRoute = Route.options.component!
@@ -29,12 +29,16 @@ let search: ReaderSearch
 let pageStep: number
 let session: Session
 let requests: Request[]
+let chapters: ReaderChapterItem[]
+let onLocationChange: ((readId: string, index: number) => void) | undefined
 
 function SessionProbe(props: Parameters<typeof readerPage.ReaderPage>[0]) {
   const current = useReaderSession({
     comicId: props.comicId,
     initialIndex: props.search.page ? props.search.page - 1 : 0,
-    pageStep
+    pageStep,
+    chapters,
+    onLocationChange
   })
   useLayoutEffect(() => {
     session = current
@@ -77,9 +81,11 @@ beforeEach(() => {
   search = { albumId: '100' }
   pageStep = 1
   requests = []
+  chapters = []
+  onLocationChange = undefined
   vi.spyOn(Route, 'useParams').mockReturnValue({ comicId })
   vi.spyOn(Route, 'useSearch').mockReturnValue(search)
-  // Keep the real route key and session hook, avoiding unrelated reader UI and side effects.
+  // Keep the real route and session hook, avoiding unrelated reader UI and side effects.
   vi.spyOn(readerPage, 'ReaderPage').mockImplementation(SessionProbe)
   const mockFetch = (input: Parameters<typeof fetch>[0]) =>
     new Promise<Response>(resolve => requests.push({ path: String(input), resolve }))
@@ -190,7 +196,7 @@ describe('reader route session lifecycle', () => {
     expect(requests).toHaveLength(0)
   })
 
-  test('changing chapters remounts the session at page one with a new navigation sequence', async () => {
+  test('changing chapters keeps the session mounted and issues a navigation command', async () => {
     seed('101', 10)
     seed('201', 8)
     await render()
@@ -198,16 +204,16 @@ describe('reader route session lifecycle', () => {
     await act(async () => session.goToPage(7))
     expect(session.navigationCommand.id).toBe(1)
     await render('201', { albumId: '100', page: 1 })
-    expect(document.querySelector('output')).not.toBe(element)
+    expect(document.querySelector('output')).toBe(element)
     expect(session.currentIndex).toBe(0)
     expect(session.pageSrc).toBe('/api/reader/201/pages/0')
-    expect(session.navigationCommand).toEqual({ id: 0, targetIndex: 0 })
+    expect(session.navigationCommand).toEqual({ id: 2, targetIndex: 0, targetKey: '201:0' })
     await render('101', { albumId: '100', page: 1 })
     expect(session.currentIndex).toBe(0)
     expect(requests).toHaveLength(0)
   })
 
-  test('changing the route starting page remounts, while equivalent page-one searches do not', async () => {
+  test('route page jumps keep the same mounted reader and equivalent searches do not reset progress', async () => {
     seed('101', 20)
     await render()
     const first = document.querySelector('output')
@@ -216,9 +222,9 @@ describe('reader route session lifecycle', () => {
     expect(document.querySelector('output')).toBe(first)
     expect(session.currentIndex).toBe(5)
     await render('101', { albumId: '100', page: 8 })
-    expect(document.querySelector('output')).not.toBe(first)
+    expect(document.querySelector('output')).toBe(first)
     expect(session.currentIndex).toBe(7)
-    expect(session.navigationCommand).toEqual({ id: 0, targetIndex: 7 })
+    expect(session.navigationCommand).toEqual({ id: 2, targetIndex: 7, targetKey: '101:7' })
   })
 
   test('a late response from the previous chapter cannot reset the new session', async () => {
@@ -232,7 +238,7 @@ describe('reader route session lifecycle', () => {
     expect(session.currentIndex).toBe(2)
     expect(session.pageCount).toBe(4)
     expect(session.pageSrc).toBe('/api/reader/201/pages/2')
-    expect(session.navigationCommand).toEqual({ id: 1, targetIndex: 2 })
+    expect(session.navigationCommand).toEqual({ id: 2, targetIndex: 2, targetKey: '201:2' })
   })
 
   test('scroll observations do not issue commands, while repeated jumps still do', async () => {
@@ -244,9 +250,9 @@ describe('reader route session lifecycle', () => {
     expect(session.currentIndex).toBe(5)
     expect(session.navigationCommand).toBe(initialCommand)
     await act(async () => session.goToPage(5))
-    expect(session.navigationCommand).toEqual({ id: 1, targetIndex: 5 })
+    expect(session.navigationCommand).toEqual({ id: 1, targetIndex: 5, targetKey: '101:5' })
     await act(async () => session.goToPage(5))
-    expect(session.navigationCommand).toEqual({ id: 2, targetIndex: 5 })
+    expect(session.navigationCommand).toEqual({ id: 2, targetIndex: 5, targetKey: '101:5' })
     await act(async () => session.goToPage(999))
     expect(session.currentIndex).toBe(19)
     await act(async () => session.goToPage(-1))
@@ -276,5 +282,191 @@ describe('reader route session lifecycle', () => {
     expect(session.manifestError).toBeNull()
     expect(session.currentIndex).toBe(3)
     expect(session.pageSrc).toBe('/api/reader/101/pages/3')
+  })
+
+  test('turns across chapters in both directions without remounting or mixing local page numbers', async () => {
+    chapters = ['101', '201', '301'].map(id => ({ id, title: id }))
+    seed('101', 3)
+    seed('201', 5)
+    seed('301', 4)
+    await render()
+    const element = document.querySelector('output')
+    await act(async () => session.goToPage(2))
+    await act(async () => session.goToNextPage())
+    expect(document.querySelector('output')).toBe(element)
+    expect(session.activeReadId).toBe('201')
+    expect(session.currentIndex).toBe(0)
+    expect(session.pageCount).toBe(5)
+    expect(session.pageSrc).toBe('/api/reader/201/pages/0')
+    await act(async () => session.goToPreviousPage())
+    expect(session.activeReadId).toBe('101')
+    expect(session.currentIndex).toBe(2)
+    expect(session.pageCount).toBe(3)
+  })
+
+  test('appending a prefetched chapter does not change progress until its page is observed', async () => {
+    chapters = ['101', '201'].map(id => ({ id, title: id }))
+    seed('101', 3)
+    await render()
+    await act(async () => requests[0].resolve(unavailable()))
+    expect(session.nextBoundary.error).not.toBeNull()
+    expect(session.activeReadId).toBe('101')
+    await act(async () => session.loadBoundary(1))
+    await respond(requests[1], '201', 4)
+    expect(session.pages).toHaveLength(7)
+    expect(session.currentIndex).toBe(0)
+    expect(session.activeReadId).toBe('101')
+    const command = session.navigationCommand
+    await act(async () => session.observePage(4))
+    expect(session.activeReadId).toBe('201')
+    expect(session.currentIndex).toBe(1)
+    expect(session.pageCount).toBe(4)
+    expect(session.navigationCommand).toBe(command)
+  })
+
+  test('retains viewport chapters while dropping chapters far behind continuous reading', async () => {
+    chapters = ['101', '201', '301', '401', '501'].map(id => ({ id, title: id }))
+    chapters.forEach(chapter => seed(chapter.id, 3))
+    await render()
+    await act(async () => {
+      session.observeVisibleRange(2, 4)
+      session.observePage(3)
+    })
+    expect(session.pages.some(page => page.chapterId === '101')).toBe(true)
+    let index = session.pages.findIndex(page => page.chapterId === '301')
+    await act(async () => {
+      session.observeVisibleRange(index, index + 2)
+      session.observePage(index)
+    })
+    expect([...new Set(session.pages.map(page => page.chapterId))]).toEqual(['201', '301', '401'])
+    expect(session.currentIndex).toBe(0)
+    index = session.pages.findIndex(page => page.chapterId === '401')
+    await act(async () => {
+      session.observeVisibleRange(index, index + 2)
+      session.observePage(index)
+    })
+    expect([...new Set(session.pages.map(page => page.chapterId))]).toEqual(['301', '401', '501'])
+  })
+
+  test('failed explicit jumps keep the old page and can be retried', async () => {
+    seed('101', 6)
+    await render('101', { albumId: '100', page: 4 })
+    await act(async () => {
+      void session.goToChapter('201', -1)
+    })
+    expect(session.pageSrc).toBe('/api/reader/101/pages/3')
+    await act(async () => requests[0].resolve(unavailable()))
+    expect(session.jump?.error).not.toBeNull()
+    expect(session.activeReadId).toBe('101')
+    await act(async () => session.retry())
+    await respond(requests[1], '201', 8)
+    expect(session.jump).toBeNull()
+    expect(session.activeReadId).toBe('201')
+    expect(session.currentIndex).toBe(7)
+  })
+
+  test('a late directory jump cannot replace a newer successful jump', async () => {
+    seed('101', 6)
+    await render()
+    await act(async () => {
+      void session.goToChapter('201')
+    })
+    await act(async () => {
+      void session.goToChapter('301', 2)
+    })
+    await respond(requests[1], '301', 8)
+    await respond(requests[0], '201', 8)
+    expect(session.activeReadId).toBe('301')
+    expect(session.currentIndex).toBe(2)
+    expect(session.jump).toBeNull()
+  })
+
+  test('URL acknowledgements do not navigate again, while external page requests do', async () => {
+    seed('101', 6)
+    const publish = vi.fn()
+    onLocationChange = publish
+    await render()
+    await act(async () => session.goToPage(3))
+    expect(publish).toHaveBeenLastCalledWith('101', 3)
+    const command = session.navigationCommand
+    await render('101', { albumId: '100', page: 4 })
+    expect(session.navigationCommand).toBe(command)
+    await render('101', { albumId: '100', page: 2 })
+    expect(session.currentIndex).toBe(1)
+    expect(session.navigationCommand.id).toBe(command.id + 1)
+  })
+
+  test('double page mode leaves an odd final page alone and never pairs across chapters', async () => {
+    chapters = ['101', '201'].map(id => ({ id, title: id }))
+    seed('101', 3)
+    seed('201', 4)
+    await render('101', { albumId: '100', page: 3 }, 2)
+    expect(session.currentIndex).toBe(2)
+    expect(session.visiblePageCount).toBe(1)
+    await act(async () => session.goToNextPage())
+    expect(session.activeReadId).toBe('201')
+    expect(session.currentIndex).toBe(0)
+    expect(session.visiblePageCount).toBe(2)
+    await act(async () => session.goToPreviousPage())
+    expect(session.activeReadId).toBe('101')
+    expect(session.currentIndex).toBe(2)
+  })
+
+  test('coalesced URL acknowledgements do not swallow later external requests', async () => {
+    seed('101', 8)
+    onLocationChange = vi.fn()
+    await render()
+    await act(async () => session.goToPage(3))
+    await act(async () => session.goToPage(4))
+    await render('101', { albumId: '100', page: 5 })
+    await render('101', { albumId: '100', page: 4 })
+    expect(session.currentIndex).toBe(3)
+  })
+
+  test('ordered acknowledgements preserve newer positions without issuing scroll commands', async () => {
+    seed('101', 8)
+    onLocationChange = vi.fn()
+    await render()
+    await act(async () => session.goToPage(3))
+    await act(async () => session.goToPage(4))
+    const firstCommand = session.navigationCommand
+    await render('101', { albumId: '100', page: 4 })
+    expect(session.currentIndex).toBe(4)
+    expect(session.navigationCommand).toBe(firstCommand)
+    await act(async () => session.goToPage(5))
+    const newestCommand = session.navigationCommand
+    await render('101', { albumId: '100', page: 5 })
+    expect(session.currentIndex).toBe(5)
+    expect(session.navigationCommand).toBe(newestCommand)
+    await render('101', { albumId: '100', page: 6 })
+    expect(session.navigationCommand).toBe(newestCommand)
+  })
+
+  test('different books get isolated sessions before their manifests arrive', async () => {
+    seed('101', 8)
+    await render('101', { albumId: '100', page: 5 })
+    const previous = document.querySelector('output')
+    await render('201', { albumId: '200', page: 2 })
+    expect(document.querySelector('output')).not.toBe(previous)
+    expect(session.activeReadId).toBe('201')
+    expect(session.pageCount).toBe(0)
+    expect(session.pageSrc).toBe('')
+    await act(async () => requests[0].resolve(unavailable()))
+    expect(session.manifestError).not.toBeNull()
+    expect(session.activeReadId).toBe('201')
+  })
+
+  test('a mounted image failure revokes readiness independently of cached dimensions', async () => {
+    seed('101', 3)
+    await render()
+    const page = session.pages[0]
+    await act(async () => {
+      session.onPageLoaded(page, { naturalWidth: 800, naturalHeight: 1200 } as HTMLImageElement)
+      session.onPageReady(page.key, true)
+    })
+    expect(session.isPageReady).toBe(true)
+    await act(async () => session.onPageReady(page.key, false))
+    expect(session.isPageReady).toBe(false)
+    expect(session.pages[0].width).toBe(800)
   })
 })

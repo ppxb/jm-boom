@@ -1,5 +1,5 @@
 import { RotateCwIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { cn } from 'cn'
 import type { ReaderPageDirection } from '@/stores/settings-store'
@@ -28,12 +28,18 @@ export function ReaderImageWindow({
   currentIndex,
   pageCount,
   doublePageMode = false,
+  visiblePageCount = 1,
+  onPageLoaded,
+  onPageReady,
   pageDirection
 }: {
   pages: ReaderWindowPage[]
   currentIndex: number
   pageCount: number
   doublePageMode?: boolean
+  visiblePageCount?: number
+  onPageLoaded?: (page: ReaderWindowPage, image: HTMLImageElement) => void
+  onPageReady?: (key: string, ready: boolean) => void
   pageDirection: ReaderPageDirection
 }) {
   if (doublePageMode) {
@@ -42,6 +48,9 @@ export function ReaderImageWindow({
         pages={pages}
         currentIndex={currentIndex}
         pageCount={pageCount}
+        visiblePageCount={visiblePageCount}
+        onPageLoaded={onPageLoaded}
+        onPageReady={onPageReady}
         pageDirection={pageDirection}
       />
     )
@@ -56,7 +65,7 @@ export function ReaderImageWindow({
 
         return (
           <div
-            key={page.index}
+            key={page.key}
             className={cn(
               'absolute inset-0 flex h-dvh w-screen items-center justify-center transition-transform duration-200 ease-out will-change-transform',
               isCurrent ? 'z-10' : 'z-0'
@@ -65,7 +74,11 @@ export function ReaderImageWindow({
           >
             <ReaderPageImage
               src={page.src}
-              label={`第 ${page.index + 1} 页`}
+              label={`第 ${page.localIndex + 1} 页`}
+              width={page.width}
+              height={page.height}
+              onLoad={image => onPageLoaded?.(page, image)}
+              onReadyChange={ready => onPageReady?.(page.key, ready)}
               wrapperClassName="h-dvh w-screen"
               imageClassName="h-dvh w-screen object-contain"
               loading="eager"
@@ -82,18 +95,24 @@ function ReaderDoublePageWindow({
   pages,
   currentIndex,
   pageCount,
+  visiblePageCount,
+  onPageLoaded,
+  onPageReady,
   pageDirection
 }: {
   pages: ReaderWindowPage[]
   currentIndex: number
   pageCount: number
+  visiblePageCount: number
+  onPageLoaded?: (page: ReaderWindowPage, image: HTMLImageElement) => void
+  onPageReady?: (key: string, ready: boolean) => void
   pageDirection: ReaderPageDirection
 }) {
   const pageByIndex = new Map(pages.map(page => [page.index, page]))
   const currentPage = pageByIndex.get(currentIndex) ?? null
   const nextIndex = currentIndex + 1
   const nextPage = nextIndex < pageCount ? (pageByIndex.get(nextIndex) ?? null) : null
-  const showNextSlot = nextIndex < pageCount
+  const showNextSlot = visiblePageCount > 1 && nextIndex < pageCount
   const leftPage = pageDirection === 'rtl' && showNextSlot ? nextPage : currentPage
   const rightPage = pageDirection === 'rtl' ? currentPage : nextPage
   const leftIndex = pageDirection === 'rtl' && showNextSlot ? nextIndex : currentIndex
@@ -111,27 +130,37 @@ function ReaderDoublePageWindow({
         <ReaderDoublePageSlot
           page={leftPage}
           isCurrent={leftIndex === currentIndex}
-          label={`第 ${leftIndex + 1} 页`}
+          label={`第 ${(leftPage?.localIndex ?? 0) + 1} 页`}
+          onPageLoaded={onPageLoaded}
+          onPageReady={onPageReady}
         />
         {showNextSlot ? (
           <ReaderDoublePageSlot
             page={rightPage}
             isCurrent={rightIndex === currentIndex}
-            label={`第 ${rightIndex + 1} 页`}
+            label={`第 ${(rightPage?.localIndex ?? 0) + 1} 页`}
+            onPageLoaded={onPageLoaded}
+            onPageReady={onPageReady}
           />
         ) : null}
       </div>
-      <ReaderHiddenImagePreloads pages={pages} visibleIndexes={visibleIndexes} />
+      <ReaderHiddenImagePreloads
+        pages={pages}
+        visibleIndexes={visibleIndexes}
+        onPageLoaded={onPageLoaded}
+      />
     </div>
   )
 }
 
 function ReaderHiddenImagePreloads({
   pages,
-  visibleIndexes
+  visibleIndexes,
+  onPageLoaded
 }: {
   pages: ReaderWindowPage[]
   visibleIndexes: number[]
+  onPageLoaded?: (page: ReaderWindowPage, image: HTMLImageElement) => void
 }) {
   const visibleIndexSet = new Set(visibleIndexes)
   const preloadPages = pages.filter(page => !visibleIndexSet.has(page.index))
@@ -144,13 +173,14 @@ function ReaderHiddenImagePreloads({
     <div className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0">
       {preloadPages.map(page => (
         <img
-          key={page.index}
+          key={page.key}
           src={page.src}
           alt=""
           className="h-px w-px"
           draggable={false}
           loading="eager"
           decoding="async"
+          onLoad={event => onPageLoaded?.(page, event.currentTarget)}
         />
       ))}
     </div>
@@ -160,18 +190,27 @@ function ReaderHiddenImagePreloads({
 function ReaderDoublePageSlot({
   page,
   isCurrent,
-  label
+  label,
+  onPageLoaded,
+  onPageReady
 }: {
   page: ReaderWindowPage | null
   isCurrent: boolean
   label: string
+  onPageLoaded?: (page: ReaderWindowPage, image: HTMLImageElement) => void
+  onPageReady?: (key: string, ready: boolean) => void
 }) {
   return (
     <div className="flex h-full min-w-0 flex-1 items-center justify-center bg-neutral-950">
       {page ? (
         <ReaderPageImage
+          key={page.key}
           src={page.src}
           label={label}
+          width={page.width}
+          height={page.height}
+          onLoad={image => onPageLoaded?.(page, image)}
+          onReadyChange={ready => onPageReady?.(page.key, ready)}
           wrapperClassName="h-full w-full"
           imageClassName="max-h-full max-w-full object-contain"
           loading="eager"
@@ -197,7 +236,8 @@ export function ReaderPageImage({
   decoding = 'async',
   showLoadingIndicator = true,
   loadingIndicatorClassName,
-  onLoad
+  onLoad,
+  onReadyChange
 }: {
   src: string
   label: string
@@ -212,7 +252,14 @@ export function ReaderPageImage({
   showLoadingIndicator?: boolean
   loadingIndicatorClassName?: string
   onLoad?: (image: HTMLImageElement) => void
+  onReadyChange?: (ready: boolean) => void
 }) {
+  const imageRef = useRef<HTMLImageElement | null>(null)
+  const readyCallback = useRef(onReadyChange)
+  useLayoutEffect(() => {
+    readyCallback.current = onReadyChange
+  }, [onReadyChange])
+  const [ready, setReady] = useState(false)
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(() =>
     loadedImageSizes.has(src) ? 'loaded' : 'loading'
   )
@@ -227,7 +274,13 @@ export function ReaderPageImage({
     setStatus(cached ? 'loaded' : 'loading')
     setSize(cached ?? null)
     setAttempt(0)
+    setReady(Boolean(imageRef.current?.complete && imageRef.current.naturalWidth > 0))
+    return () => readyCallback.current?.(false)
   }, [src])
+
+  useEffect(() => {
+    onReadyChange?.(ready)
+  }, [onReadyChange, ready])
 
   return (
     <div
@@ -254,6 +307,7 @@ export function ReaderPageImage({
             onClick={event => {
               event.stopPropagation()
               setStatus('loading')
+              setReady(false)
               setAttempt(value => value + 1)
             }}
           >
@@ -264,6 +318,7 @@ export function ReaderPageImage({
       ) : null}
 
       <img
+        ref={imageRef}
         src={requestSrc}
         alt=""
         className={cn(
@@ -286,9 +341,13 @@ export function ReaderPageImage({
             setSize(nextSize)
           }
           setStatus('loaded')
+          setReady(true)
           onLoad?.(image)
         }}
-        onError={() => setStatus('error')}
+        onError={() => {
+          setStatus('error')
+          setReady(false)
+        }}
       />
     </div>
   )

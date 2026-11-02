@@ -84,7 +84,8 @@ export function ReaderBottomBar({
   doublePageMode,
   compactMenuEnabled,
   visible,
-  onPageChange
+  onPageChange,
+  onChapterChange
 }: {
   title: string
   currentReadId: string
@@ -98,6 +99,7 @@ export function ReaderBottomBar({
   compactMenuEnabled: boolean
   visible: boolean
   onPageChange: (index: number) => void
+  onChapterChange: (readId: string, index?: number) => void
 }) {
   if (pageCount <= 0) {
     return null
@@ -141,6 +143,7 @@ export function ReaderBottomBar({
         currentIndex={currentIndex}
         pageCount={pageCount}
         doublePageMode={doublePageMode}
+        onChapterChange={onChapterChange}
       />
     </footer>
   )

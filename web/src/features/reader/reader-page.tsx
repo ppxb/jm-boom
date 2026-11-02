@@ -1,12 +1,11 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 
 import { ReaderBottomBar, ReaderTopBar } from './reader-bars'
 import { ReaderHotZones } from './reader-hot-zones'
 import { ReaderImageWindow } from './reader-image'
 import { ReaderError, ReaderLoading } from './reader-state'
 import { ReaderStripWindow } from './reader-strip-window'
-import { toReaderChapterSearch } from './reader-chapter-link'
 import type { ReaderSearch } from './types'
 import { useReaderAutoRead } from './use-reader-auto-read'
 import { useReaderChapterInfo } from './use-reader-chapter-info'
@@ -27,46 +26,77 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
   const readerPageDirection = useSettingsStore(state => state.readerPageDirection)
   const readerDoublePageMode = useSettingsStore(state => state.readerDoublePageMode)
   const readerCompactMenuEnabled = useSettingsStore(state => state.readerCompactMenuEnabled)
+  const showTransitions = useSettingsStore(state => state.readerChapterTransitions)
   const isStripMode = readerReadMode === 'strip'
   const isDoublePageMode = !isStripMode && readerDoublePageMode
-  const pageStep = isDoublePageMode ? 2 : 1
   const stripScrollRef = useRef<HTMLDivElement | null>(null)
-  const nextChapterNavigationRef = useRef<string | null>(null)
-  const [stripPrefetchRequested, setStripPrefetchRequested] = useState(false)
   const {
     isVisible: isToolbarVisible,
     toggle: toggleToolbar,
     hide: hideToolbar
   } = useReaderToolbarVisibility(false)
-  const initialPageIndex = search.page ? search.page - 1 : 0
-  const { albumId, title, author, coverUrl, chapter, chapters, previousChapter, nextChapter } =
-    useReaderChapterInfo({
-      comicId,
-      search
-    })
   const {
+    albumId,
+    title,
+    author,
+    coverUrl,
+    chapters,
+    chapter: fallbackChapter
+  } = useReaderChapterInfo({ comicId, search })
+  const readingChapters = useMemo(() => [...chapters].reverse(), [chapters])
+  const syncLocation = useCallback(
+    (readId: string, index: number) =>
+      navigate({
+        to: '/reader/$comicId',
+        params: { comicId: readId },
+        search: { albumId, page: index + 1 },
+        replace: true,
+        resetScroll: false
+      }),
+    [albumId, navigate]
+  )
+  const session = useReaderSession({
+    comicId,
+    initialIndex: search.page ? search.page - 1 : 0,
+    pageStep: isDoublePageMode ? 2 : 1,
+    chapters: readingChapters,
+    onLocationChange: syncLocation
+  })
+  const {
+    activeReadId,
     currentIndex,
+    globalIndex,
     pageCount,
     pages,
     pageSrc,
     pageWindow,
+    visiblePageCount,
     navigationCommand,
     isManifestLoading,
     manifestError,
     isFetching,
-    isLastPage,
+    previousChapter,
+    nextChapter,
     goToPreviousPage,
     goToNextPage,
     goToPage,
+    goToChapter,
     observePage,
+    observeVisibleRange,
+    onPageLoaded,
+    onPageReady,
+    loadBoundary,
     retry
-  } = useReaderSession({ comicId, initialIndex: initialPageIndex, pageStep })
-  const availableNextChapter = nextChapter
-
-  useReaderPreload({ readId: comicId, pages, currentIndex })
-
+  } = session
+  const chapterTitles = useMemo(
+    () => new Map(chapters.map(item => [item.id, item.title])),
+    [chapters]
+  )
+  const chapter = chapterTitles.get(activeReadId) || fallbackChapter
+  useReaderPreload({ readId: albumId, pages, currentIndex: globalIndex })
+  useNextChapterPrefetch({ currentIndex, pageCount, nextChapter })
   useReaderHistorySync({
-    comicId,
+    comicId: activeReadId,
     albumId,
     title,
     author,
@@ -76,122 +106,69 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
     pageCount
   })
 
-  useLayoutEffect(() => {
-    hideToolbar()
-  }, [comicId, hideToolbar])
-
-  useEffect(() => {
-    nextChapterNavigationRef.current = null
-  }, [comicId])
-
   const goBack = useCallback(() => {
     if (window.history.length > 1) {
       router.history.back()
-      return
-    }
-
-    if (albumId.length > 0) {
+    } else if (albumId) {
       void navigate({ to: '/comic/$comicId', params: { comicId: albumId }, replace: true })
-      return
+    } else {
+      void navigate({ to: '/' })
     }
-
-    void navigate({ to: '/' })
   }, [albumId, navigate, router])
-  const goToNextChapter = useCallback(() => {
-    if (!availableNextChapter) {
-      return false
-    }
-
-    if (nextChapterNavigationRef.current === availableNextChapter.id) {
-      return true
-    }
-
-    nextChapterNavigationRef.current = availableNextChapter.id
-    void navigate({
-      to: '/reader/$comicId',
-      params: { comicId: availableNextChapter.id },
-      replace: true,
-      resetScroll: true,
-      search: toReaderChapterSearch({
-        albumId
-      })
-    }).catch(() => {
-      nextChapterNavigationRef.current = null
-    })
-
-    return true
-  }, [albumId, availableNextChapter, navigate])
-  const goToNextPageOrChapter = useCallback(() => {
-    if (isLastPage && goToNextChapter()) {
-      return
-    }
-
-    goToNextPage()
-  }, [goToNextChapter, goToNextPage, isLastPage])
-  const goToPreviousPageFromContent = useCallback(() => {
+  const previousFromContent = useCallback(() => {
     hideToolbar()
     goToPreviousPage()
   }, [goToPreviousPage, hideToolbar])
-  const goToNextPageOrChapterFromContent = useCallback(() => {
+  const nextFromContent = useCallback(() => {
     hideToolbar()
-    goToNextPageOrChapter()
-  }, [goToNextPageOrChapter, hideToolbar])
-  const requestStripPrefetch = useCallback(() => {
-    setStripPrefetchRequested(true)
-  }, [])
+    goToNextPage()
+  }, [goToNextPage, hideToolbar])
+  const openChapter = useCallback(
+    (readId: string, index = 0) => {
+      hideToolbar()
+      void goToChapter(readId, index)
+    },
+    [goToChapter, hideToolbar]
+  )
+  const loadNextBoundary = useCallback(() => {
+    if (!session.nextBoundary.loading && !session.nextBoundary.error) loadBoundary(1)
+  }, [loadBoundary, session.nextBoundary.error, session.nextBoundary.loading])
   const scrollStripBy = useCallback(
-    (direction: 1 | -1) => {
+    (direction: -1 | 1) => {
       const container = stripScrollRef.current
-
-      if (!container) {
-        return
-      }
-
-      const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
-      const isAtEnd = maxScrollTop - container.scrollTop <= READER.STRIP_SCROLL_THRESHOLD
-
-      if (direction > 0 && isAtEnd && goToNextChapter()) {
-        return
-      }
-
+      if (!container) return
+      const atEdge =
+        direction > 0
+          ? container.scrollHeight - container.clientHeight - container.scrollTop <=
+            READER.STRIP_SCROLL_THRESHOLD
+          : container.scrollTop <= READER.STRIP_SCROLL_THRESHOLD
+      if (atEdge) loadBoundary(direction)
       container.scrollBy({
         top: direction * Math.max(220, container.clientHeight * 0.35),
         behavior: 'smooth'
       })
     },
-    [goToNextChapter]
+    [loadBoundary]
   )
 
   useReaderKeyboardNavigation({
     readMode: readerReadMode,
     pageDirection: readerPageDirection,
     onPrevious: goToPreviousPage,
-    onNext: goToNextPageOrChapter,
+    onNext: goToNextPage,
     onScrollPrevious: () => scrollStripBy(-1),
     onScrollNext: () => scrollStripBy(1),
     onBack: goBack,
     onNavigate: hideToolbar
   })
-  useNextChapterPrefetch({
-    currentIndex,
-    pageCount,
-    nextChapter: availableNextChapter,
-    stripPrefetchRequested
-  })
-
-  const showReaderTopBar = isToolbarVisible
-  const showReaderBottomBar = isToolbarVisible && pageCount > 0
-  const canAutoReadAdvance =
-    !isManifestLoading && !manifestError && (isStripMode || pageSrc.length > 0)
   useReaderAutoRead({
     readMode: readerReadMode,
-    pageStep,
     pageCount,
-    currentIndex,
-    controlsVisible: showReaderBottomBar,
-    canAdvance: canAutoReadAdvance,
+    controlsVisible: isToolbarVisible,
+    canAdvance: session.isPageReady && !session.jump && !manifestError,
     stripScrollRef,
-    onNextPage: goToNextPage
+    onNextPage: goToNextPage,
+    onStripEnd: loadNextBoundary
   })
 
   return (
@@ -201,23 +178,21 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
       onTouchMove={hideToolbar}
     >
       <ReaderTopBar
-        fallbackReadId={comicId}
+        fallbackReadId={activeReadId}
         title={title}
         chapter={chapter}
         isFetching={isFetching}
-        visible={showReaderTopBar}
+        visible={isToolbarVisible}
         onBack={goBack}
         onRetry={retry}
       />
-
       {isStripMode ? null : (
         <ReaderHotZones
           pageDirection={readerPageDirection}
-          onPrevious={goToPreviousPageFromContent}
-          onNext={goToNextPageOrChapterFromContent}
+          onPrevious={previousFromContent}
+          onNext={nextFromContent}
         />
       )}
-
       <section
         className={cn(
           'flex min-w-0 flex-1 items-center justify-center',
@@ -232,43 +207,67 @@ export function ReaderPage({ comicId, search }: { comicId: string; search: Reade
           <ReaderError title="暂无图片" description="当前章节没有可展示的图片" />
         ) : isStripMode ? (
           <ReaderStripWindow
-            key={comicId}
             containerRef={stripScrollRef}
             pages={pages}
-            currentIndex={currentIndex}
+            currentIndex={globalIndex}
             navigationCommand={navigationCommand}
             onCurrentIndexChange={observePage}
+            onVisibleRangeChange={observeVisibleRange}
             onUserScroll={hideToolbar}
-            onScrollPastEnd={goToNextChapter}
-            onPrefetchThreshold={requestStripPrefetch}
-            hasNextChapter={availableNextChapter != null}
+            previousBoundary={session.previousBoundary}
+            nextBoundary={session.nextBoundary}
+            onLoadBoundary={loadBoundary}
+            onPageLoaded={onPageLoaded}
+            onPageReady={onPageReady}
+            chapterTitles={chapterTitles}
+            showTransitions={showTransitions}
           />
-        ) : pageSrc.length > 0 ? (
+        ) : pageSrc ? (
           <ReaderImageWindow
             pages={pageWindow}
-            currentIndex={currentIndex}
-            pageCount={pageCount}
+            currentIndex={globalIndex}
+            pageCount={pages.length}
             doublePageMode={isDoublePageMode}
+            visiblePageCount={visiblePageCount}
             pageDirection={readerPageDirection}
+            onPageLoaded={onPageLoaded}
+            onPageReady={onPageReady}
           />
-        ) : (
-          <ReaderError title="暂无图片" description="当前页没有可展示的图片" />
-        )}
+        ) : null}
       </section>
-
+      {!isStripMode && showTransitions && currentIndex === 0 && chapter ? (
+        <div className="pointer-events-none absolute inset-x-0 top-20 z-20 text-center text-xs text-neutral-400">
+          {chapter}
+        </div>
+      ) : null}
+      {session.jump ? (
+        <div
+          role={session.jump.error ? 'alert' : 'status'}
+          className="absolute bottom-28 left-1/2 z-30 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-lg bg-neutral-900/95 px-4 py-3 text-sm"
+          onClick={event => event.stopPropagation()}
+        >
+          <span>{session.jump.loading ? '正在加载章节…' : session.jump.error}</span>
+          {session.jump.error ? (
+            <button type="button" className="shrink-0 underline" onClick={retry}>
+              重试
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <ReaderBottomBar
         title={title}
-        currentReadId={comicId}
+        currentReadId={activeReadId}
         previousChapter={previousChapter}
-        nextChapter={availableNextChapter}
+        nextChapter={nextChapter}
         chapters={chapters}
         albumId={albumId}
         currentIndex={currentIndex}
         pageCount={pageCount}
-        doublePageMode={isDoublePageMode}
+        doublePageMode={visiblePageCount === 2}
         compactMenuEnabled={readerCompactMenuEnabled}
-        visible={showReaderBottomBar}
+        visible={isToolbarVisible && pageCount > 0}
         onPageChange={goToPage}
+        onChapterChange={openChapter}
       />
     </main>
   )

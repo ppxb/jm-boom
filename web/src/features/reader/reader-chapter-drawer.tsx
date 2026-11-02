@@ -17,7 +17,8 @@ export function ReaderChapterDrawer({
   title,
   albumId,
   currentReadId,
-  chapters
+  chapters,
+  onChapterChange
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -25,6 +26,7 @@ export function ReaderChapterDrawer({
   albumId: string
   currentReadId: string
   chapters: ReaderChapterItem[]
+  onChapterChange: (readId: string) => void
 }) {
   const listRef = useRef<HTMLDivElement | null>(null)
   const displayChapters = useMemo(() => [...chapters].reverse(), [chapters])
@@ -76,7 +78,7 @@ export function ReaderChapterDrawer({
                   to="/reader/$comicId"
                   params={{ comicId: chapter.id }}
                   replace
-                  resetScroll
+                  resetScroll={false}
                   search={toReaderChapterSearch({ albumId })}
                   aria-current={isCurrent ? 'page' : undefined}
                   data-current-chapter={isCurrent ? 'true' : undefined}
@@ -84,7 +86,19 @@ export function ReaderChapterDrawer({
                     'flex items-center justify-between gap-3 rounded-md border border-border bg-card/60 px-3 py-2.5 text-sm text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
                     isCurrent && 'border-primary/40 bg-accent text-accent-foreground'
                   )}
-                  onClick={() => onOpenChange(false)}
+                  onClick={event => {
+                    if (
+                      event.button !== 0 ||
+                      event.ctrlKey ||
+                      event.metaKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    )
+                      return
+                    event.preventDefault()
+                    onOpenChange(false)
+                    onChapterChange(chapter.id)
+                  }}
                 >
                   <span className="min-w-0 truncate font-medium">{chapter.title}</span>
                   <span className="flex shrink-0 items-center gap-1.5">

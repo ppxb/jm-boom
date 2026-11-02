@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { Window } from 'happy-dom'
 import { act, StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -97,6 +97,23 @@ function expectUnknownSize(image: HTMLImageElement) {
 }
 
 describe('reader image size cache', () => {
+  test('reports an image error and unmount even when dimensions were already cached', async () => {
+    const src = `${prefix}/ready.webp`
+    await render([src])
+    await load()
+    await render([])
+    const ready = vi.fn()
+    await act(async () =>
+      root.render(<ReaderPageImage src={src} label="第 1 页" onReadyChange={ready} />)
+    )
+    await load()
+    expect(ready).toHaveBeenLastCalledWith(true)
+    await act(async () => images()[0].dispatchEvent(new Event('error')))
+    expect(ready).toHaveBeenLastCalledWith(false)
+    await load()
+    await render([])
+    expect(ready).toHaveBeenLastCalledWith(false)
+  })
   test('reserves persisted dimensions before loading and prefers the actual decoded size', async () => {
     await act(async () =>
       root.render(

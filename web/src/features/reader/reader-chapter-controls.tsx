@@ -21,7 +21,8 @@ export function ReaderChapterControls({
   nextChapter,
   currentIndex,
   pageCount,
-  doublePageMode
+  doublePageMode,
+  onChapterChange
 }: {
   title: string
   albumId: string
@@ -32,6 +33,7 @@ export function ReaderChapterControls({
   currentIndex: number
   pageCount: number
   doublePageMode: boolean
+  onChapterChange: (readId: string, index?: number) => void
 }) {
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false)
   const hasChapterList = chapters.length > 1
@@ -49,6 +51,7 @@ export function ReaderChapterControls({
             label="上一章"
             albumId={albumId}
             chapter={hasChapterNavigation ? previousChapter : null}
+            onChapterChange={id => onChapterChange(id, -1)}
           >
             <ChevronLeftIcon className="size-5 sm:size-4" />
             <span className="hidden sm:inline">上一章</span>
@@ -58,6 +61,7 @@ export function ReaderChapterControls({
             label="下一章"
             albumId={albumId}
             chapter={hasChapterNavigation ? nextChapter : null}
+            onChapterChange={onChapterChange}
           >
             <span className="hidden sm:inline">下一章</span>
             <ChevronRightIcon className="size-5 sm:size-4" />
@@ -91,6 +95,7 @@ export function ReaderChapterControls({
         albumId={albumId}
         currentReadId={currentReadId}
         chapters={chapters}
+        onChapterChange={onChapterChange}
       />
     </>
   )
@@ -100,12 +105,14 @@ function ChapterNavButton({
   label,
   albumId,
   chapter,
-  children
+  children,
+  onChapterChange
 }: {
   label: string
   albumId: string
   chapter: ReaderChapterItem | null
   children: ReactNode
+  onChapterChange: (readId: string) => void
 }) {
   if (!chapter) {
     return (
@@ -133,7 +140,19 @@ function ChapterNavButton({
           params={{ comicId: chapter.id }}
           aria-label={label}
           replace
-          resetScroll
+          resetScroll={false}
+          onClick={event => {
+            if (
+              event.button !== 0 ||
+              event.ctrlKey ||
+              event.metaKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return
+            event.preventDefault()
+            onChapterChange(chapter.id)
+          }}
           search={toReaderChapterSearch({ albumId })}
         >
           {children}

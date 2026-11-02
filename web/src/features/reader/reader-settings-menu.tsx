@@ -31,6 +31,8 @@ export function ReaderSettingsMenu() {
   const readerReadMode = useSettingsStore(state => state.readerReadMode)
   const readerPageDirection = useSettingsStore(state => state.readerPageDirection)
   const readerDoublePageMode = useSettingsStore(state => state.readerDoublePageMode)
+  const readerChapterTransitions = useSettingsStore(state => state.readerChapterTransitions)
+  const setReaderChapterTransitions = useSettingsStore(state => state.setReaderChapterTransitions)
   const readerCompactMenuEnabled = useSettingsStore(state => state.readerCompactMenuEnabled)
   const readerAutoReadEnabled = useSettingsStore(state => state.readerAutoReadEnabled)
   const readerAutoReadStripIntervalMs = useSettingsStore(
@@ -120,6 +122,14 @@ export function ReaderSettingsMenu() {
             checked={readerDoublePageMode}
             disabled={!isSingleMode}
             onCheckedChange={setReaderDoublePageMode}
+          />
+        </div>
+        <DropdownMenuSeparator />
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
+          <div className="text-sm text-popover-foreground">章节分隔提示</div>
+          <Switch
+            checked={readerChapterTransitions}
+            onCheckedChange={setReaderChapterTransitions}
           />
         </div>
         <DropdownMenuSeparator />
