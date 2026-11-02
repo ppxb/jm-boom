@@ -3,7 +3,7 @@ import { ChevronLeftIcon, ChevronRightIcon, ListIcon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { ReaderChapterDrawer } from './reader-chapter-drawer'
 import { toReaderChapterSearch } from './reader-chapter-link'
 import { ReaderSettingsMenu } from './reader-settings-menu'
@@ -122,17 +122,23 @@ function ChapterNavButton({
   }
 
   return (
-    <Button asChild variant="ghost" size="xs" className={cn(CHAPTER_BUTTON_CLASS)}>
-      <Link
-        to="/reader/$comicId"
-        params={{ comicId: chapter.id }}
-        aria-label={label}
-        replace
-        resetScroll
-        search={toReaderChapterSearch({ albumId })}
-      >
-        {children}
-      </Link>
-    </Button>
+    <Button
+      variant="ghost"
+      size="xs"
+      className={cn(CHAPTER_BUTTON_CLASS)}
+      nativeButton={false}
+      render={
+        <Link
+          to="/reader/$comicId"
+          params={{ comicId: chapter.id }}
+          aria-label={label}
+          replace
+          resetScroll
+          search={toReaderChapterSearch({ albumId })}
+        >
+          {children}
+        </Link>
+      }
+    />
   )
 }

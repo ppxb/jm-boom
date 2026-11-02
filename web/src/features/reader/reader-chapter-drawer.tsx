@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { SideDrawerContent } from '@/components/side-drawer-content'
 import { Badge } from '@/components/ui/badge'
 import { Drawer, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { listDownloadedChapters } from '@/lib/api/download'
 import { queryKeys } from '@/lib/query-keys'
 import { toReaderChapterSearch } from './reader-chapter-link'
@@ -57,7 +57,7 @@ export function ReaderChapterDrawer({
   }, [currentReadId, displayChapters.length, open])
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
+    <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
       <SideDrawerContent>
         <DrawerHeader className="border-b border-border/70">
           <DrawerTitle>章节目录</DrawerTitle>

@@ -40,18 +40,23 @@ function ExploreLayout() {
       {!isSectionListPage ? (
         <PageHeader title="探索" description="发现值得阅读的作品" inlineActions>
           {!isSearchPage ? (
-            <Button asChild variant="outline" size="icon-lg">
-              <Link to="/explore/search" aria-label="搜索漫画">
-                <SearchIcon className="size-5" />
-              </Link>
-            </Button>
+            <Button
+              variant="outline"
+              size="icon-lg"
+              nativeButton={false}
+              render={
+                <Link to="/explore/search" aria-label="搜索漫画">
+                  <SearchIcon className="size-5" />
+                </Link>
+              }
+            />
           ) : null}
         </PageHeader>
       ) : null}
 
       {!isSearchPage && !isSectionListPage ? (
         <Tabs value={activeTab} onValueChange={changeTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList>
             {EXPLORE_TABS.map(tab => (
               <TabsTrigger key={tab.value} value={tab.value}>
                 {tab.label}

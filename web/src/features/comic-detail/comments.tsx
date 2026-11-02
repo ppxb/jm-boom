@@ -68,7 +68,7 @@ export function CommentsDrawer({ comicId, total, open, onOpenChange }: CommentsD
   )
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
+    <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
       <SideDrawerContent>
         <DrawerHeader className="border-b border-border/70 p-6">
           <DrawerTitle>评论</DrawerTitle>

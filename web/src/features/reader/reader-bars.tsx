@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, LoaderCircleIcon, RotateCwIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { ReaderChapterControls } from './reader-chapter-controls'
 import { ReaderProgressSlider } from './reader-progress-slider'
 import type { ReaderChapterItem } from './types'

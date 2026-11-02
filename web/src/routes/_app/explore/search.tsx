@@ -131,14 +131,20 @@ function SearchPage() {
           </InputGroup>
         </form>
 
-        <Select value={String(selectedSortBy)} onValueChange={updateSortBy}>
+        <Select
+          items={SEARCH_SORT_OPTIONS}
+          value={String(selectedSortBy)}
+          onValueChange={value => {
+            if (value !== null) updateSortBy(value)
+          }}
+        >
           <SelectTrigger className="w-9 shrink-0 justify-center overflow-hidden px-0 sm:w-auto sm:justify-between sm:px-3 [&>svg:last-child]:hidden sm:[&>svg:last-child]:block">
             <ListFilterIcon className="size-4 text-muted-foreground" />
             <span className="hidden">
               <SelectValue placeholder="选择排序" />
             </span>
           </SelectTrigger>
-          <SelectContent position="popper" align="end" className="w-44">
+          <SelectContent alignItemWithTrigger={false} align="end" className="w-44">
             <SelectGroup>
               {SEARCH_SORT_OPTIONS.map(option => (
                 <SelectItem key={option.value} value={option.value}>

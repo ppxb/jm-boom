@@ -63,9 +63,8 @@ function BookshelfPage() {
         { queryKey: queryKeys.readingHistory() },
         { items: [], total: 0 }
       )
-      queryClient.setQueriesData<ComicStateResult>(
-        { queryKey: ['jm-comic-state'] },
-        current => (current ? { ...current, history: null } : current)
+      queryClient.setQueriesData<ComicStateResult>({ queryKey: ['jm-comic-state'] }, current =>
+        current ? { ...current, history: null } : current
       )
       toast.success('历史观看记录已清除')
     },

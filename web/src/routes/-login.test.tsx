@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -66,28 +66,28 @@ beforeEach(() => {
   requests = []
   gateEnabled = false
   respondLogin = () => Response.json({ success: true })
-  spyOn(accessGate, 'loadAccessGateConfig').mockImplementation(async () => ({
+  vi.spyOn(accessGate, 'loadAccessGateConfig').mockImplementation(async () => ({
     enabled: gateEnabled
   }))
-  spyOn(dom.location, 'replace').mockImplementation(target => {
+  vi.spyOn(dom.location, 'replace').mockImplementation(target => {
     redirects.push(String(target))
   })
-  const mockFetch = Object.assign(
-    async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      const path = String(input)
-      if (path !== '/api/auth/login') throw new Error(`Unexpected request: ${path}`)
-      requests.push({ path, body: JSON.parse(String(init?.body)) })
-      return respondLogin()
-    },
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  const mockFetch = async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1]
+  ) => {
+    const path = String(input)
+    if (path !== '/api/auth/login') throw new Error(`Unexpected request: ${path}`)
+    requests.push({ path, body: JSON.parse(String(init?.body)) })
+    return respondLogin()
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
   await act(async () => root.unmount())
   await dom.happyDOM.close()
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of inputMethods) {
     if (descriptor) Object.defineProperty(dom.HTMLInputElement.prototype, key, descriptor)
     else Reflect.deleteProperty(dom.HTMLInputElement.prototype, key)

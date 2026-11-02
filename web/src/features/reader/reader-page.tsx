@@ -17,7 +17,7 @@ import { useReaderPreload } from './use-reader-preload'
 import { useReaderSession } from './use-reader-session'
 import { useReaderToolbarVisibility } from './use-reader-toolbar-visibility'
 import { READER } from '@/lib/constants'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { useSettingsStore } from '@/stores/settings-store'
 
 export function ReaderPage({ comicId, search }: { comicId: string; search: ReaderSearch }) {

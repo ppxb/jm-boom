@@ -21,7 +21,7 @@ import {
   getComicDisplayChapterCount
 } from '@/lib/comic'
 import { UI } from '@/lib/constants'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 
 export function ChaptersSection({
   albumId,

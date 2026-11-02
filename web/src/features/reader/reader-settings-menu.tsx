@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -12,7 +13,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import {
   READER_AUTO_READ_PAGE_INTERVAL_RANGE,
   READER_AUTO_READ_STRIP_DISTANCE_RANGE,
@@ -57,50 +58,56 @@ export function ReaderSettingsMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          aria-label="阅读设置"
-          className={READER_SETTING_BUTTON_CLASS}
-        >
-          <Settings2Icon className="size-5 sm:size-4" />
-          <span className="hidden sm:inline">阅读设置</span>
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            aria-label="阅读设置"
+            className={READER_SETTING_BUTTON_CLASS}
+          >
+            <Settings2Icon className="size-5 sm:size-4" />
+            <span className="hidden sm:inline">阅读设置</span>
+          </Button>
+        }
+      />
       <DropdownMenuContent
         side="top"
         align="start"
         className="w-56 border border-border bg-popover/95 text-popover-foreground shadow-2xl backdrop-blur-xl"
       >
-        <DropdownMenuLabel className="text-muted-foreground">阅读模式</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={readerReadMode} onValueChange={setReaderReadMode}>
-          <DropdownMenuRadioItem value="single" className={READER_SETTING_ITEM_CLASS}>
-            单页
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="strip" className={READER_SETTING_ITEM_CLASS}>
-            条漫
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-muted-foreground">阅读模式</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={readerReadMode} onValueChange={setReaderReadMode}>
+            <DropdownMenuRadioItem value="single" className={READER_SETTING_ITEM_CLASS}>
+              单页
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="strip" className={READER_SETTING_ITEM_CLASS}>
+              条漫
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
         {isSingleMode ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-muted-foreground">翻页方向</DropdownMenuLabel>
-            <div className="grid grid-cols-2 gap-1 px-1 pb-1">
-              <ReaderDirectionButton
-                selected={readerPageDirection === 'ltr'}
-                onClick={() => setReaderPageDirection('ltr')}
-              >
-                从左向右
-              </ReaderDirectionButton>
-              <ReaderDirectionButton
-                selected={readerPageDirection === 'rtl'}
-                onClick={() => setReaderPageDirection('rtl')}
-              >
-                从右向左
-              </ReaderDirectionButton>
-            </div>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-muted-foreground">翻页方向</DropdownMenuLabel>
+              <div className="grid grid-cols-2 gap-1 px-1 pb-1">
+                <ReaderDirectionButton
+                  selected={readerPageDirection === 'ltr'}
+                  onClick={() => setReaderPageDirection('ltr')}
+                >
+                  从左向右
+                </ReaderDirectionButton>
+                <ReaderDirectionButton
+                  selected={readerPageDirection === 'rtl'}
+                  onClick={() => setReaderPageDirection('rtl')}
+                >
+                  从右向左
+                </ReaderDirectionButton>
+              </div>
+            </DropdownMenuGroup>
           </>
         ) : null}
         <DropdownMenuSeparator />

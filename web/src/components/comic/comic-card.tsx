@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import type { ComicCardSummary } from '@/domain/comic'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { ComicCover } from './comic-cover'
 
 type ComicCardProps = {
@@ -98,9 +98,10 @@ export function ComicCard({
       </div>
 
       <CardContent className="space-y-1.5 p-3">
-        <OverflowTooltip asChild content={comic.title}>
-          <div className="truncate text-sm font-semibold">{comic.title}</div>
-        </OverflowTooltip>
+        <OverflowTooltip
+          content={comic.title}
+          render={<div className="truncate text-sm font-semibold">{comic.title}</div>}
+        />
         {metadata}
       </CardContent>
     </Card>

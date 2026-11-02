@@ -7,7 +7,7 @@
   "bracketSpacing": true,
   "sortTailwindcss": {
     "stylesheet": "./src/styles/globals.css",
-    "functions": ["clsx", "cn"],
+    "functions": ["cn"],
     "preserveWhitespace": false
   },
   "ignorePatterns": ["node_modules", "**/routeTree.gen.ts"]

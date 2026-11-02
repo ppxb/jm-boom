@@ -16,7 +16,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import type { ApiEndpointProbe, EndpointState } from '@/lib/api/setting'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { formatEndpoint } from './use-endpoint-options'
 import { SettingRow, SettingsSection } from './shared'
 
@@ -52,7 +52,9 @@ export function ApiEndpointSection({
             <Select
               value={value}
               disabled={isLoading || isChanging}
-              onValueChange={next => onEndpointChange(next === AUTO_ENDPOINT_VALUE ? null : next)}
+              onValueChange={next => {
+                if (next !== null) onEndpointChange(next === AUTO_ENDPOINT_VALUE ? null : next)
+              }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue>
@@ -70,7 +72,7 @@ export function ApiEndpointSection({
                   )}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent position="popper" align="end">
+              <SelectContent alignItemWithTrigger={false} align="end">
                 <SelectGroup>
                   <SelectItem value={AUTO_ENDPOINT_VALUE}>自动优选</SelectItem>
                   {state?.endpoints.map(option => (

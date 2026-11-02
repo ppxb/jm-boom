@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { Button } from '@/components/ui/button'
 import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon } from 'lucide-react'
 
@@ -37,14 +37,20 @@ type PaginationLinkProps = {
 
 function PaginationLink({ className, isActive, size = 'icon', ...props }: PaginationLinkProps) {
   return (
-    <Button asChild variant={isActive ? 'outline' : 'ghost'} size={size} className={cn(className)}>
-      <a
-        aria-current={isActive ? 'page' : undefined}
-        data-slot="pagination-link"
-        data-active={isActive}
-        {...props}
-      />
-    </Button>
+    <Button
+      variant={isActive ? 'outline' : 'ghost'}
+      size={size}
+      className={cn(className)}
+      nativeButton={false}
+      render={
+        <a
+          aria-current={isActive ? 'page' : undefined}
+          data-slot="pagination-link"
+          data-active={isActive}
+          {...props}
+        />
+      }
+    />
   )
 }
 

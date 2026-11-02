@@ -1,7 +1,7 @@
 import { RotateCwIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import type { ReaderPageDirection } from '@/stores/settings-store'
 import { ReaderLoading } from './reader-state'
 import type { ReaderWindowPage } from './types'

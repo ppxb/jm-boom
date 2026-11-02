@@ -15,7 +15,7 @@ export function ComicDetailSkeleton() {
         </div>
         <div className="min-w-0 space-y-5 py-1 text-center md:text-left">
           <div className="space-y-2">
-            <Skeleton className="mx-auto h-8 w-3/4 sm:h-9 lg:h-10 md:mx-0" />
+            <Skeleton className="mx-auto h-8 w-3/4 sm:h-9 md:mx-0 lg:h-10" />
             <div className="flex justify-center md:justify-start">
               <Skeleton className="h-4 w-36" />
             </div>

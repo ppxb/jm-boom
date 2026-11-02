@@ -13,7 +13,7 @@ import {
 interface ConfirmDialogProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  trigger?: React.ReactNode
+  trigger?: React.ReactElement
   icon?: React.ReactNode
   title: string
   description: React.ReactNode
@@ -39,7 +39,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      {trigger ? <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger> : null}
+      {trigger ? <AlertDialogTrigger render={trigger} /> : null}
       <AlertDialogContent>
         {icon ? (
           <div className="flex items-start gap-3 py-1">

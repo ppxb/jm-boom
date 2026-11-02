@@ -39,15 +39,17 @@ type NavItemProps = {
 function NavItem({ item, isActive }: NavItemProps) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Link
-          to={item.to}
-          className={`${buttonVariants({ variant: isActive ? 'default' : 'ghost', size: 'icon' })} size-11 sm:size-9`}
-          aria-label={item.label}
-        >
-          <item.icon className="size-5" />
-        </Link>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Link
+            to={item.to}
+            className={`${buttonVariants({ variant: isActive ? 'default' : 'ghost', size: 'icon' })} size-11 sm:size-9`}
+            aria-label={item.label}
+          >
+            <item.icon className="size-5" />
+          </Link>
+        }
+      />
       <TooltipContent side="top">{item.label}</TooltipContent>
     </Tooltip>
   )

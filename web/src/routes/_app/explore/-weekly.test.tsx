@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import {
   defaultScheduler,
   notifyManager,
@@ -87,17 +87,14 @@ beforeEach(() => {
   pendingResponses = []
   respondFilters = () => Response.json(validFilters)
   respondItems = () => Response.json(weeklyItems)
-  const mockFetch = Object.assign(
-    async (input: Parameters<typeof fetch>[0]) => {
-      const path = String(input)
-      requests.push(path)
-      if (path === '/api/home/weekly/filters') return respondFilters()
-      if (path.startsWith('/api/home/weekly/items?')) return respondItems()
-      throw new Error(`Unexpected request: ${path}`)
-    },
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  const mockFetch = async (input: Parameters<typeof fetch>[0]) => {
+    const path = String(input)
+    requests.push(path)
+    if (path === '/api/home/weekly/filters') return respondFilters()
+    if (path.startsWith('/api/home/weekly/items?')) return respondItems()
+    throw new Error(`Unexpected request: ${path}`)
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
@@ -108,7 +105,7 @@ afterEach(async () => {
   queryClient.clear()
   await dom.happyDOM.close()
   notifyManager.setScheduler(defaultScheduler)
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else Reflect.deleteProperty(globalThis, key)

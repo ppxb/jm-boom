@@ -4,7 +4,18 @@
   "categories": {
     "correctness": "error"
   },
-  "rules": {},
+  "rules": {
+    "react/incompatible-library": "off",
+    "react/set-state-in-effect": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "react/globals": "off"
+      }
+    }
+  ],
   "env": {
     "builtin": true
   },

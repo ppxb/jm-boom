@@ -1,7 +1,7 @@
 import { ImageIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 import { useSettingsStore } from '@/stores/settings-store'
 
 export type ComicCoverRatio = 'portrait' | 'square'

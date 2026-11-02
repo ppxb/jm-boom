@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import {
   defaultScheduler,
   notifyManager,
@@ -105,23 +105,22 @@ beforeEach(() => {
   requests = []
   pendingResponses = []
   respondState = () => Response.json({ isFavorite: false, history: null })
-  const mockFetch = Object.assign(
-    async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      const path = String(input)
-      requests.push({ path, method: init?.method ?? 'GET' })
-      if (path === '/api/comics/100/state') return respondState()
-      if (path === '/api/reader/101/manifest')
-        return Response.json({ chapter_id: '101', pages: [] })
-      if (path === '/api/favorites/100') {
-        return init?.method === 'DELETE'
-          ? new Response(null, { status: 204 })
-          : Response.json({ ...comic, author: '', favoritedAt: 1 })
-      }
-      throw new Error(`Unexpected request: ${path}`)
-    },
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  const mockFetch = async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1]
+  ) => {
+    const path = String(input)
+    requests.push({ path, method: init?.method ?? 'GET' })
+    if (path === '/api/comics/100/state') return respondState()
+    if (path === '/api/reader/101/manifest') return Response.json({ chapter_id: '101', pages: [] })
+    if (path === '/api/favorites/100') {
+      return init?.method === 'DELETE'
+        ? new Response(null, { status: 204 })
+        : Response.json({ ...comic, author: '', favoritedAt: 1 })
+    }
+    throw new Error(`Unexpected request: ${path}`)
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
@@ -133,7 +132,7 @@ afterEach(async () => {
   await dom.happyDOM.close()
   notifyManager.setScheduler(defaultScheduler)
   notifyManager.setNotifyFunction(callback => callback())
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else Reflect.deleteProperty(globalThis, key)

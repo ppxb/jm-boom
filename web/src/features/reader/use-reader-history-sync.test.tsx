@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Window } from 'happy-dom'
 import { act, StrictMode } from 'react'
@@ -35,7 +35,7 @@ let requests: SaveRequest[]
 let globals: Map<string, PropertyDescriptor | undefined>
 
 beforeEach(() => {
-  jest.useFakeTimers({ now: new Date('2026-10-21T12:00:00Z') })
+  vi.useFakeTimers({ now: new Date('2026-10-21T12:00:00Z') })
   dom = new Window({ url: 'http://localhost' })
   const values = {
     window: dom,
@@ -64,19 +64,16 @@ beforeEach(() => {
   })
   queryClient.setQueryData(queryKeys.readingHistory(1), { items: [], total: 0 })
   requests = []
-  const mockFetch = Object.assign(
-    (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
-      new Promise<Response>((resolve, reject) => {
-        requests.push({
-          item: { ...JSON.parse(String(init?.body)), id: '100' },
-          keepalive: init?.keepalive ?? false,
-          resolve,
-          reject
-        })
-      }),
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  const mockFetch = (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+    new Promise<Response>((resolve, reject) => {
+      requests.push({
+        item: { ...JSON.parse(String(init?.body)), id: '100' },
+        keepalive: init?.keepalive ?? false,
+        resolve,
+        reject
+      })
+    })
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
@@ -86,10 +83,10 @@ afterEach(async () => {
     for (const request of requests) request.resolve(new Response(null, { status: 204 }))
   })
   queryClient.clear()
-  jest.clearAllTimers()
-  jest.useRealTimers()
+  vi.clearAllTimers()
+  vi.useRealTimers()
   await dom.happyDOM.close()
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else Reflect.deleteProperty(globalThis, key)
@@ -114,7 +111,7 @@ async function render(props = initialProps, strict = false) {
 
 async function advance(milliseconds: number) {
   await act(async () => {
-    jest.advanceTimersByTime(milliseconds)
+    vi.advanceTimersByTime(milliseconds)
   })
 }
 

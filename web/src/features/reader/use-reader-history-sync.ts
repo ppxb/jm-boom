@@ -70,7 +70,7 @@ export function useReaderHistorySync({
   )
 
   const flushPendingHistory = useCallback(
-    async (keepalive = false): Promise<void> => {
+    async function flushPendingHistory(keepalive = false): Promise<void> {
       const state = syncRef.current
       const item = state.pending
       if (

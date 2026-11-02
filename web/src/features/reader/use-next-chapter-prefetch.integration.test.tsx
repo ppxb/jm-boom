@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Window } from 'happy-dom'
 import { act, StrictMode } from 'react'
@@ -31,7 +31,7 @@ let clearedScopes: string[]
 let globals: Map<string, PropertyDescriptor | undefined>
 
 beforeEach(() => {
-  jest.useFakeTimers({ now: new Date('2026-10-22T12:00:00Z') })
+  vi.useFakeTimers({ now: new Date('2026-10-22T12:00:00Z') })
   dom = new Window({ url: 'http://localhost' })
   const values = {
     window: dom,
@@ -56,20 +56,17 @@ beforeEach(() => {
   requests = []
   preloads = []
   clearedScopes = []
-  spyOn(readerPreload, 'setReaderPreloadScope').mockImplementation((scope, paths) => {
+  vi.spyOn(readerPreload, 'setReaderPreloadScope').mockImplementation((scope, paths) => {
     preloads.push({ scope, paths })
   })
-  spyOn(readerPreload, 'clearReaderPreloadScope').mockImplementation(scope => {
+  vi.spyOn(readerPreload, 'clearReaderPreloadScope').mockImplementation(scope => {
     clearedScopes.push(scope)
   })
-  const mockFetch = Object.assign(
-    (input: Parameters<typeof fetch>[0]) =>
-      new Promise<Response>((resolve, reject) => {
-        requests.push({ path: String(input), resolve, reject })
-      }),
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  const mockFetch = (input: Parameters<typeof fetch>[0]) =>
+    new Promise<Response>((resolve, reject) => {
+      requests.push({ path: String(input), resolve, reject })
+    })
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
@@ -79,10 +76,10 @@ afterEach(async () => {
     for (const request of requests) request.resolve(unavailable())
   })
   queryClient.clear()
-  jest.clearAllTimers()
-  jest.useRealTimers()
+  vi.clearAllTimers()
+  vi.useRealTimers()
   await dom.happyDOM.close()
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else Reflect.deleteProperty(globalThis, key)
@@ -114,7 +111,7 @@ async function unmount() {
 
 async function advance(milliseconds: number) {
   await act(async () => {
-    jest.advanceTimersByTime(milliseconds)
+    vi.advanceTimersByTime(milliseconds)
   })
 }
 

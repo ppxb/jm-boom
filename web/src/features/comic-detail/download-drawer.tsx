@@ -61,7 +61,7 @@ export function ComicDownloadDrawer({
   }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
+    <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
       <SideDrawerContent>
         <DrawerHeader>
           <DrawerTitle>选择下载章节</DrawerTitle>

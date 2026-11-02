@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import {
   defaultScheduler,
   focusManager,
@@ -84,32 +84,32 @@ beforeEach(() => {
   respondAccount = () => Response.json(serverAccount)
   focusManager.setFocused(true)
   notifyManager.setScheduler(queueMicrotask)
-  const mockFetch = Object.assign(
-    async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      const path = String(input)
-      if (path === '/api/settings/account') {
-        const method = init?.method ?? 'GET'
-        const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
-        requests.push({ method, body })
-        return respondAccount(method, body)
-      }
-      if (path === '/api/settings/endpoints')
-        return Response.json({
-          mode: 'auto',
-          currentEndpoint: 'https://example.invalid',
-          selectedEndpoint: null,
-          endpoints: []
-        })
-      if (path === '/api/settings/system')
-        return Response.json({
-          serverVersion: 'test',
-          cache: { sizeBytes: 0, entryCount: 0, maxSizeBytes: 1024 }
-        })
-      throw new Error(`Unexpected request: ${path}`)
-    },
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  const mockFetch = async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1]
+  ) => {
+    const path = String(input)
+    if (path === '/api/settings/account') {
+      const method = init?.method ?? 'GET'
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
+      requests.push({ method, body })
+      return respondAccount(method, body)
+    }
+    if (path === '/api/settings/endpoints')
+      return Response.json({
+        mode: 'auto',
+        currentEndpoint: 'https://example.invalid',
+        selectedEndpoint: null,
+        endpoints: []
+      })
+    if (path === '/api/settings/system')
+      return Response.json({
+        serverVersion: 'test',
+        cache: { sizeBytes: 0, entryCount: 0, maxSizeBytes: 1024 }
+      })
+    throw new Error(`Unexpected request: ${path}`)
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
@@ -122,7 +122,7 @@ afterEach(async () => {
   await dom.happyDOM.close()
   notifyManager.setScheduler(defaultScheduler)
   notifyManager.setNotifyFunction(callback => callback())
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else Reflect.deleteProperty(globalThis, key)

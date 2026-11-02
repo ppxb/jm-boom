@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 
 type FilterSelectOption = {
   label: string
@@ -34,12 +34,18 @@ export function FilterSelect({
 }: FilterSelectProps) {
   return (
     <div className={cn('min-w-0 sm:flex-none', grow ? 'flex-1' : 'flex-none')}>
-      <Select value={value} onValueChange={onValueChange}>
+      <Select
+        items={options}
+        value={value}
+        onValueChange={next => {
+          if (next !== null) onValueChange(next)
+        }}
+      >
         <SelectTrigger className={grow ? 'w-full sm:w-auto' : 'w-auto'}>
           {icon}
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
-        <SelectContent position="popper" align="end">
+        <SelectContent alignItemWithTrigger={false} align="end">
           <SelectGroup>
             {options.map(option => (
               <SelectItem key={option.value} value={option.value}>

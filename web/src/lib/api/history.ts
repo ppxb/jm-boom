@@ -20,10 +20,7 @@ export function listReadingHistory(page: number): Promise<ReadingHistoryListResu
   return apiClient.get('/api/history', { page })
 }
 
-export function upsertReadingHistory(
-  item: ReadingHistoryItem,
-  keepalive = false
-): Promise<void> {
+export function upsertReadingHistory(item: ReadingHistoryItem, keepalive = false): Promise<void> {
   return apiClient.put<void>(
     `/api/history/${item.id}`,
     {

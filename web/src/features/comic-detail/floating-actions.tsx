@@ -29,16 +29,19 @@ export function ComicDetailFloatingActions({
       className="fixed bottom-4 left-1/2 z-50 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border/70 bg-background/85 p-1.5 text-foreground backdrop-blur md:hidden"
     >
       {readingTarget ? (
-        <Button asChild>
-          <Link
-            to="/reader/$comicId"
-            params={{ comicId: readingTarget.readId }}
-            search={{ albumId, page: readingTarget.page }}
-          >
-            <BookOpenIcon className="size-4" />
-            {readingTarget.isContinue ? '继续阅读' : '开始阅读'}
-          </Link>
-        </Button>
+        <Button
+          nativeButton={false}
+          render={
+            <Link
+              to="/reader/$comicId"
+              params={{ comicId: readingTarget.readId }}
+              search={{ albumId, page: readingTarget.page }}
+            >
+              <BookOpenIcon className="size-4" />
+              {readingTarget.isContinue ? '继续阅读' : '开始阅读'}
+            </Link>
+          }
+        />
       ) : (
         <Button disabled>
           <BookOpenIcon className="size-4" />

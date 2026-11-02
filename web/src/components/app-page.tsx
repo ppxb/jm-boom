@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { BackTopButton } from '@/components/back-top-button'
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 
 type AppPageProps = {
   children: ReactNode

@@ -20,13 +20,14 @@ RUN cargo chef cook --release --locked --recipe-path recipe.json
 COPY server/ ./
 RUN cargo build --release --locked
 
-FROM oven/bun:1.3.14 AS web-builder
+FROM node:24-bookworm-slim AS web-builder
 
 WORKDIR /build/web
-COPY web/package.json web/bun.lock ./
-RUN bun install --frozen-lockfile
+RUN corepack enable
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY web/ ./
-RUN bun run build
+RUN pnpm run build
 
 FROM debian:bookworm-slim AS runtime
 

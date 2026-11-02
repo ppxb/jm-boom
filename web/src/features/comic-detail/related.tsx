@@ -43,11 +43,16 @@ export function RelatedPanel({ items }: { items: RelatedComic[] }) {
                 )
                   .slice(0, 6)
                   .map(value => (
-                    <Badge key={value} variant="secondary" asChild className="max-w-full">
-                      <Link to="/explore/search" search={{ q: value }} title={value}>
-                        <span className="truncate">{value}</span>
-                      </Link>
-                    </Badge>
+                    <Badge
+                      key={value}
+                      variant="secondary"
+                      className="max-w-full"
+                      render={
+                        <Link to="/explore/search" search={{ q: value }} title={value}>
+                          <span className="truncate">{value}</span>
+                        </Link>
+                      }
+                    />
                   ))}
               </div>
             </ComicRailItem>

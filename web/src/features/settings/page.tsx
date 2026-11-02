@@ -1,5 +1,5 @@
 import { RotateCcwIcon } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { useThemeStore } from '@/stores/theme-store'
 import { toast } from 'sonner'
 
 import { AppPage } from '@/components/app-page'
@@ -16,7 +16,8 @@ import { CacheSection, VersionSection } from './system-sections'
 import { useSettingsData } from './use-settings-data'
 
 export function SettingsPage() {
-  const { theme = 'system', setTheme } = useTheme()
+  const theme = useThemeStore(state => state.theme)
+  const setTheme = useThemeStore(state => state.setTheme)
   const hideCovers = useSettingsStore(state => state.hideCovers)
   const setHideCovers = useSettingsStore(state => state.setHideCovers)
   const reset = useSettingsStore(state => state.reset)

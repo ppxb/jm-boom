@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { Window } from 'happy-dom'
 import { act, StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'

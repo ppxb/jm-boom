@@ -1,11 +1,10 @@
 import * as React from 'react'
-import { Slot } from 'radix-ui'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 type OverflowTooltipProps = {
-  asChild?: boolean
-  children: React.ReactNode
+  render?: React.ReactElement
+  children?: React.ReactNode
   content?: React.ReactNode
   disabled?: boolean
   onFocus?: React.FocusEventHandler<HTMLElement>
@@ -16,7 +15,7 @@ type OverflowTooltipProps = {
 }
 
 export function OverflowTooltip({
-  asChild = false,
+  render,
   children,
   content = children,
   disabled = false,
@@ -65,22 +64,19 @@ export function OverflowTooltip({
   }
 
   const triggerProps = {
-    ref: triggerRef,
+    ref: (element: HTMLElement | null) => {
+      triggerRef.current = element
+    },
     'data-slot': 'overflow-tooltip-trigger',
     onFocus: handleFocus,
     onPointerEnter: handlePointerEnter
   }
-  const trigger = asChild ? (
-    <Slot.Root {...triggerProps}>{children}</Slot.Root>
-  ) : (
-    <span {...triggerProps} className="truncate">
-      {children}
-    </span>
-  )
-
   return (
     <Tooltip open={open} onOpenChange={handleOpenChange}>
-      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipTrigger
+        {...triggerProps}
+        render={render ?? <span className="truncate">{children}</span>}
+      />
       {isOverflowing ? (
         <TooltipContent side={side} sideOffset={sideOffset} className={tooltipClassName}>
           {content}

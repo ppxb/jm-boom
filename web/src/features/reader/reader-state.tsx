@@ -1,6 +1,6 @@
 import { LoaderCircleIcon } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn } from 'cn'
 
 export function ReaderLoading({ label, className }: { label: string; className?: string }) {
   return (

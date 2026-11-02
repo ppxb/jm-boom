@@ -59,25 +59,30 @@ function SectionHeader({ section }: { section: HomeFeedSection }) {
         <h2 className="text-xl font-semibold tracking-normal">{section.title}</h2>
       </div>
       {mode ? (
-        <Button asChild variant="outline" size="sm">
-          <Link
-            to="/explore/list"
-            search={{
-              mode,
-              page: 1,
-              sectionId: section.id,
-              title: section.title,
-              filterValue: section.filterValue,
-              rankTag,
-              category: mode === 'ranking' ? defaultRankingCategory(rankTag) : 'all',
-              week: String(currentChinaWeekday()),
-              order: 'new'
-            }}
-          >
-            更多
-            <ArrowRightIcon className="size-4" />
-          </Link>
-        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          nativeButton={false}
+          render={
+            <Link
+              to="/explore/list"
+              search={{
+                mode,
+                page: 1,
+                sectionId: section.id,
+                title: section.title,
+                filterValue: section.filterValue,
+                rankTag,
+                category: mode === 'ranking' ? defaultRankingCategory(rankTag) : 'all',
+                week: String(currentChinaWeekday()),
+                order: 'new'
+              }}
+            >
+              更多
+              <ArrowRightIcon className="size-4" />
+            </Link>
+          }
+        />
       ) : null}
     </div>
   )

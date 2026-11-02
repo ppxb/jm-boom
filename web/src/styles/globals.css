@@ -150,3 +150,7 @@
     @apply font-sans;
   }
 }
+
+.disable-transitions * {
+  transition: none !important;
+}

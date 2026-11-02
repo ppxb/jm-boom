@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import {
   defaultScheduler,
   notifyManager,
@@ -77,16 +77,13 @@ beforeEach(() => {
   search = { albumId: '100' }
   pageStep = 1
   requests = []
-  spyOn(Route, 'useParams').mockReturnValue({ comicId })
-  spyOn(Route, 'useSearch').mockReturnValue(search)
+  vi.spyOn(Route, 'useParams').mockReturnValue({ comicId })
+  vi.spyOn(Route, 'useSearch').mockReturnValue(search)
   // Keep the real route key and session hook, avoiding unrelated reader UI and side effects.
-  spyOn(readerPage, 'ReaderPage').mockImplementation(SessionProbe)
-  const mockFetch = Object.assign(
-    (input: Parameters<typeof fetch>[0]) =>
-      new Promise<Response>(resolve => requests.push({ path: String(input), resolve })),
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  vi.spyOn(readerPage, 'ReaderPage').mockImplementation(SessionProbe)
+  const mockFetch = (input: Parameters<typeof fetch>[0]) =>
+    new Promise<Response>(resolve => requests.push({ path: String(input), resolve }))
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
@@ -98,7 +95,7 @@ afterEach(async () => {
   await dom.happyDOM.close()
   notifyManager.setNotifyFunction(callback => callback())
   notifyManager.setScheduler(defaultScheduler)
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else Reflect.deleteProperty(globalThis, key)
@@ -109,8 +106,8 @@ async function render(nextComicId = comicId, nextSearch = search, nextPageStep =
   comicId = nextComicId
   search = nextSearch
   pageStep = nextPageStep
-  spyOn(Route, 'useParams').mockReturnValue({ comicId })
-  spyOn(Route, 'useSearch').mockReturnValue(search)
+  vi.spyOn(Route, 'useParams').mockReturnValue({ comicId })
+  vi.spyOn(Route, 'useSearch').mockReturnValue(search)
   await act(async () => {
     root.render(
       <QueryClientProvider client={queryClient}>

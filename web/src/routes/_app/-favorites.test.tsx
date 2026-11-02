@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, vi, test } from 'vitest'
 import {
   defaultScheduler,
   focusManager,
@@ -75,15 +75,12 @@ beforeEach(() => {
   requestedUrls = []
   serverTotal = 0
   respond = undefined
-  const mockFetch = Object.assign(
-    async (input: Parameters<typeof fetch>[0]) => {
-      requestedUrls.push(String(input))
-      const page = Number(new URL(String(input), 'http://localhost').searchParams.get('page'))
-      return respond ? respond(page) : Response.json(favoritePage(serverTotal, page))
-    },
-    { preconnect: fetch.preconnect }
-  )
-  spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
+  const mockFetch = async (input: Parameters<typeof fetch>[0]) => {
+    requestedUrls.push(String(input))
+    const page = Number(new URL(String(input), 'http://localhost').searchParams.get('page'))
+    return respond ? respond(page) : Response.json(favoritePage(serverTotal, page))
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
 })
 
 afterEach(async () => {
@@ -93,7 +90,7 @@ afterEach(async () => {
   await dom.happyDOM.close()
   notifyManager.setNotifyFunction(callback => callback())
   notifyManager.setScheduler(defaultScheduler)
-  jest.restoreAllMocks()
+  vi.restoreAllMocks()
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else Reflect.deleteProperty(globalThis, key)

@@ -49,6 +49,19 @@ docker compose pull
 docker compose up -d
 ```
 
+## 本地前端开发
+
+使用 Node.js 24 和 pnpm（版本由 `web/package.json` 固定）：
+
+```bash
+corepack enable
+cd web
+pnpm install
+pnpm dev
+```
+
+开发服务器将 `/api` 请求代理到 `http://127.0.0.1:3000`。类型、测试及构建验证使用 `pnpm typecheck`、`pnpm test`、`pnpm lint`、`pnpm fmt:check`、`pnpm build`。
+
 ## 运行时配置
 
 - `RUST_LOG`：服务端日志过滤，默认 `info,jm_boom_server=info`。

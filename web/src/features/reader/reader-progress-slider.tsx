@@ -54,7 +54,7 @@ export function ReaderProgressSlider({
           aria-label="阅读进度"
           aria-valuetext={`第 ${displayIndex + 1} 张，共 ${pageCount} 张`}
           min={0}
-          max={rangeMax}
+          max={Math.max(rangeMax, 1)}
           step={1}
           value={[displayIndex]}
           disabled={pageCount <= 1}
@@ -62,9 +62,9 @@ export function ReaderProgressSlider({
           trackClassName="bg-black/40 data-horizontal:h-1"
           rangeClassName="bg-primary"
           thumbClassName="size-2 border-0 bg-primary shadow-none ring-0 hover:ring-0 focus-visible:ring-0"
-          renderThumb={thumb => <TooltipTrigger asChild>{thumb}</TooltipTrigger>}
+          renderThumb={thumb => <TooltipTrigger render={thumb} />}
           onValueChange={values => updatePreview(values[0] ?? currentIndex)}
-          onValueCommit={values => commitPreview(values[0] ?? currentIndex)}
+          onValueCommitted={values => commitPreview(values[0] ?? currentIndex)}
           onPointerDown={() => setIsScrubbing(true)}
           onPointerUp={() => setIsScrubbing(false)}
           onPointerCancel={() => {

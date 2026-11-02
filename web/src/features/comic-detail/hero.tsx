@@ -91,19 +91,22 @@ export function ComicHero({
 
         <div className="hidden flex-wrap gap-2 md:flex">
           {readingTarget ? (
-            <Button asChild>
-              <Link
-                to="/reader/$comicId"
-                params={{ comicId: readingTarget.readId }}
-                search={{
-                  albumId: comic.id,
-                  page: readingTarget.page
-                }}
-              >
-                <BookOpenIcon className="size-4" />
-                {readingTarget.isContinue ? '继续阅读' : '开始阅读'}
-              </Link>
-            </Button>
+            <Button
+              nativeButton={false}
+              render={
+                <Link
+                  to="/reader/$comicId"
+                  params={{ comicId: readingTarget.readId }}
+                  search={{
+                    albumId: comic.id,
+                    page: readingTarget.page
+                  }}
+                >
+                  <BookOpenIcon className="size-4" />
+                  {readingTarget.isContinue ? '继续阅读' : '开始阅读'}
+                </Link>
+              }
+            />
           ) : (
             <Button disabled>
               <BookOpenIcon className="size-4" />
@@ -232,18 +235,18 @@ function PillGroup({
           <Badge
             key={`${title}-${item}`}
             variant={variant}
-            asChild
             className={mobileProminent ? 'h-7 px-3 text-sm md:h-5 md:px-2 md:text-xs' : undefined}
-          >
-            <Link
-              to="/explore/search"
-              search={{
-                q: item
-              }}
-            >
-              {item}
-            </Link>
-          </Badge>
+            render={
+              <Link
+                to="/explore/search"
+                search={{
+                  q: item
+                }}
+              >
+                {item}
+              </Link>
+            }
+          />
         ))}
       </div>
     </div>
