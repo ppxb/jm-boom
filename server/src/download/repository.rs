@@ -41,6 +41,38 @@ impl DownloadRepository {
         Ok(tasks)
     }
 
+    pub async fn manifests_to_migrate(&self) -> anyhow::Result<Vec<OfflineChapterManifest>> {
+        let rows = sqlx::query_as::<_, (String, String, String)>(
+            "SELECT task_id, chapter_id, payload FROM download_manifests WHERE storage_version = 0",
+        )
+        .fetch_all(&self.db)
+        .await?;
+        let mut manifests = Vec::with_capacity(rows.len());
+        for (task_id, chapter_id, payload) in rows {
+            match serde_json::from_str::<OfflineChapterManifest>(&payload) {
+                Ok(mut manifest) => {
+                    manifest.task_id = task_id;
+                    manifest.chapter_id = chapter_id;
+                    manifests.push(manifest);
+                }
+                Err(error) => {
+                    tracing::warn!(task_id, chapter_id, %error, "跳过无法解析的旧下载 manifest")
+                }
+            }
+        }
+        Ok(manifests)
+    }
+
+    pub async fn mark_storage_migrated(
+        &self,
+        task_id: &str,
+        chapter_id: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query("UPDATE download_manifests SET storage_version = 1 WHERE task_id = ? AND chapter_id = ?")
+            .bind(task_id).bind(chapter_id).execute(&self.db).await?;
+        Ok(())
+    }
+
     pub async fn persist_task(&self, task: &DownloadTask) -> anyhow::Result<()> {
         sqlx::query(
             "INSERT INTO download_tasks (task_id, payload, updated_at) VALUES (?, ?, ?) \
@@ -74,7 +106,7 @@ impl DownloadRepository {
         chapter_id: &str,
     ) -> anyhow::Result<Option<OfflineChapterManifest>> {
         let payload = sqlx::query_scalar::<_, String>(
-            "SELECT payload FROM download_manifests WHERE chapter_id = ? AND completed = 1 \
+            "SELECT payload FROM download_manifests WHERE chapter_id = ? AND completed = 1 AND storage_version = 1 \
              ORDER BY updated_at DESC LIMIT 1",
         )
         .bind(chapter_id)
@@ -91,7 +123,7 @@ impl DownloadRepository {
         task_id: &str,
     ) -> anyhow::Result<Vec<OfflineChapterManifest>> {
         let payloads = sqlx::query_scalar::<_, String>(
-            "SELECT payload FROM download_manifests WHERE task_id = ? AND completed = 1",
+            "SELECT payload FROM download_manifests WHERE task_id = ? AND completed = 1 AND storage_version = 1",
         )
         .bind(task_id)
         .fetch_all(&self.db)
@@ -105,7 +137,7 @@ impl DownloadRepository {
     pub async fn downloaded_chapters(&self) -> anyhow::Result<Vec<String>> {
         Ok(sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT chapter_id FROM download_manifests \
-             WHERE completed = 1 ORDER BY chapter_id",
+             WHERE completed = 1 AND storage_version = 1 ORDER BY chapter_id",
         )
         .fetch_all(&self.db)
         .await?)
@@ -116,7 +148,7 @@ impl DownloadRepository {
         chapter_id: &str,
     ) -> anyhow::Result<Vec<String>> {
         Ok(sqlx::query_scalar::<_, String>(
-            "SELECT task_id FROM download_manifests WHERE chapter_id = ? AND completed = 1 \
+            "SELECT task_id FROM download_manifests WHERE chapter_id = ? AND completed = 1 AND storage_version = 1 \
              ORDER BY updated_at DESC",
         )
         .bind(chapter_id)
@@ -140,8 +172,8 @@ impl DownloadRepository {
         };
         sqlx::query(
             "INSERT INTO download_manifests \
-             (task_id, album_id, chapter_id, title, payload, updated_at, completed) \
-             VALUES (?, ?, ?, ?, ?, ?, 0) \
+             (task_id, album_id, chapter_id, title, payload, updated_at, completed, storage_version) \
+             VALUES (?, ?, ?, ?, ?, ?, 0, 1) \
              ON CONFLICT(task_id, chapter_id) DO UPDATE SET \
              album_id = excluded.album_id, title = excluded.title, \
              payload = excluded.payload, updated_at = excluded.updated_at, \
@@ -150,7 +182,7 @@ impl DownloadRepository {
                   AND json_extract(download_manifests.payload, '$.images') = \
                       json_extract(excluded.payload, '$.images') \
                  THEN 1 ELSE 0 \
-             END",
+             END, storage_version = 1",
         )
         .bind(&manifest.task_id)
         .bind(&manifest.album_id)

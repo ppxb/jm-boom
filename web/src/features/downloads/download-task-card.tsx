@@ -87,7 +87,7 @@ export function DownloadTaskCard({
         metadata={
           <>
             <p className="line-clamp-1 text-xs text-muted-foreground">
-              {task.comicAuthor?.trim() || 'N/A'}
+              {task.comicAuthor.trim() || 'N/A'}
             </p>
             <p className="line-clamp-1 text-xs text-muted-foreground">
               {formatChapterSummary(task)}

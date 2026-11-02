@@ -1,7 +1,6 @@
 use crate::{
-    cache::{reader_page_cache_key, CachedReaderPage, ImageCache},
-    domain::reader::ChapterManifest,
-    endpoint::{request_with_failover, EndpointManager},
+    cache::{page_image_id, reader_page_cache_key, CachedReaderPage, ImageCache},
+    endpoint::EndpointManager,
     image_work::{ImageWorkBudget, ImageWorkPermit, ImageWorkPriority},
     jm::{JmClient, JmError, JmResult},
     keyed_lock::KeyedLock,
@@ -17,7 +16,7 @@ pub struct PageMaterializeRequest<'a> {
     pub chapter_id: &'a str,
     pub page: usize,
     pub comic_id: u32,
-    pub image_path: Option<&'a str>,
+    pub image_path: &'a str,
     pub priority: ImageWorkPriority,
     pub cancelled: Option<watch::Receiver<bool>>,
 }
@@ -37,8 +36,6 @@ pub enum PageMaterializeError {
 type PageSourceFuture<'a, T> = Pin<Box<dyn Future<Output = JmResult<T>> + Send + 'a>>;
 
 trait PageSource: Send + Sync {
-    fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, ChapterManifest>;
-
     fn download_page_image<'a>(
         &'a self,
         chapter_id: &'a str,
@@ -82,10 +79,10 @@ impl PageMaterializer {
     pub async fn cached_page(
         &self,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
     ) -> anyhow::Result<Option<CachedReaderPage>> {
         self.cache
-            .get_reader_page(&reader_page_cache_key(chapter_id, page))
+            .get_reader_page(&reader_page_cache_key(chapter_id, image_id))
             .await
     }
 
@@ -99,12 +96,12 @@ impl PageMaterializer {
     pub async fn remember_page_dimensions(
         &self,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
         image: &CachedReaderPage,
     ) {
         self.cache
             .remember_reader_dimensions(
-                &reader_page_cache_key(chapter_id, page),
+                &reader_page_cache_key(chapter_id, image_id),
                 image.format,
                 &image.data,
             )
@@ -115,21 +112,12 @@ impl PageMaterializer {
         &self,
         request: PageMaterializeRequest<'_>,
     ) -> Result<CachedReaderPage, PageMaterializeError> {
-        let cache_key = reader_page_cache_key(request.chapter_id, request.page);
+        let cache_key =
+            reader_page_cache_key(request.chapter_id, &page_image_id(request.image_path));
         if let Some(cached) = self.cache.get_reader_page(&cache_key).await? {
             return Ok(cached);
         }
 
-        self.materialize_after_cache_miss_with_key(&cache_key, request)
-            .await
-    }
-
-    /// Continue materialization after the caller checked `cached_page` for the same page.
-    pub async fn materialize_after_cache_miss(
-        &self,
-        request: PageMaterializeRequest<'_>,
-    ) -> Result<CachedReaderPage, PageMaterializeError> {
-        let cache_key = reader_page_cache_key(request.chapter_id, request.page);
         self.materialize_after_cache_miss_with_key(&cache_key, request)
             .await
     }
@@ -160,23 +148,7 @@ impl PageMaterializer {
             return Ok(cached);
         }
 
-        let owned_image_path;
-        let image_path = match request.image_path {
-            Some(image_path) => image_path,
-            None => {
-                let chapter = await_source(
-                    self.source.get_chapter(request.chapter_id),
-                    request.cancelled.as_mut(),
-                )
-                .await?;
-                owned_image_path = chapter
-                    .images
-                    .get(request.page)
-                    .cloned()
-                    .ok_or(PageMaterializeError::PageNotFound)?;
-                &owned_image_path
-            }
-        };
+        let image_path = request.image_path;
         if request
             .cancelled
             .as_ref()
@@ -311,19 +283,6 @@ fn likely_requires_decoding(comic_id: u32, page_name: &str, image_path: &str) ->
 }
 
 impl PageSource for JmPageSource {
-    fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, ChapterManifest> {
-        Box::pin(async move {
-            let request_chapter_id = chapter_id.to_string();
-            let (_, chapter) =
-                request_with_failover(&self.jm, &self.endpoints, move |client, endpoint| {
-                    let chapter_id = request_chapter_id.clone();
-                    Box::pin(async move { client.get_chapter(endpoint, &chapter_id).await })
-                })
-                .await?;
-            Ok(chapter)
-        })
-    }
-
     fn download_page_image<'a>(
         &'a self,
         chapter_id: &'a str,
@@ -355,7 +314,6 @@ mod tests {
     };
     use crate::{
         cache::{reader_page_cache_key, ImageCache},
-        domain::reader::ChapterManifest,
         image_work::{ImageWorkBudget, ImageWorkPriority},
         jm::JmError,
         reader::PageImageFormat,
@@ -387,8 +345,6 @@ mod tests {
         download_count: AtomicUsize,
         active_downloads: AtomicUsize,
         max_active_downloads: AtomicUsize,
-        active_chapters: AtomicUsize,
-        chapter_gate: Option<Arc<Semaphore>>,
         download_gate: Option<Arc<Semaphore>>,
     }
 
@@ -406,8 +362,6 @@ mod tests {
                 download_count: AtomicUsize::new(0),
                 active_downloads: AtomicUsize::new(0),
                 max_active_downloads: AtomicUsize::new(0),
-                active_chapters: AtomicUsize::new(0),
-                chapter_gate: None,
                 download_gate: None,
             }
         }
@@ -432,22 +386,6 @@ mod tests {
     }
 
     impl PageSource for TestPageSource {
-        fn get_chapter<'a>(&'a self, chapter_id: &'a str) -> PageSourceFuture<'a, ChapterManifest> {
-            Box::pin(async move {
-                self.active_chapters.fetch_add(1, Ordering::SeqCst);
-                let _active = ActiveRequest {
-                    counter: &self.active_chapters,
-                };
-                if let Some(gate) = &self.chapter_gate {
-                    let _permit = gate.acquire().await.unwrap();
-                }
-                Ok(ChapterManifest {
-                    id: chapter_id.to_string(),
-                    images: vec!["001.png".into(), "002.png".into()],
-                })
-            })
-        }
-
         fn download_page_image<'a>(
             &'a self,
             _chapter_id: &'a str,
@@ -526,6 +464,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn changed_images_do_not_join_an_old_flight_and_moved_images_reuse_their_cache() {
+        let gate = Arc::new(Semaphore::new(0));
+        let mut source = TestPageSource::new(png_data(), Duration::ZERO, 0);
+        source.download_gate = Some(gate.clone());
+        let source = Arc::new(source);
+        let (materializer, cache, root) = test_materializer("image-identity", source.clone()).await;
+        let mut jobs = JoinSet::new();
+        for name in ["A.png", "X.png"] {
+            let materializer = materializer.clone();
+            jobs.spawn(async move {
+                materializer
+                    .materialize(test_request("1001", 0, name))
+                    .await
+            });
+        }
+        timeout(Duration::from_secs(1), async {
+            while source.active_downloads() < 2 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("different images at the same index must have separate flights");
+        gate.add_permits(2);
+        while let Some(result) = jobs.join_next().await {
+            result.unwrap().unwrap();
+        }
+        materializer
+            .materialize(test_request("1001", 1, "A.png"))
+            .await
+            .unwrap();
+        assert_eq!(source.download_count(), 2);
+        assert_eq!(cache.stats().await.unwrap().entry_count, 2);
+        cleanup(materializer, cache, root).await;
+    }
+
+    #[tokio::test]
     async fn retries_a_truncated_passthrough_image_without_caching_it() {
         let data = png_data();
         let mut source = TestPageSource::new(data.clone(), Duration::ZERO, 0);
@@ -548,7 +522,7 @@ mod tests {
         assert_eq!(cache.stats().await.unwrap().entry_count, 0);
         assert!(cache_files(&root.join("cache")).is_empty());
         assert!(materializer
-            .cached_page("chapter-truncated", 0)
+            .cached_page("chapter-truncated", &crate::cache::page_image_id("001.png"))
             .await
             .unwrap()
             .is_none());
@@ -579,7 +553,10 @@ mod tests {
         let (materializer, cache, root) = test_materializer("corrupt-cache", source.clone()).await;
         cache
             .put_reader_page(
-                &reader_page_cache_key("chapter-corrupt-cache", 0),
+                &reader_page_cache_key(
+                    "chapter-corrupt-cache",
+                    &crate::cache::page_image_id("001.png"),
+                ),
                 PageImageFormat::Png,
                 &data,
             )
@@ -799,51 +776,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelling_chapter_request_releases_the_page_lock() {
-        let gate = Arc::new(Semaphore::new(0));
-        let mut source = TestPageSource::new(png_data(), Duration::ZERO, 0);
-        source.chapter_gate = Some(gate.clone());
-        let source = Arc::new(source);
-        let (materializer, cache, root) = test_materializer("cancel-chapter", source.clone()).await;
-        let (cancel, cancelled) = watch::channel(false);
-        let owner = tokio::spawn({
-            let materializer = materializer.clone();
-            async move {
-                let mut request = test_request("chapter-cancel-source", 0, "001.png");
-                request.image_path = None;
-                request.cancelled = Some(cancelled);
-                materializer.materialize(request).await
-            }
-        });
-        timeout(Duration::from_secs(1), async {
-            while source.active_chapters.load(Ordering::SeqCst) == 0 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("chapter request should start");
-        cancel.send(true).unwrap();
-        let result = timeout(Duration::from_secs(1), owner)
-            .await
-            .expect("chapter cancellation must not wait for upstream")
-            .unwrap();
-        assert!(matches!(result, Err(PageMaterializeError::Cancelled)));
-        assert_eq!(source.active_chapters.load(Ordering::SeqCst), 0);
-        assert_eq!(source.download_count(), 0);
-        assert_eq!(cache.stats().await.unwrap().entry_count, 0);
-
-        gate.add_permits(1);
-        let mut reader = test_request("chapter-cancel-source", 0, "001.png");
-        reader.image_path = None;
-        timeout(Duration::from_secs(1), materializer.materialize(reader))
-            .await
-            .expect("reader must be able to acquire the released page lock")
-            .expect("reader should retry the chapter request");
-        assert_eq!(source.download_count(), 1);
-        cleanup(materializer, cache, root).await;
-    }
-
-    #[tokio::test]
     async fn cancelling_image_owner_releases_budgets_and_allows_reader_retry() {
         let gate = Arc::new(Semaphore::new(0));
         let mut source = TestPageSource::new(png_data(), Duration::ZERO, 0);
@@ -949,7 +881,7 @@ mod tests {
             chapter_id,
             page,
             comic_id: 100_000,
-            image_path: Some(image_path),
+            image_path,
             priority: ImageWorkPriority::Foreground,
             cancelled: None,
         }

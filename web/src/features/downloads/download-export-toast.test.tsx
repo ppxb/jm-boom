@@ -47,6 +47,7 @@ test('the real Sonner action keeps the cancellation result visible after its clo
     taskId: 'cancel-toast',
     albumId: '100',
     comicTitle: '测试漫画',
+    comicAuthor: '',
     chapters: [],
     status: 'completed',
     currentChapterTitle: '',

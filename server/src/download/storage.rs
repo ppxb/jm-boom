@@ -1,10 +1,16 @@
-use crate::{cache::CachedReaderPage, reader::PageImageFormat};
+use super::model::OfflineChapterManifest;
+use crate::{
+    cache::{page_image_id, CachedReaderPage},
+    keyed_lock::KeyedLock,
+    reader::PageImageFormat,
+};
 use std::path::PathBuf;
 use tokio::fs;
 
 #[derive(Clone)]
 pub(super) struct DownloadStorage {
     root: PathBuf,
+    page_writes: KeyedLock,
 }
 
 pub(super) struct StagedTaskDeletion {
@@ -21,23 +27,60 @@ impl DownloadStorage {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => tracing::warn!(%error, "清理下载删除暂存目录失败"),
         }
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            page_writes: KeyedLock::new(),
+        })
+    }
+
+    // One-time, restart-safe migration. Normal reads never fall back to page-number files.
+    pub async fn migrate_manifest(&self, manifest: &OfflineChapterManifest) -> anyhow::Result<()> {
+        let directory = self.root.join(&manifest.task_id).join(&manifest.chapter_id);
+        for (index, image) in manifest.images.iter().enumerate() {
+            let identity = page_image_id(image);
+            for format in PageImageFormat::supported() {
+                let old = directory.join(format!("{index}.{}", format.extension()));
+                if !fs::try_exists(&old).await? {
+                    continue;
+                }
+                let destination = self.page_path(
+                    &manifest.task_id,
+                    &manifest.chapter_id,
+                    &identity,
+                    format.extension(),
+                );
+                if fs::try_exists(&destination).await? {
+                    let legacy = directory.join(".legacy");
+                    fs::create_dir_all(&legacy).await?;
+                    fs::rename(&old, legacy.join(format!("{index}.{}", format.extension())))
+                        .await?;
+                } else {
+                    fs::rename(&old, destination).await?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub async fn store_page(
         &self,
         task_id: &str,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
         page_image: &CachedReaderPage,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(
             page_image.format.is_complete(&page_image.data),
             "拒绝写入不完整的下载页面"
         );
+        let _write = self
+            .page_writes
+            .lock(&format!("{task_id}/{chapter_id}/{image_id}"))
+            .await;
         let extension = page_image.format.extension();
-        let path = self.page_path(task_id, chapter_id, page, extension);
-        let temporary_path = self.page_path(task_id, chapter_id, page, &format!("{extension}.tmp"));
+        let path = self.page_path(task_id, chapter_id, image_id, extension);
+        let temporary_path =
+            self.page_path(task_id, chapter_id, image_id, &format!("{extension}.tmp"));
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;
         }
@@ -65,10 +108,14 @@ impl DownloadStorage {
         &self,
         task_id: &str,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
     ) -> anyhow::Result<Option<CachedReaderPage>> {
+        let _read = self
+            .page_writes
+            .lock(&format!("{task_id}/{chapter_id}/{image_id}"))
+            .await;
         for format in PageImageFormat::supported() {
-            let path = self.page_path(task_id, chapter_id, page, format.extension());
+            let path = self.page_path(task_id, chapter_id, image_id, format.extension());
             match fs::read(&path).await {
                 Ok(data) if format.is_complete(&data) => {
                     return Ok(Some(CachedReaderPage { data, format }));
@@ -77,7 +124,7 @@ impl DownloadStorage {
                     tracing::warn!(
                         task_id,
                         chapter_id,
-                        page,
+                        image_id,
                         bytes = data.len(),
                         path = %path.display(),
                         "删除损坏或格式不匹配的下载页面"
@@ -135,13 +182,13 @@ impl DownloadStorage {
         &self,
         task_id: &str,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
         extension: &str,
     ) -> PathBuf {
         self.root
             .join(task_id)
             .join(chapter_id)
-            .join(format!("{page}.{extension}"))
+            .join(format!("{image_id}.{extension}"))
     }
 }
 
@@ -167,13 +214,136 @@ mod tests {
     static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
     #[tokio::test]
+    async fn legacy_migration_resumes_after_partial_renames_and_preserves_missing_pages() {
+        use crate::{cache::page_image_id, download::model::OfflineChapterManifest};
+        let root = test_root("identity-migration");
+        let storage = DownloadStorage::new(root.clone()).await.unwrap();
+        let directory = root.join("task/1001");
+        fs::create_dir_all(&directory).await.unwrap();
+        let data = png_data();
+        // Page A was already renamed before a previous startup stopped.
+        fs::write(
+            storage.page_path("task", "1001", &page_image_id("A.png"), "png"),
+            &data,
+        )
+        .await
+        .unwrap();
+        fs::write(directory.join("1.png"), &data).await.unwrap();
+        fs::write(directory.join("3.png"), &data).await.unwrap();
+        let manifest = OfflineChapterManifest {
+            task_id: "task".into(),
+            album_id: "100".into(),
+            chapter_id: "1001".into(),
+            title: "章".into(),
+            images: vec![
+                "A.png".into(),
+                "B.png".into(),
+                "C.png".into(),
+                "A.png".into(),
+            ],
+            updated_at: 1,
+        };
+        storage.migrate_manifest(&manifest).await.unwrap();
+        storage.migrate_manifest(&manifest).await.unwrap();
+        for image in ["A.png", "B.png"] {
+            assert_eq!(
+                storage
+                    .read_page("task", "1001", &page_image_id(image))
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .data,
+                data
+            );
+        }
+        assert!(storage
+            .read_page("task", "1001", &page_image_id("C.png"))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(!directory.join("1.png").exists());
+        assert_eq!(
+            fs::read(directory.join(".legacy/3.png")).await.unwrap(),
+            data
+        );
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn concurrent_copies_of_the_same_image_commit_without_temp_file_collisions() {
+        let root = test_root("identity-concurrent");
+        let storage = DownloadStorage::new(root.clone()).await.unwrap();
+        let mut jobs = tokio::task::JoinSet::new();
+        for _ in 0..5 {
+            let storage = storage.clone();
+            jobs.spawn(async move {
+                storage
+                    .store_page(
+                        "task",
+                        "1001",
+                        &crate::cache::page_image_id("A.png"),
+                        &CachedReaderPage {
+                            data: png_data(),
+                            format: PageImageFormat::Png,
+                        },
+                    )
+                    .await
+            });
+        }
+        while let Some(result) = jobs.join_next().await {
+            result.unwrap().unwrap();
+        }
+        assert_eq!(
+            storage
+                .read_page("task", "1001", &crate::cache::page_image_id("A.png"))
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+            png_data()
+        );
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_bad_read_cannot_remove_a_concurrent_valid_replacement() {
+        let root = test_root("identity-read-write");
+        let storage = DownloadStorage::new(root.clone()).await.unwrap();
+        let id = crate::cache::page_image_id("A.png");
+        let path = storage.page_path("task", "1001", &id, "png");
+        fs::create_dir_all(path.parent().unwrap()).await.unwrap();
+        fs::write(&path, b"broken").await.unwrap();
+        let writing = storage.page_writes.lock(&format!("task/1001/{id}")).await;
+        let mut reading = tokio::spawn({
+            let storage = storage.clone();
+            let id = id.clone();
+            async move { storage.read_page("task", "1001", &id).await }
+        });
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), &mut reading)
+                .await
+                .is_err()
+        );
+        fs::write(&path, png_data()).await.unwrap();
+        drop(writing);
+        assert_eq!(reading.await.unwrap().unwrap().unwrap().data, png_data());
+        assert!(path.exists());
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn stores_page_via_temporary_file_and_ignores_uncommitted_file() {
         let root = test_root("atomic");
         let storage = DownloadStorage::new(root.clone())
             .await
             .expect("create download storage");
         let data = png_data();
-        let temporary_path = storage.page_path("task", "1001", 0, "png.tmp");
+        let temporary_path = storage.page_path(
+            "task",
+            "1001",
+            &crate::cache::page_image_id("001.png"),
+            "png.tmp",
+        );
         fs::create_dir_all(temporary_path.parent().expect("temporary parent"))
             .await
             .expect("create temporary parent");
@@ -182,7 +352,7 @@ mod tests {
             .expect("write interrupted temporary file");
 
         assert!(storage
-            .read_page("task", "1001", 0)
+            .read_page("task", "1001", &crate::cache::page_image_id("001.png"))
             .await
             .expect("read page before commit")
             .is_none());
@@ -191,7 +361,7 @@ mod tests {
             .store_page(
                 "task",
                 "1001",
-                0,
+                &crate::cache::page_image_id("001.png"),
                 &CachedReaderPage {
                     data: data.clone(),
                     format: PageImageFormat::Png,
@@ -202,7 +372,7 @@ mod tests {
 
         assert!(!temporary_path.exists());
         let stored = storage
-            .read_page("task", "1001", 0)
+            .read_page("task", "1001", &crate::cache::page_image_id("001.png"))
             .await
             .expect("read committed page")
             .expect("committed page should exist");
@@ -218,7 +388,12 @@ mod tests {
         let storage = DownloadStorage::new(root.clone())
             .await
             .expect("create download storage");
-        let path = storage.page_path("task", "1001", 0, "png");
+        let path = storage.page_path(
+            "task",
+            "1001",
+            &crate::cache::page_image_id("001.png"),
+            "png",
+        );
         let mut truncated = png_data();
         truncated.truncate(truncated.len() - 12);
         fs::create_dir_all(path.parent().expect("page parent"))
@@ -229,7 +404,7 @@ mod tests {
             .expect("write truncated page");
 
         assert!(storage
-            .read_page("task", "1001", 0)
+            .read_page("task", "1001", &crate::cache::page_image_id("001.png"))
             .await
             .expect("read truncated page")
             .is_none());

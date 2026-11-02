@@ -5,7 +5,7 @@ use super::{
     DownloadError, DownloadResult,
 };
 use crate::{
-    cache::CachedReaderPage,
+    cache::{page_image_id, CachedReaderPage},
     reader::{decode_with_limits, PageImageFormat},
 };
 use anyhow::{Context, Result};
@@ -68,7 +68,7 @@ pub struct DownloadExport {
 
 struct ExportChapter {
     id: String,
-    pages: usize,
+    image_ids: Vec<String>,
 }
 
 struct CancelExport(Arc<AtomicBool>);
@@ -129,7 +129,11 @@ impl DownloadManager {
             }
             chapters.push(ExportChapter {
                 id: chapter.chapter_id.clone(),
-                pages: manifest.images.len(),
+                image_ids: manifest
+                    .images
+                    .iter()
+                    .map(|image| page_image_id(image))
+                    .collect(),
             });
         }
         if chapters.is_empty() {
@@ -188,10 +192,11 @@ fn read_page(
     storage: &DownloadStorage,
     task_id: &str,
     chapter: &str,
+    image_id: &str,
     page: usize,
 ) -> Result<CachedReaderPage> {
     for format in PageImageFormat::supported() {
-        let path = storage.page_path(task_id, chapter, page, format.extension());
+        let path = storage.page_path(task_id, chapter, image_id, format.extension());
         let file = match File::open(path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -229,9 +234,9 @@ fn write_cbz(
     let mut index = 0usize;
     let mut bytes = 0u64;
     for chapter in chapters {
-        for page in 0..chapter.pages {
+        for (page, image_id) in chapter.image_ids.iter().enumerate() {
             check_cancelled(cancelled)?;
-            let image = read_page(storage, &task.task_id, &chapter.id, page)?;
+            let image = read_page(storage, &task.task_id, &chapter.id, image_id, page)?;
             bytes = bytes
                 .checked_add(image.data.len() as u64)
                 .context("导出文件过大")?;
@@ -253,7 +258,7 @@ fn write_pdf(
     chapters: &[ExportChapter],
     cancelled: &AtomicBool,
 ) -> Result<File> {
-    let count: usize = chapters.iter().map(|chapter| chapter.pages).sum();
+    let count: usize = chapters.iter().map(|chapter| chapter.image_ids.len()).sum();
     anyhow::ensure!(count <= ((i32::MAX - 4) / 3) as usize, "导出页数过多");
     let mut pdf = Pdf::new();
     let catalog = Ref::new(1);
@@ -265,9 +270,9 @@ fn write_pdf(
         .creator(TextStr("JM Boom"));
     let mut pages = Vec::with_capacity(count);
     for chapter in chapters {
-        for index in 0..chapter.pages {
+        for (index, image_id) in chapter.image_ids.iter().enumerate() {
             check_cancelled(cancelled)?;
-            let image = read_page(storage, &task.task_id, &chapter.id, index)?;
+            let image = read_page(storage, &task.task_id, &chapter.id, image_id, index)?;
             let (width, height, encoded) = pdf_image(image)?;
             check_size(pdf.len() as u64 + encoded.len() as u64 + 4096)?;
             let page_id = Ref::new(4 + pages.len() as i32 * 3);

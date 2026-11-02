@@ -24,6 +24,7 @@ const task: DownloadTask = {
   taskId: 'task-1',
   albumId: '100',
   comicTitle: '测试漫画',
+  comicAuthor: '',
   chapters: [],
   status: 'queued',
   currentChapterTitle: '',

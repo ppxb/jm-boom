@@ -13,7 +13,6 @@ pub struct DownloadChapter {
 pub struct EnqueueDownload {
     pub album_id: String,
     pub comic_title: String,
-    #[serde(default)]
     pub comic_author: String,
     pub chapters: Vec<DownloadChapter>,
 }

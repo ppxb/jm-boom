@@ -40,7 +40,7 @@ export async function startDownloadExport(task: DownloadTask, format: DownloadEx
     const url = URL.createObjectURL(file.blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = file.filename || `JM${task.albumId}.${format}`
+    link.download = file.filename
     try {
       document.body.append(link)
       link.click()

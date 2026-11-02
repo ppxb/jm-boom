@@ -3,6 +3,7 @@ use super::{
     DOWNLOAD_PAGE_CONCURRENCY_PER_TASK,
 };
 use crate::{
+    cache::page_image_id,
     image_work::ImageWorkPriority,
     page_materializer::{PageMaterializeError, PageMaterializeRequest},
 };
@@ -145,9 +146,10 @@ impl DownloadManager {
             return Ok(None);
         }
 
+        let image_id = page_image_id(&job.image_path);
         let offline = self
             .storage
-            .read_page(&context.task_id, &job.chapter_id, job.page)
+            .read_page(&context.task_id, &job.chapter_id, &image_id)
             .await?;
         let was_offline = offline.is_some();
         let page_image = match offline {
@@ -158,7 +160,7 @@ impl DownloadManager {
                     chapter_id: &job.chapter_id,
                     page: job.page,
                     comic_id: job.comic_id,
-                    image_path: Some(&job.image_path),
+                    image_path: &job.image_path,
                     priority: ImageWorkPriority::Download,
                     cancelled: Some(context.cancelled.clone()),
                 })
@@ -185,11 +187,11 @@ impl DownloadManager {
         }
         if !was_offline {
             self.storage
-                .store_page(&context.task_id, &job.chapter_id, job.page, &page_image)
+                .store_page(&context.task_id, &job.chapter_id, &image_id, &page_image)
                 .await?;
         } else {
             self.page_materializer
-                .remember_page_dimensions(&job.chapter_id, job.page, &page_image)
+                .remember_page_dimensions(&job.chapter_id, &image_id, &page_image)
                 .await;
         }
         Ok(Some(page_image.data.len() as u64))

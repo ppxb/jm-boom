@@ -89,8 +89,8 @@ impl DownloadService {
     pub async fn offline_page(
         &self,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
     ) -> Result<Option<CachedReaderPage>, DownloadError> {
-        self.manager.offline_page(chapter_id, page).await
+        self.manager.offline_page(chapter_id, image_id).await
     }
 }

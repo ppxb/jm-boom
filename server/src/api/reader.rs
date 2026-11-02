@@ -1,16 +1,16 @@
-use crate::cache::{reader_page_cache_key, READER_CACHE_VERSION};
+use crate::cache::{page_image_id, reader_page_cache_key, READER_CACHE_VERSION};
 use crate::http_error::HttpError;
 use crate::image_work::ImageWorkPriority;
 use crate::page_materializer::PageMaterializeError;
 use crate::reader::page_name_from_image;
 use crate::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Instant};
 
 mod prewarm;
@@ -36,6 +36,29 @@ pub struct PageInfo {
     pub width: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
+}
+
+#[derive(Deserialize)]
+pub struct PageQuery {
+    v: u8,
+    image: String,
+}
+
+fn validate_page_query(query: &PageQuery) -> Result<(), ApiError> {
+    if query.v != READER_CACHE_VERSION {
+        return Err(ApiError::BadRequest(
+            "Reader cache version changed; reload the chapter".into(),
+        ));
+    }
+    if query.image.len() != 32
+        || !query
+            .image
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(ApiError::BadRequest("Invalid reader image identity".into()));
+    }
+    Ok(())
 }
 
 /// GET /api/reader/:chapter_id/manifest
@@ -65,21 +88,7 @@ pub async fn get_manifest(
         .await
         .map_err(ApiError::Cache)?;
 
-    let pages: Vec<_> = images
-        .iter()
-        .enumerate()
-        .map(|(index, image)| {
-            let name = page_name_from_image(image);
-            let size = dimensions.get(&reader_page_cache_key(&chapter_id, index));
-            PageInfo {
-                index: index as u32,
-                name,
-                url: format!("/api/reader/{chapter_id}/pages/{index}?v={READER_CACHE_VERSION}"),
-                width: size.map(|size| size.width),
-                height: size.map(|size| size.height),
-            }
-        })
-        .collect();
+    let pages = manifest_pages(&chapter_id, &images, &dimensions);
     let prewarm_count = MANIFEST_PREWARM_COUNT.min(pages.len() as u32);
 
     prewarm_pages(app, chapter_id.clone(), 0, prewarm_count);
@@ -90,14 +99,39 @@ pub async fn get_manifest(
     }))
 }
 
+fn manifest_pages(
+    chapter_id: &str,
+    images: &[String],
+    dimensions: &std::collections::HashMap<String, crate::reader::ImageDimensions>,
+) -> Vec<PageInfo> {
+    images
+        .iter()
+        .enumerate()
+        .map(|(index, image)| {
+            let name = page_name_from_image(image);
+            let image_id = page_image_id(image);
+            let size = dimensions.get(&reader_page_cache_key(chapter_id, &image_id));
+            PageInfo {
+                index: index as u32,
+                name,
+                url: format!("/api/reader/{chapter_id}/pages/{index}?v={READER_CACHE_VERSION}&image={image_id}"),
+                width: size.map(|size| size.width),
+                height: size.map(|size| size.height),
+            }
+        })
+        .collect()
+}
+
 /// GET /api/reader/:chapter_id/pages/:page
 pub async fn get_page(
     State(app): State<AppState>,
     Path((chapter_id, page)): Path<(String, u32)>,
+    Query(query): Query<PageQuery>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
+    validate_page_query(&query)?;
     let priority = request_priority(&headers);
-    let image = materialize_page(&app, &chapter_id, page, priority).await?;
+    let image = materialize_page(&app, &chapter_id, page, &query.image, priority).await?;
     if should_expand_prewarm_window(priority) {
         prewarm_pages(app, chapter_id, page.saturating_add(1), PAGE_PREWARM_COUNT);
     }
@@ -113,6 +147,7 @@ async fn materialize_page(
     app: &AppState,
     chapter_id: &str,
     page: u32,
+    image_id: &str,
     priority: ImageWorkPriority,
 ) -> Result<MaterializedImage, ApiError> {
     let materialize_started = Instant::now();
@@ -121,7 +156,7 @@ async fn materialize_page(
 
     if let Some(cached) = app
         .reader
-        .cached_page(chapter_id, page as usize)
+        .cached_page(chapter_id, image_id)
         .await
         .map_err(ApiError::Cache)?
     {
@@ -140,7 +175,7 @@ async fn materialize_page(
 
     if let Some(offline) = app
         .reader
-        .offline_page(chapter_id, page as usize)
+        .offline_page(chapter_id, image_id)
         .await
         .map_err(|error| ApiError::Cache(anyhow::anyhow!(error.to_string())))?
     {
@@ -159,7 +194,7 @@ async fn materialize_page(
 
     let materialized = app
         .reader
-        .materialize(chapter_id, page as usize, comic_id, priority)
+        .materialize(chapter_id, image_id, comic_id, priority)
         .await
         .map_err(ApiError::from)?;
     tracing::debug!(
@@ -181,9 +216,23 @@ fn prewarm_pages(app: AppState, chapter_id: String, start_page: u32, count: u32)
         let app = app.clone();
         let chapter_id = chapter_id.clone();
         PAGE_PREWARM_QUEUE.enqueue(chapter_id.clone(), page, async move {
-            if let Err(error) =
-                materialize_page(&app, &chapter_id, page, ImageWorkPriority::Prefetch).await
-            {
+            let result = async {
+                let chapter = app.reader.chapter(&chapter_id).await?;
+                let image_path = chapter
+                    .images
+                    .get(page as usize)
+                    .ok_or_else(|| ApiError::NotFound("Page index out of range".into()))?;
+                materialize_page(
+                    &app,
+                    &chapter_id,
+                    page,
+                    &page_image_id(image_path),
+                    ImageWorkPriority::Prefetch,
+                )
+                .await
+            }
+            .await;
+            if let Err(error) = result {
                 if !matches!(error, ApiError::NotFound(_)) {
                     tracing::debug!(chapter_id, page, error = ?error, "reader page prewarm failed");
                 }
@@ -289,6 +338,51 @@ mod tests {
     };
     use crate::api::tests::assert_bad_request;
     use crate::{domain::reader::ChapterManifest, image_work::ImageWorkPriority, jm::JmError};
+
+    #[test]
+    fn manifest_urls_and_sizes_follow_the_image_instead_of_its_position() {
+        use crate::{
+            cache::{page_image_id, reader_page_cache_key},
+            reader::ImageDimensions,
+        };
+        let sizes = std::collections::HashMap::from([(
+            reader_page_cache_key("1001", &page_image_id("A.png")),
+            ImageDimensions {
+                width: 10,
+                height: 20,
+            },
+        )]);
+        let old = super::manifest_pages("1001", &["A.png".into(), "B.png".into()], &sizes);
+        let new = super::manifest_pages(
+            "1001",
+            &["X.png".into(), "A.png".into(), "B.png".into()],
+            &sizes,
+        );
+        assert_ne!(old[0].url, new[0].url);
+        assert_eq!(
+            old[0].url.split("&image=").last(),
+            new[1].url.split("&image=").last()
+        );
+        assert_eq!(new[0].width, None);
+        assert_eq!((new[1].width, new[1].height), (Some(10), Some(20)));
+        assert!(new[0].url.contains("?v=4&image="));
+    }
+
+    #[test]
+    fn rejects_old_or_invalid_page_identities() {
+        let image = crate::cache::page_image_id("A.png");
+        assert!(super::validate_page_query(&super::PageQuery {
+            v: 4,
+            image: image.clone()
+        })
+        .is_ok());
+        assert!(super::validate_page_query(&super::PageQuery { v: 3, image }).is_err());
+        assert!(super::validate_page_query(&super::PageQuery {
+            v: 4,
+            image: "../0".into()
+        })
+        .is_err());
+    }
 
     #[test]
     fn prefetch_requests_do_not_expand_the_server_prewarm_window() {

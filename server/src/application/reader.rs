@@ -1,6 +1,6 @@
 use crate::{
     application::{ComicService, DownloadService},
-    cache::CachedReaderPage,
+    cache::{page_image_id, CachedReaderPage},
     domain::reader::ChapterManifest,
     download::DownloadError,
     image_work::ImageWorkPriority,
@@ -44,9 +44,11 @@ impl ReaderService {
     pub async fn cached_page(
         &self,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
     ) -> anyhow::Result<Option<CachedReaderPage>> {
-        self.page_materializer.cached_page(chapter_id, page).await
+        self.page_materializer
+            .cached_page(chapter_id, image_id)
+            .await
     }
 
     pub async fn offline_manifest(
@@ -59,12 +61,12 @@ impl ReaderService {
     pub async fn offline_page(
         &self,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
     ) -> Result<Option<CachedReaderPage>, DownloadError> {
-        let image = self.downloads.offline_page(chapter_id, page).await?;
+        let image = self.downloads.offline_page(chapter_id, image_id).await?;
         if let Some(image) = &image {
             self.page_materializer
-                .remember_page_dimensions(chapter_id, page, image)
+                .remember_page_dimensions(chapter_id, image_id, image)
                 .await;
         }
         Ok(image)
@@ -73,16 +75,23 @@ impl ReaderService {
     pub async fn materialize(
         &self,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
         comic_id: u32,
         priority: ImageWorkPriority,
     ) -> Result<CachedReaderPage, PageMaterializeError> {
+        let chapter = self.chapter(chapter_id).await?;
+        let (page, image_path) = chapter
+            .images
+            .iter()
+            .enumerate()
+            .find(|(_, path)| page_image_id(path) == image_id)
+            .ok_or(PageMaterializeError::PageNotFound)?;
         self.page_materializer
-            .materialize_after_cache_miss(PageMaterializeRequest {
+            .materialize(PageMaterializeRequest {
                 chapter_id,
                 page,
                 comic_id,
-                image_path: None,
+                image_path,
                 priority,
                 cancelled: None::<watch::Receiver<bool>>,
             })

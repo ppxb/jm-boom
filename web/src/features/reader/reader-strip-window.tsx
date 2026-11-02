@@ -54,8 +54,8 @@ export function ReaderStripWindow({
   const estimatePageSize = useCallback(
     (index: number) => {
       const container = containerRef.current
-      const viewportWidth = container?.clientWidth ?? getWindowWidth()
-      const viewportHeight = container?.clientHeight ?? getWindowHeight()
+      const viewportWidth = container?.clientWidth ?? window.innerWidth
+      const viewportHeight = container?.clientHeight ?? window.innerHeight
       const contentWidth = Math.min(viewportWidth, STRIP_MAX_CONTENT_WIDTH_PX)
 
       const page = pages[index]
@@ -418,7 +418,7 @@ function isStripScrollAtEnd({
 // instead lets pages overlap by a sub-pixel (hidden by overflow) so the strip
 // stays seamless.
 function measurePageHeight(
-  element: Element,
+  element: HTMLElement,
   _entry: ResizeObserverEntry | undefined,
   instance: Virtualizer<HTMLDivElement, HTMLElement>
 ) {
@@ -427,13 +427,5 @@ function measurePageHeight(
     return Math.floor(height)
   }
 
-  return (element as HTMLElement).offsetHeight || instance.options.estimateSize(0)
-}
-
-function getWindowWidth() {
-  return typeof window === 'undefined' ? STRIP_MAX_CONTENT_WIDTH_PX : window.innerWidth
-}
-
-function getWindowHeight() {
-  return typeof window === 'undefined' ? 800 : window.innerHeight
+  return element.offsetHeight || instance.options.estimateSize(instance.indexFromElement(element))
 }

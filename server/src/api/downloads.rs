@@ -158,6 +158,17 @@ mod tests {
         );
     }
 
+    #[test]
+    fn enqueue_requires_the_author_field_but_accepts_an_unknown_author_as_empty() {
+        let mut request = serde_json::json!({"albumId":"100", "comicTitle":"title", "chapters":[]});
+        assert!(serde_json::from_value::<EnqueueDownload>(request.clone()).is_err());
+        request["comicAuthor"] = serde_json::json!("");
+        assert!(serde_json::from_value::<EnqueueDownload>(request)
+            .unwrap()
+            .comic_author
+            .is_empty());
+    }
+
     fn response(permits: &Arc<Semaphore>) -> Response {
         let mut file = tempfile::tempfile().unwrap();
         file.write_all(b"export").unwrap();

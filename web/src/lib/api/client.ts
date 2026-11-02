@@ -26,7 +26,7 @@ export class ApiError extends Error {
   }
 }
 
-export type DownloadFile = { blob: Blob; filename: string | undefined }
+export type DownloadFile = { blob: Blob; filename: string }
 
 async function request<T>(
   path: string,
@@ -50,7 +50,14 @@ async function request<T>(
     }
 
     if (responseType === 'file') {
-      return { blob: await response.blob(), filename: downloadFilename(response.headers) } as T
+      let filename: string
+      try {
+        filename = downloadFilename(response.headers)
+      } catch (error) {
+        await response.body?.cancel()
+        throw error
+      }
+      return { blob: await response.blob(), filename } as T
     }
 
     // 如果是图片响应，返回 blob
@@ -86,12 +93,15 @@ function downloadFilename(headers: Headers) {
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
   if (encoded) {
     try {
-      return decodeURIComponent(encoded.trim())
+      const filename = decodeURIComponent(encoded.trim())
+      if (filename) return filename
     } catch {
       /* Fall back to an ASCII filename. */
     }
   }
-  return /filename="([^"]+)"/i.exec(disposition)?.[1]
+  const filename = /filename="([^"]+)"/i.exec(disposition)?.[1]
+  if (!filename) throw new ApiError('下载响应缺少有效文件名')
+  return filename
 }
 
 async function readErrorResponse(response: Response) {

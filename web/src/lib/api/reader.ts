@@ -44,10 +44,6 @@ export async function getComicReadManifest({
 }
 
 export async function preloadComicReadPage(path: string, signal?: AbortSignal) {
-  if (typeof Image === 'undefined') {
-    return
-  }
-
   const response = await fetch(path, {
     signal,
     headers: {
@@ -63,17 +59,8 @@ export async function preloadComicReadPage(path: string, signal?: AbortSignal) {
   image.decoding = 'async'
 
   try {
-    if (typeof image.decode === 'function') {
-      image.src = objectUrl
-      await image.decode()
-      return
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve()
-      image.onerror = () => reject(new Error(`Failed to decode reader image: ${path}`))
-      image.src = objectUrl
-    })
+    image.src = objectUrl
+    await image.decode()
   } finally {
     URL.revokeObjectURL(objectUrl)
   }

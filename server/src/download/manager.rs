@@ -78,6 +78,12 @@ impl DownloadManager {
     ) -> DownloadResult<Self> {
         let repository = DownloadRepository::new(db);
         let storage = DownloadStorage::new(storage_root).await?;
+        for manifest in repository.manifests_to_migrate().await? {
+            storage.migrate_manifest(&manifest).await?;
+            repository
+                .mark_storage_migrated(&manifest.task_id, &manifest.chapter_id)
+                .await?;
+        }
         let tasks = repository
             .load_tasks()
             .await?
@@ -175,14 +181,18 @@ impl DownloadManager {
     pub(crate) async fn offline_page(
         &self,
         chapter_id: &str,
-        page: usize,
+        image_id: &str,
     ) -> DownloadResult<Option<CachedReaderPage>> {
         for task_id in self
             .repository
             .completed_manifest_task_ids(chapter_id)
             .await?
         {
-            if let Some(page) = self.storage.read_page(&task_id, chapter_id, page).await? {
+            if let Some(page) = self
+                .storage
+                .read_page(&task_id, chapter_id, image_id)
+                .await?
+            {
                 return Ok(Some(page));
             }
         }
@@ -563,7 +573,7 @@ mod tests {
             .store_page(
                 &task.task_id,
                 &chapter.chapter_id,
-                0,
+                &crate::cache::page_image_id("001.png"),
                 &CachedReaderPage {
                     data: png_data(),
                     format: PageImageFormat::Png,
@@ -623,7 +633,7 @@ mod tests {
             .store_page(
                 &task.task_id,
                 &chapter.chapter_id,
-                0,
+                &crate::cache::page_image_id("001.png"),
                 &CachedReaderPage {
                     data: png_data(),
                     format: PageImageFormat::Png,
@@ -921,7 +931,7 @@ mod tests {
         insert_task(&manager, older.clone()).await;
         insert_task(&manager, newer.clone()).await;
 
-        for (task, image) in [(&older, "older-001.png"), (&newer, "newer-001.png")] {
+        for (task, image) in [(&older, "001.png"), (&newer, "001.png")] {
             manager
                 .repository
                 .persist_manifest(task, &chapter, &[image.into()])
@@ -941,7 +951,7 @@ mod tests {
             .store_page(
                 &older.task_id,
                 &chapter.chapter_id,
-                0,
+                &crate::cache::page_image_id("001.png"),
                 &CachedReaderPage {
                     data: older_data.clone(),
                     format: PageImageFormat::Png,
@@ -953,7 +963,7 @@ mod tests {
             .join("downloads")
             .join(&newer.task_id)
             .join(&chapter.chapter_id)
-            .join("0.png");
+            .join(format!("{}.png", crate::cache::page_image_id("001.png")));
         fs::create_dir_all(newer_page.parent().expect("newer page parent"))
             .await
             .expect("create newer page parent");
@@ -964,7 +974,7 @@ mod tests {
             .expect("write corrupt newer page");
 
         let offline = manager
-            .offline_page(&chapter.chapter_id, 0)
+            .offline_page(&chapter.chapter_id, &crate::cache::page_image_id("001.png"))
             .await
             .expect("load offline page")
             .expect("older offline page should be used");
@@ -977,7 +987,7 @@ mod tests {
             .await
             .expect("remove older task");
         assert!(manager
-            .offline_page(&chapter.chapter_id, 0)
+            .offline_page(&chapter.chapter_id, &crate::cache::page_image_id("001.png"))
             .await
             .expect("load offline page after deletion")
             .is_none());
@@ -1071,6 +1081,217 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resume_after_insertion_reuses_matching_images_and_exports_the_new_order() {
+        use crate::cache::{page_image_id, reader_page_cache_key};
+        use std::io::Read;
+        fn page(width: u32) -> Vec<u8> {
+            let mut bytes = Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(width, 3)
+                .write_to(&mut bytes, image::ImageFormat::Png)
+                .unwrap();
+            bytes.into_inner()
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let requests = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let app = axum::Router::new().fallback({
+            let endpoint = endpoint.clone();
+            let requests = requests.clone();
+            move |uri: axum::http::Uri| {
+                let endpoint = endpoint.clone();
+                let requests = requests.clone();
+                async move {
+                    match uri.path() {
+                        "/chapter" => {
+                            axum::Json(serde_json::json!({"images": ["X.png", "A.png", "B.png"]}))
+                                .into_response()
+                        }
+                        "/setting" => {
+                            axum::Json(serde_json::json!({"code":200,"data":{"img_host":endpoint}}))
+                                .into_response()
+                        }
+                        path => {
+                            requests.lock().unwrap().push(path.to_string());
+                            if path.ends_with("X.png") {
+                                page(3).into_response()
+                            } else {
+                                axum::http::StatusCode::NOT_FOUND.into_response()
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let db = test_db().await;
+        sqlx::query(
+            "INSERT INTO app_settings (key,value,updated_at) VALUES ('endpoint_selected',?,0)",
+        )
+        .bind(&endpoint)
+        .execute(&db)
+        .await
+        .unwrap();
+        let (mut manager, root) = test_manager("identity-resume", db.clone()).await;
+        let cache = Arc::new(
+            ImageCache::new_for_test(db, 1024 * 1024, root.join("cache"))
+                .await
+                .unwrap(),
+        );
+        manager.page_materializer = Arc::new(PageMaterializer::new(
+            manager.jm.clone(),
+            manager.endpoints.clone(),
+            cache.clone(),
+            ImageWorkBudget::new(),
+        ));
+        let task = test_task("task-resume-identity", DownloadStatus::Paused, 1);
+        insert_task(&manager, task.clone()).await;
+        manager
+            .repository
+            .persist_manifest(&task, &task.chapters[0], &["A.png".into(), "B.png".into()])
+            .await
+            .unwrap();
+        for (name, width) in [("A.png", 1), ("B.png", 2)] {
+            let id = page_image_id(name);
+            let image = CachedReaderPage {
+                data: page(width),
+                format: PageImageFormat::Png,
+            };
+            manager
+                .storage
+                .store_page(&task.task_id, "1001", &id, &image)
+                .await
+                .unwrap();
+            cache
+                .put_reader_page(
+                    &reader_page_cache_key("1001", &id),
+                    image.format,
+                    &image.data,
+                )
+                .await
+                .unwrap();
+        }
+        manager.task_semaphore.add_permits(1);
+        manager.resume(&task.task_id).await.unwrap();
+        timeout(Duration::from_secs(5), async {
+            loop {
+                let current = task_snapshot(&manager, &task.task_id).await;
+                assert_ne!(
+                    current.status,
+                    DownloadStatus::Failed,
+                    "{:?}",
+                    current.error
+                );
+                if current.status == DownloadStatus::Completed {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(*requests.lock().unwrap(), vec!["/media/photos/1001/X.png"]);
+        let completed = task_snapshot(&manager, &task.task_id).await;
+        assert_eq!((completed.total_pages, completed.completed_pages), (3, 3));
+        assert_eq!(
+            manager
+                .offline_manifest("1001")
+                .await
+                .unwrap()
+                .unwrap()
+                .images,
+            vec!["X.png", "A.png", "B.png"]
+        );
+        let sizes = cache.reader_dimensions("1001").await.unwrap();
+        assert_eq!(
+            sizes[&reader_page_cache_key("1001", &page_image_id("X.png"))].width,
+            3
+        );
+        let exported = manager
+            .export(&task.task_id, crate::download::ExportFormat::Cbz)
+            .await
+            .unwrap();
+        let mut archive = zip::ZipArchive::new(exported.file).unwrap();
+        for (index, width) in [3, 1, 2].into_iter().enumerate() {
+            let mut bytes = Vec::new();
+            archive
+                .by_name(&format!("{:08}.png", index + 1))
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            assert_eq!(bytes, page(width));
+        }
+        server.abort();
+        cleanup(manager, root).await;
+    }
+
+    #[tokio::test]
+    async fn startup_migrates_legacy_files_before_exposing_completed_downloads() {
+        let db = test_db().await;
+        let (manager, root) = test_manager("identity-startup", db.clone()).await;
+        let task = test_task("task-legacy", DownloadStatus::Completed, 1);
+        insert_task(&manager, task.clone()).await;
+        manager
+            .repository
+            .persist_manifest(&task, &task.chapters[0], &["A.png".into()])
+            .await
+            .unwrap();
+        manager
+            .repository
+            .complete_manifest(&task.task_id, "1001")
+            .await
+            .unwrap();
+        sqlx::query("UPDATE download_manifests SET storage_version = 0 WHERE task_id = ?")
+            .bind(&task.task_id)
+            .execute(&db)
+            .await
+            .unwrap();
+        let old = root.join("downloads/task-legacy/1001/0.png");
+        fs::create_dir_all(old.parent().unwrap()).await.unwrap();
+        fs::write(&old, png_data()).await.unwrap();
+        let restored = DownloadManager::new_with_storage_root(
+            db.clone(),
+            manager.jm.clone(),
+            manager.endpoints.clone(),
+            manager.page_materializer.clone(),
+            root.join("downloads"),
+        )
+        .await
+        .unwrap();
+        assert!(!old.exists());
+        assert_eq!(
+            restored
+                .offline_page("1001", &crate::cache::page_image_id("A.png"))
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+            png_data()
+        );
+        assert!(restored
+            .offline_page("1001", &crate::cache::page_image_id("different.png"))
+            .await
+            .unwrap()
+            .is_none());
+        let version: i64 =
+            sqlx::query_scalar("SELECT storage_version FROM download_manifests WHERE task_id = ?")
+                .bind(&task.task_id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(version, 1);
+        assert!(restored
+            .repository
+            .manifests_to_migrate()
+            .await
+            .unwrap()
+            .is_empty());
+        drop(manager);
+        cleanup(restored, root).await;
+    }
+
+    #[tokio::test]
     async fn exports_only_the_selected_tasks_pages_in_saved_chapter_order() {
         use crate::download::ExportFormat;
         use std::io::Read;
@@ -1110,7 +1331,12 @@ mod tests {
             };
             manager
                 .storage
-                .store_page(&task.task_id, &chapter.chapter_id, 0, &image)
+                .store_page(
+                    &task.task_id,
+                    &chapter.chapter_id,
+                    &crate::cache::page_image_id("001.png"),
+                    &image,
+                )
                 .await
                 .unwrap();
             expected.push(image.data);
@@ -1133,7 +1359,7 @@ mod tests {
             .store_page(
                 &other.task_id,
                 "1001",
-                0,
+                &crate::cache::page_image_id("other.png"),
                 &CachedReaderPage {
                     data: png_data(),
                     format: PageImageFormat::Png,

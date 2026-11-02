@@ -101,7 +101,7 @@ test('shows author and chapter count on separate lines and hides export while se
     '1 个章节'
   ])
   expect(document.querySelector('[aria-label="导出下载"]')).not.toBeNull()
-  await render({ comicAuthor: undefined })
+  await render({ comicAuthor: '' })
   expect(document.querySelector('p')?.textContent).toBe('N/A')
   await render({}, true)
   expect(document.querySelector('[aria-label="导出下载"]')).toBeNull()
@@ -142,6 +142,22 @@ test('reports an export error without downloading the JSON error response', asyn
     expect.objectContaining({ id: 'download-export:task-1', description: '离线文件缺失' })
   )
   expect(navigate).not.toHaveBeenCalled()
+})
+
+test('rejects missing filenames and releases the response stream instead of inventing a name', async () => {
+  const cancel = vi.fn()
+  const stream = new ReadableStream({ cancel })
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(stream, { headers: { 'Content-Type': 'application/vnd.comicbook+zip' } })
+  )
+  await render()
+  await exportMenuItem('导出 CBZ')
+  expect(downloads).toEqual([])
+  expect(cancel).toHaveBeenCalledTimes(1)
+  expect(notices.error).toHaveBeenCalledWith(
+    '导出失败',
+    expect.objectContaining({ description: '下载响应缺少有效文件名' })
+  )
 })
 
 test('export survives leaving the download page and uses the server filename', async () => {

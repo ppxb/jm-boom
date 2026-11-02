@@ -2,6 +2,7 @@ use super::{repository::CacheCorrection, ImageCache};
 use anyhow::Result;
 use std::{
     collections::HashSet,
+    path::PathBuf,
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
@@ -25,7 +26,7 @@ impl ImageCache {
         let mut corrections = Vec::new();
 
         for entry in rows {
-            let path = self.storage.normalize_path(&entry.path);
+            let path = PathBuf::from(&entry.path);
             if !path.starts_with(self.storage.root()) {
                 removed_keys.push(entry.key);
                 continue;
@@ -115,7 +116,7 @@ impl ImageCache {
             let mut removed_size = 0_i64;
             let mut file_error = None;
             for entry in candidates {
-                let path = self.storage.normalize_path(&entry.path);
+                let path = PathBuf::from(&entry.path);
                 if path.starts_with(self.storage.root()) {
                     if let Err(error) = self.storage.remove_file(&path).await {
                         file_error = Some(error);

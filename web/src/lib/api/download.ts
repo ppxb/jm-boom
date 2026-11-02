@@ -37,7 +37,7 @@ export type DownloadTask = {
   taskId: string
   albumId: string
   comicTitle: string
-  comicAuthor?: string
+  comicAuthor: string
   chapters: DownloadChapterRequest[]
   status: DownloadTaskStatus
   currentChapterTitle: string

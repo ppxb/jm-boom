@@ -18,6 +18,52 @@ use tokio::{fs, task::JoinSet};
 static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[tokio::test]
+async fn identity_migration_discards_reader_cache_but_preserves_covers_and_download_records() {
+    let db = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    let migrator = sqlx::migrate!("./migrations");
+    for migration in migrator.iter().filter(|migration| migration.version < 10) {
+        sqlx::raw_sql(&migration.sql).execute(&db).await.unwrap();
+    }
+    for key in ["1001:0-v3", "covers:100-v1:img"] {
+        sqlx::query("INSERT INTO cache_index (key,path,size,created_at,accessed_at) VALUES (?, 'cache-file', 1, 0, 0)").bind(key).execute(&db).await.unwrap();
+    }
+    sqlx::query(
+        "INSERT INTO reader_page_dimensions (cache_key,width,height) VALUES ('1001:0-v3',1,2)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO download_manifests (task_id,album_id,chapter_id,title,payload,updated_at,completed) VALUES ('task','100','1001','chapter','{\"images\":[\"A.png\"]}',0,1)").execute(&db).await.unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../migrations/010_reader_image_identity.sql"
+    ))
+    .execute(&db)
+    .await
+    .unwrap();
+    let keys: Vec<String> = sqlx::query_scalar("SELECT key FROM cache_index")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(keys, vec!["covers:100-v1:img"]);
+    let dimensions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reader_page_dimensions")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(dimensions, 0);
+    let row: (String, i64, i64) = sqlx::query_as(
+        "SELECT payload,completed,storage_version FROM download_manifests WHERE task_id='task'",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(row, ("{\"images\":[\"A.png\"]}".into(), 1, 0));
+}
+
+#[tokio::test]
 async fn dimensions_survive_eviction_and_restart_without_loading_image_files() {
     let db = test_db().await;
     let root = test_cache_dir("persist-dimensions");
@@ -25,7 +71,7 @@ async fn dimensions_survive_eviction_and_restart_without_loading_image_files() {
         ImageCache::new_with_cache_dir(db.clone(), CacheConfig { max_size_bytes: 1 }, root.clone())
             .await
             .unwrap();
-    let key = super::reader_page_cache_key("1001", 0);
+    let key = super::reader_page_cache_key("1001", &crate::cache::page_image_id("001.png"));
     let mut data = Cursor::new(Vec::new());
     image::DynamicImage::new_rgb8(12, 37)
         .write_to(&mut data, image::ImageFormat::Png)
@@ -57,7 +103,7 @@ async fn dimensions_survive_eviction_and_restart_without_loading_image_files() {
 #[tokio::test]
 async fn legacy_cache_and_offline_sizes_are_visible_immediately_and_flushed_in_a_batch() {
     let (cache, root) = test_cache("backfill-dimensions", 1_000_000).await;
-    let key = super::reader_page_cache_key("1002", 0);
+    let key = super::reader_page_cache_key("1002", &crate::cache::page_image_id("001.png"));
     let mut data = Cursor::new(Vec::new());
     image::DynamicImage::new_rgb8(7, 19)
         .write_to(&mut data, image::ImageFormat::Png)
@@ -77,7 +123,7 @@ async fn legacy_cache_and_offline_sizes_are_visible_immediately_and_flushed_in_a
         cache.reader_dimensions("1002").await.unwrap()[&key].height,
         19
     );
-    let offline_key = super::reader_page_cache_key("1002", 1);
+    let offline_key = super::reader_page_cache_key("1002", &crate::cache::page_image_id("002.png"));
     cache
         .remember_reader_dimensions(&offline_key, PageImageFormat::Png, data.get_ref())
         .await;

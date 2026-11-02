@@ -55,6 +55,7 @@ function task(taskId = 'a', status: DownloadTask['status'] = 'completed'): Downl
     taskId,
     albumId: comic.id,
     comicTitle: comic.title,
+    comicAuthor: '',
     chapters: [{ chapterId: '101', title: 'Chapter 1', order: 1 }],
     status,
     currentChapterTitle: 'Chapter 1',

@@ -24,13 +24,17 @@ use tokio::{
     time::{self, MissedTickBehavior},
 };
 
-pub const READER_CACHE_VERSION: u8 = 3;
+pub const READER_CACHE_VERSION: u8 = 4;
 const COVER_CACHE_VERSION: u8 = 1;
 const DEFAULT_CACHE_MAX_MB: u64 = 5 * 1024;
 const ACCESS_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 
-pub fn reader_page_cache_key(chapter_id: &str, page: usize) -> String {
-    format!("{chapter_id}:{page}-v{READER_CACHE_VERSION}")
+pub fn page_image_id(image_path: &str) -> String {
+    format!("{:x}", md5::compute(image_path.as_bytes()))
+}
+
+pub fn reader_page_cache_key(chapter_id: &str, image_id: &str) -> String {
+    format!("{chapter_id}:{image_id}-v{READER_CACHE_VERSION}")
 }
 
 pub fn cover_cache_key(comic_id: &str) -> String {
@@ -410,9 +414,5 @@ impl ImageCache {
 }
 
 fn cache_index_key(key: &str, extension: &str) -> String {
-    if extension == "webp" {
-        key.to_string()
-    } else {
-        format!("{key}:{extension}")
-    }
+    format!("{key}:{extension}")
 }

@@ -31,17 +31,6 @@ impl CacheStorage {
         }
     }
 
-    pub(super) fn normalize_path(&self, path: &str) -> PathBuf {
-        let path = PathBuf::from(path);
-        if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(path)
-        }
-    }
-
     pub(super) async fn read(&self, path: &Path) -> Result<Option<Vec<u8>>> {
         match fs::read(path).await {
             Ok(data) => Ok(Some(data)),
