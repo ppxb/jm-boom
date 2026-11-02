@@ -139,16 +139,12 @@ function DownloadCoverOverlay({
             onKeyDown={event => event.stopPropagation()}
           >
             {canPause ? (
-              <ActionButton label="暂停下载" disabled={isPausing} onClick={onPause}>
-                <PauseIcon className="size-4" />
+              <ActionButton disabled={isPausing} onClick={onPause}>
+                <PauseIcon />
               </ActionButton>
             ) : null}
             {canResume ? (
-              <ActionButton
-                label={task.status === 'failed' ? '重新下载' : '恢复下载'}
-                disabled={isResuming}
-                onClick={onResume}
-              >
+              <ActionButton disabled={isResuming} onClick={onResume}>
                 {task.status === 'failed' ? (
                   <RotateCcwIcon className="size-4" />
                 ) : (
@@ -157,8 +153,8 @@ function DownloadCoverOverlay({
               </ActionButton>
             ) : null}
             {canCancel ? (
-              <ActionButton label="取消下载" disabled={isCancelling} onClick={onCancel}>
-                <BanIcon className="size-4" />
+              <ActionButton disabled={isCancelling} onClick={onCancel}>
+                <BanIcon />
               </ActionButton>
             ) : null}
           </div>
@@ -169,26 +165,16 @@ function DownloadCoverOverlay({
 }
 
 function ActionButton({
-  label,
   disabled,
   onClick,
   children
 }: {
-  label: string
   disabled: boolean
   onClick: () => void
   children: React.ReactNode
 }) {
   return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="icon-sm"
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-    >
+    <Button type="button" variant="secondary" size="icon-sm" disabled={disabled} onClick={onClick}>
       {children}
     </Button>
   )

@@ -55,10 +55,9 @@ export function DownloadsPage() {
 
       <Tabs
         value={filter}
-        className="w-full"
         onValueChange={value => setFilter(value as DownloadFilter)}
       >
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList>
           {DOWNLOAD_FILTERS.map(item => (
             <TabsTrigger key={item.value} value={item.value}>
               <span className="truncate">{item.label}</span>
